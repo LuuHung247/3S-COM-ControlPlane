@@ -1,0 +1,43 @@
+# Node / Next.js
+fe/node_modules/
+fe/.next/
+fe/.turbo/
+fe/out/
+fe/dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+.mypy_cache/
+.ruff_cache/
+intelligence-layer/.venv/
+
+# Go
+ids-agent/ids-agent
+
+# Secrets & env
+.env
+intelligence-layer/.env
+secure-framework/.env
+
+# Certs (private keys — never commit)
+secure-framework/certificate/generate/output_3snos/**/*.key
+secure-framework/certificate/server/*.key
+secure-framework/certificate/gnmic-test/*.key
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+*.log

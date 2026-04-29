@@ -1,0 +1,39 @@
+services:
+  ids-agent:
+    build:
+      context: ./ids-agent
+      dockerfile: Dockerfile
+    image: ids-agent:latest
+    container_name: ids-agent
+    restart: unless-stopped
+    ports:
+      - "8766:8766"
+    environment:
+      - IDS_API_URL=${IDS_API_URL:-http://10.10.6.238:8765}
+      - SF_API_URL=${SF_API_URL:-http://10.10.6.238:9090}
+      - AGENT_ADDR=:8766
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  fe:
+    build:
+      context: ./fe
+      dockerfile: Dockerfile
+    image: fe:latest
+    container_name: fe
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - AGENT_URL=http://ids-agent:8766
+      - NODE_ENV=production
+    depends_on:
+      - ids-agent
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
