@@ -1,0 +1,118 @@
+name: Mobile Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'EAS build profile (preview or production)'
+        required: true
+        type: choice
+        default: preview
+        options:
+          - preview
+          - production
+      platform:
+        description: 'Platform to build'
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - android
+          - ios
+      auto_submit:
+        description: 'Submit to stores after build (production only)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-mobile:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Write production env file
+        shell: bash
+        run: |
+          printf '%s\n' '${{ secrets.ENV_FILE }}' > .env
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Determine build parameters
+        id: params
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.profile }}" ]; then
+            PROFILE="${{ github.event.inputs.profile }}"
+          else
+            PROFILE="production"
+          fi
+
+          if [ -n "${{ github.event.inputs.platform }}" ]; then
+            PLATFORM="${{ github.event.inputs.platform }}"
+          elif [ "$PROFILE" = "preview" ]; then
+            PLATFORM="android"
+          else
+            PLATFORM="all"
+          fi
+
+          if [ "${{ github.event.inputs.auto_submit }}" = "true" ] && [ "$PROFILE" = "production" ]; then
+            AUTO_SUBMIT="--auto-submit"
+          else
+            AUTO_SUBMIT=""
+          fi
+
+          echo "profile=$PROFILE" >> "$GITHUB_OUTPUT"
+          echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"
+          echo "auto_submit=$AUTO_SUBMIT" >> "$GITHUB_OUTPUT"
+
+      - name: Run EAS build
+        working-directory: mobile
+        env:
+          THREATCRUSH_API_URL: https://threatcrush.com
+        run: |
+          eas build \
+            --non-interactive \
+            --platform ${{ steps.params.outputs.platform }} \
+            --profile ${{ steps.params.outputs.profile }} \
+            ${{ steps.params.outputs.auto_submit }} \
+            --wait
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Mobile Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Profile**: ${{ steps.params.outputs.profile }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Platform**: ${{ steps.params.outputs.platform }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Auto Submit**: ${{ github.event.inputs.auto_submit || 'false' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Requires**: EXPO_TOKEN + configured EAS project credentials" >> $GITHUB_STEP_SUMMARY

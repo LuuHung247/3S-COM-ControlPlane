@@ -1,0 +1,8 @@
+#!/bin/sh
+#
+# ThreatCrush Pre-Push Hook
+# Version bump and tagging happen in post-commit.
+# This hook just ensures a clean push.
+#
+
+exit 0

@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+:root {
+  --tc-green: #00ff41;
+  --tc-green-dim: #00cc33;
+  --tc-dark: #0a0a0a;
+  --tc-darker: #050505;
+  --tc-card: #0d1117;
+  --tc-border: #1a2332;
+  --tc-text: #c9d1d9;
+  --tc-text-dim: #8b949e;
+}
+
+@theme inline {
+  --color-tc-green: #00ff41;
+  --color-tc-green-dim: #00cc33;
+  --color-tc-dark: #0a0a0a;
+  --color-tc-darker: #050505;
+  --color-tc-card: #0d1117;
+  --color-tc-border: #1a2332;
+  --color-tc-text: #c9d1d9;
+  --color-tc-text-dim: #8b949e;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--tc-darker);
+  color: var(--tc-text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Terminal-style monospace for accents */
+.font-mono-green {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  color: var(--tc-green);
+}
+
+/* Glow effects */
+.glow-green {
+  text-shadow: 0 0 10px rgba(0, 255, 65, 0.5), 0 0 20px rgba(0, 255, 65, 0.3), 0 0 40px rgba(0, 255, 65, 0.1);
+}
+
+.glow-green-strong {
+  text-shadow: 0 0 10px rgba(0, 255, 65, 0.7), 0 0 30px rgba(0, 255, 65, 0.5), 0 0 60px rgba(0, 255, 65, 0.2);
+}
+
+.glow-box {
+  box-shadow: 0 0 15px rgba(0, 255, 65, 0.15), 0 0 30px rgba(0, 255, 65, 0.05);
+}
+
+.glow-box-hover:hover {
+  box-shadow: 0 0 20px rgba(0, 255, 65, 0.3), 0 0 40px rgba(0, 255, 65, 0.1);
+}
+
+/* Scanline overlay */
+.scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 255, 65, 0.015) 2px,
+    rgba(0, 255, 65, 0.015) 4px
+  );
+  pointer-events: none;
+}
+
+/* Matrix rain background */
+.matrix-bg {
+  background-image:
+    radial-gradient(ellipse at 20% 50%, rgba(0, 255, 65, 0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(0, 255, 65, 0.02) 0%, transparent 50%);
+}
+
+/* Pulse animation for CTA */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(0, 255, 65, 0.3), 0 0 30px rgba(0, 255, 65, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(0, 255, 65, 0.5), 0 0 50px rgba(0, 255, 65, 0.2);
+  }
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Fade in animation */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out forwards;
+  opacity: 0;
+}
+
+/* Grid pattern */
+.grid-pattern {
+  background-image:
+    linear-gradient(rgba(0, 255, 65, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 65, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+/* Typing cursor blink */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.cursor-blink::after {
+  content: '█';
+  color: var(--tc-green);
+  animation: blink 1s step-end infinite;
+}

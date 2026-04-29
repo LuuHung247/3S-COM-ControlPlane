@@ -1,0 +1,28 @@
+#!/bin/sh
+#
+# ThreatCrush Commit Message Hook
+# Detects "release:patch", "release:minor", or "release:major" anywhere in
+# commit messages and saves the release type for post-commit processing.
+#
+# Usage:
+#   git commit -m "release:patch"
+#   git commit -m "fix bug and release:minor"
+#   git commit -m "big update release:major done"
+#
+
+COMMIT_MSG_FILE="$1"
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+RELEASE_TRIGGER_FILE="/tmp/.threatcrush-release-trigger"
+
+rm -f "$RELEASE_TRIGGER_FILE"
+
+if echo "$COMMIT_MSG" | grep -qiE 'release[: ]?patch'; then
+    echo "patch" > "$RELEASE_TRIGGER_FILE"
+elif echo "$COMMIT_MSG" | grep -qiE 'release[: ]?minor'; then
+    echo "minor" > "$RELEASE_TRIGGER_FILE"
+elif echo "$COMMIT_MSG" | grep -qiE 'release[: ]?major'; then
+    echo "major" > "$RELEASE_TRIGGER_FILE"
+fi
+
+exit 0

@@ -1,0 +1,35 @@
+appId: com.threatcrush.desktop
+productName: ThreatCrush
+# Explicitly disable publishing so electron-builder 25.x doesn't crash
+# with "Cannot read properties of null (reading 'channel')" in
+# updateInfoBuilder when computing auto-update channel names.
+publish: null
+directories:
+  buildResources: resources
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+asarUnpack:
+  - resources/**
+linux:
+  target:
+    - AppImage
+    - deb
+  maintainer: profullstack
+  category: Utility
+mac:
+  target:
+    - dmg
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false
+win:
+  target:
+    - nsis
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ThreatCrush
+  uninstallDisplayName: ThreatCrush
+  createDesktopShortcut: always
