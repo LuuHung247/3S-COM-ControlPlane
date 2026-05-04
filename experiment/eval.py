@@ -99,16 +99,27 @@ def get_alerts_since(since_ts: float, last: int = 200) -> list:
     """Return alerts from IDS API fired after since_ts (unix)."""
     since_str = datetime.datetime.utcfromtimestamp(since_ts).strftime("%Y-%m-%dT%H:%M:%S")
     data = http_get(f"{IDS_API}/alerts?last={last}&since={urllib.request.quote(since_str)}")
+    # API may return {"count":N, "alerts":[...]} or plain list
+    if isinstance(data, dict):
+        data = data.get("alerts", [])
     if not isinstance(data, list):
         data = http_get(f"{IDS_API}/alerts?last={last}")
+        if isinstance(data, dict):
+            data = data.get("alerts", [])
     if not isinstance(data, list):
         return []
     return [a for a in data if _alert_ts(a) >= since_ts]
 
 def _alert_ts(alert: dict) -> float:
     ts_str = alert.get("timestamp") or alert.get("flow_start_time") or ""
+    if not ts_str:
+        return 0.0
+    # Normalize timezone: "Z" → "+00:00", "+0000" → "+00:00" (Python 3.8 compat)
+    ts_str = ts_str.replace("Z", "+00:00")
+    import re as _re
+    ts_str = _re.sub(r'([+-])(\d{2})(\d{2})$', r'\1\2:\3', ts_str)
     try:
-        return datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+        return datetime.datetime.fromisoformat(ts_str).timestamp()
     except Exception:
         return 0.0
 
@@ -178,7 +189,8 @@ def get_agent_rule_ids_from_agent() -> list:
 
 # ── Reset between runs ────────────────────────────────────────────────────────
 
-def reset(run_num: int):
+def reset(run_num: int) -> float:
+    """Reset state between runs. Returns unix timestamp anchor from /alerts/clear."""
     print(f"  [reset] Disarming scenario...")
     console_run("/root/scenario/restore-web.sh", wait=5.0)
 
@@ -202,13 +214,29 @@ def reset(run_num: int):
     except Exception as e:
         print(f"    ✗ Redis flush failed: {e}")
 
+    print(f"  [reset] Resetting intelligence layer state...")
+    try:
+        req = urllib.request.Request(f"{INTEL}/admin/reset", data=b"", method="POST")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            print(f"    ✓ Rate limiter reset")
+    except Exception as e:
+        print(f"    ✗ Admin reset failed: {e}")
+
+    anchor_ts = time.time()
     clear = http_get(f"{IDS_API}/alerts/clear")
-    if clear:
-        print(f"    ✓ Alert anchor set: {clear}")
+    if clear and clear.get("cleared_at"):
+        try:
+            anchor_ts = datetime.datetime.fromisoformat(
+                clear["cleared_at"].replace("Z", "+00:00")
+            ).timestamp()
+            print(f"    ✓ Alert anchor: {clear['cleared_at']}")
+        except Exception:
+            print(f"    ✓ Alert anchor set (raw): {clear}")
     else:
-        print("    (no /alerts/clear endpoint — using timestamp anchor)")
+        print("    (no /alerts/clear — using local timestamp anchor)")
 
     time.sleep(5)
+    return anchor_ts
 
 # ── Run single scenario ───────────────────────────────────────────────────────
 
@@ -231,12 +259,11 @@ class RunResult:
     passed: bool = False
     notes: str = ""
 
-def run_scenario(run_num: int, duration: int) -> RunResult:
+def run_scenario(run_num: int, duration: int, anchor_ts: float = 0.0) -> RunResult:
     result = RunResult(run_num=run_num)
     result.started_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # 1. Pre-attack baseline
-    t_start = time.time()
     pre_rules = get_agent_rules_from_sf()
 
     # 2. Trigger attack
@@ -247,6 +274,8 @@ def run_scenario(run_num: int, duration: int) -> RunResult:
         print(f"    ✓ Attack armed")
     else:
         print(f"    ? Console output: {console_out[-100:].strip()}")
+    # Use anchor from /alerts/clear if available, else fall back to t_attack
+    since_ts = anchor_ts if anchor_ts > 0 else t_attack
 
     # 3. Poll until decision or timeout
     t_first_alert = None
@@ -259,7 +288,7 @@ def run_scenario(run_num: int, duration: int) -> RunResult:
 
         # Check alerts
         if t_first_alert is None:
-            alerts = get_alerts_since(t_attack - 2)
+            alerts = get_alerts_since(since_ts)
             p1 = first_p1_alert(alerts)
             if p1:
                 t_first_alert = _alert_ts(p1) or time.time()
@@ -477,7 +506,7 @@ def main():
     parser = argparse.ArgumentParser(description="Zero Trust Agent Evaluation")
     parser.add_argument("--runs",      type=int, default=1,             help="Number of iterations (default: 1)")
     parser.add_argument("--duration",  type=int, default=120,           help="Max wait per run in seconds (default: 120)")
-    parser.add_argument("--output",    default="report.xlsx",           help="Excel output filename (default: report.xlsx)")
+    parser.add_argument("--output",    default="results/report.xlsx",   help="Excel output path (default: results/report.xlsx)")
     parser.add_argument("--dry-check", action="store_true",             help="Only run health checks, no attack")
     args = parser.parse_args()
 
@@ -496,12 +525,12 @@ def main():
 
     print(f"\n[Config] runs={args.runs} duration={args.duration}s output={args.output}\n")
 
-    results: list[RunResult] = []
+    results: List[RunResult] = []
 
     for i in range(1, args.runs + 1):
         print(f"══ Run {i}/{args.runs} ══════════════════════════════")
-        reset(i)
-        result = run_scenario(i, args.duration)
+        anchor_ts = reset(i)
+        result = run_scenario(i, args.duration, anchor_ts=anchor_ts)
         results.append(result)
 
         status = "PASS ✓" if result.passed else "FAIL ✗"

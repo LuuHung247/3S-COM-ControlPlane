@@ -100,6 +100,44 @@ async def revoke_decision(rule_id: str, request: Request) -> RevokeResponse:
     return RevokeResponse(success=result.success, rule_id=rule_id, error=result.error)
 
 
+@router.get("/policy-history")
+async def policy_history(request: Request, limit: int = 100) -> list[dict]:
+    """
+    Timeline of AI agent policy decisions with full intent details.
+    Includes both dry_run (would-have-enforced) and enforced outcomes.
+    Use this to audit what the agent decided and why.
+    """
+    postgres = request.app.state.postgres
+    all_decisions = await postgres.list_decisions(limit=limit)
+    history = []
+    for d in all_decisions:
+        if d.get("outcome") not in ("enforced", "dry_run"):
+            continue
+        sc = d.get("safety_checks") or {}
+        history.append({
+            "id": d["id"],
+            "timestamp": d["created_at"],
+            "alert_sid": d["alert_sid"],
+            "attacker_ip": d["alert_src_ip"],
+            "decision": d["outcome"],
+            "dry_run": d["dry_run"],
+            "action": d.get("action"),
+            "block_src": d.get("src_ip"),
+            "block_dst": d.get("dst_ip"),
+            "confidence": (sc.get("confidence") or {}).get("score") or d.get("confidence"),
+            "latency_ms": round(d.get("latency_ms") or 0, 1),
+        })
+    return history
+
+
+@router.post("/admin/reset")
+async def admin_reset(request: Request) -> dict:
+    """Reset in-memory safety state between eval runs (rate limiter + circuit breaker counters)."""
+    agent = request.app.state.agent
+    await agent._rate_limiter.reset()
+    return {"ok": True, "reset": ["rate_limiter"]}
+
+
 @router.get("/stream")
 async def stream_decisions(request: Request) -> StreamingResponse:
     """SSE stream of decision events for real-time monitoring."""

@@ -69,6 +69,13 @@ class RateLimiter:
             self._per_ip[bare_ip].append(now)
             return None
 
+    async def reset(self) -> None:
+        """Clear all in-memory state (for eval/test resets between runs)."""
+        async with self._lock:
+            self._minute_window.clear()
+            self._total_count = 0
+            self._per_ip.clear()
+
     async def get_stats(self) -> dict:
         async with self._lock:
             return {

@@ -51,19 +51,19 @@ class PostgresStore:
         if self._engine is None:
             return
         async with AsyncSession(self._engine) as session:
-            intent = data.get("intent") or {}
+            # intent fields are flattened to top-level in decision_dict (from routes.py)
             record = DecisionRecord(
                 id=data["id"],
                 alert_sid=data["alert_sid"],
                 alert_src_ip=data["alert_src_ip"],
                 outcome=data["outcome"],
-                action=intent.get("action"),
-                src_ip=intent.get("src_ip"),
-                dst_ip=intent.get("dst_ip"),
-                confidence=intent.get("confidence"),
+                action=data.get("action"),
+                src_ip=data.get("src_ip"),
+                dst_ip=data.get("dst_ip"),
+                confidence=data.get("confidence"),
                 rejection_reason=data.get("rejection_reason", ""),
                 safety_checks=json.dumps(data.get("safety_checks", {})),
-                reasoning=json.dumps(intent.get("reasoning_steps", [])),
+                reasoning=json.dumps(data.get("reasoning", [])),
                 latency_ms=data.get("latency_ms", 0.0),
                 dry_run=data.get("dry_run", True),
             )
