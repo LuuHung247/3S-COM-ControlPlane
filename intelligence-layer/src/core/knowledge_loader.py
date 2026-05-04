@@ -1,0 +1,199 @@
+"""KnowledgeLoader — tiered caching for LLM agent context injection.
+
+3-tier model:
+  Tier 1 STATIC: system model + threat playbook + enforcement contract + invariants.
+                 Loaded once at container startup. Never refreshes.
+  Tier 2 SEMI-DYNAMIC: active SF rules + baselines render. Refreshes every N seconds.
+  Tier 3 PER-ALERT: alert-specific context (asset profiles for src/dst, baseline match,
+                    recent alert summary). Constructed per request.
+
+This replaces the old ContextSnapshot which re-rendered everything per alert.
+"""
+import asyncio
+import time
+from typing import Any
+
+import httpx
+import structlog
+
+from . import system_model
+from . import baselines
+from . import threat_playbook
+from . import enforcement_plane
+from . import invariants
+
+log = structlog.get_logger()
+
+
+class KnowledgeLoader:
+    """Tiered knowledge cache. Single instance per container lifetime."""
+
+    def __init__(self, ids_agent_url: str, semi_dynamic_ttl: int = 30) -> None:
+        self._ids_agent_url = ids_agent_url
+        self._semi_dynamic_ttl = semi_dynamic_ttl
+
+        # Tier 1 — static, computed once
+        self._tier1_cached: str | None = None
+
+        # Tier 2 — semi-dynamic, TTL-based
+        self._tier2_cached: str | None = None
+        self._tier2_loaded_at: float = 0.0
+        self._tier2_lock = asyncio.Lock()
+        self._active_rules: list[dict[str, Any]] = []
+
+    # ── Tier 1: static core ──────────────────────────────────────────────────
+    def render_static_core(self) -> str:
+        """Production-language knowledge base, loaded once. ~3K tokens."""
+        if self._tier1_cached is None:
+            parts = [
+                "# DATACENTER ZERO TRUST OPERATIONS RUNBOOK",
+                "",
+                "You are the AI security agent for this datacenter. The following knowledge "
+                "base describes the production system you operate. Treat it as authoritative.",
+                "",
+                system_model.render_for_prompt(),
+                "",
+                baselines.render_for_prompt(),
+                "",
+                threat_playbook.render_for_prompt(),
+                "",
+                enforcement_plane.render_for_prompt(),
+                "",
+                invariants.render_for_prompt(),
+            ]
+            self._tier1_cached = "\n".join(parts)
+            log.info("knowledge_tier1_loaded", token_estimate=len(self._tier1_cached) // 4)
+        return self._tier1_cached
+
+    # ── Tier 2: semi-dynamic (active SF rules) ──────────────────────────────
+    async def refresh_semi_dynamic(self, force: bool = False) -> None:
+        """Refresh active SF rules from /rules endpoint. Cached for TTL seconds."""
+        async with self._tier2_lock:
+            now = time.monotonic()
+            if not force and (now - self._tier2_loaded_at) < self._semi_dynamic_ttl:
+                return
+            try:
+                async with httpx.AsyncClient(timeout=5) as client:
+                    resp = await client.get(f"{self._ids_agent_url}/rules")
+                    if resp.status_code == 200:
+                        self._active_rules = _flatten_rules(resp.json())
+            except Exception as exc:
+                log.warning("knowledge_tier2_refresh_failed", error=str(exc))
+                # keep stale cache
+            self._tier2_cached = self._render_semi_dynamic_text()
+            self._tier2_loaded_at = now
+
+    def _render_semi_dynamic_text(self) -> str:
+        agent_rules = [r for r in self._active_rules if r.get("source") == "agent"]
+        if not agent_rules:
+            rules_section = "(no agent-managed rules currently active)"
+        else:
+            lines = []
+            for r in agent_rules:
+                src = r.get("src-prefix") or r.get("src_ip") or r.get("src-ip") or ""
+                dst = r.get("dst-prefix") or r.get("dst_ip") or r.get("dst-ip") or ""
+                rid = r.get("rule-id") or r.get("rule_id") or ""
+                action = r.get("action", "")
+                lines.append(f"  - {rid}: {action} src={src} dst={dst}")
+            rules_section = "\n".join(lines)
+
+        return (
+            "## ACTIVE AGENT-MANAGED RULES (live from Secure Framework)\n\n"
+            f"{rules_section}\n\n"
+            "Use this to detect idempotency — if a rule with same src/dst/port already exists, "
+            "POST same rule_id to refresh TTL rather than creating a duplicate."
+        )
+
+    def render_semi_dynamic(self) -> str:
+        """Returns cached text. Call refresh_semi_dynamic() before to ensure freshness."""
+        return self._tier2_cached or "(active rules cache not yet populated)"
+
+    # ── Tier 3: per-alert context ────────────────────────────────────────────
+    def render_alert_context(
+        self,
+        src_ip: str,
+        dst_ip: str = "",
+        dst_port: int = 0,
+        proto: str = "tcp",
+        alert_history_summary: dict | None = None,
+    ) -> str:
+        """Per-alert micro-context — only what's relevant for this specific alert."""
+        parts = ["## ALERT-SPECIFIC CONTEXT\n"]
+
+        # Source asset profile
+        src_asset = system_model.get_asset(src_ip)
+        if src_asset:
+            parts.append(
+                f"### Source: {src_asset.hostname} ({src_asset.ip}, zone {src_asset.zone}, "
+                f"{src_asset.tier})\n"
+                f"- Role: {src_asset.role}\n"
+                f"- Criticality: {src_asset.criticality.value}\n"
+                f"- If blocked: {src_asset.if_blocked_impact}\n"
+                f"- If compromised: {src_asset.if_compromised_impact}"
+            )
+        else:
+            parts.append(f"### Source: {src_ip} (UNKNOWN — not in asset inventory)")
+
+        # Destination asset profile
+        if dst_ip:
+            dst_asset = system_model.get_asset(dst_ip)
+            if dst_asset:
+                parts.append(
+                    f"\n### Destination: {dst_asset.hostname} ({dst_asset.ip}, zone {dst_asset.zone})\n"
+                    f"- Role: {dst_asset.role}\n"
+                    f"- Criticality: {dst_asset.criticality.value}"
+                )
+
+        # Baseline match — is this flow legitimate production traffic?
+        if dst_ip and dst_port:
+            match = baselines.match_baseline(src_ip, dst_ip, dst_port, proto)
+            if match:
+                parts.append(
+                    f"\n### ⚠ BASELINE MATCH: this flow matches known production pattern '{match.name}'\n"
+                    f"- {match.production_description}\n"
+                    f"- Cadence: {match.cadence}, criticality={match.criticality_to_business.value}\n"
+                    f"- This is LEGITIMATE traffic. Strong evidence against blocking unless other indicators (rate burst, off-pattern timing) suggest abuse."
+                )
+            else:
+                parts.append(
+                    "\n### Baseline match: NONE — flow is NOT in known production traffic patterns."
+                )
+
+        # Recent alert history (aggregated summary, not raw)
+        if alert_history_summary:
+            parts.append(
+                f"\n### Recent activity from {src_ip} (last 30 days)\n"
+                f"- Total alerts: {alert_history_summary.get('total_alerts', 0)}\n"
+                f"- Distinct SIDs: {alert_history_summary.get('distinct_sids', 0)}\n"
+                f"- Past decisions: {alert_history_summary.get('decision_summary', '(none)')}"
+            )
+
+        return "\n".join(parts)
+
+    # ── Composite: full system prompt ────────────────────────────────────────
+    async def build_system_prompt(self) -> str:
+        """Assemble Tier 1 + Tier 2 for system message. Tier 3 goes in user message."""
+        await self.refresh_semi_dynamic()
+        return f"{self.render_static_core()}\n\n{self.render_semi_dynamic()}"
+
+
+def _flatten_rules(data: Any) -> list[dict]:
+    """Normalize SF /api/rules response to a flat list of rule dicts."""
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        rules: list[dict] = []
+        leaves = data.get("leaves", {})
+        for leaf_data in leaves.values():
+            if isinstance(leaf_data, dict):
+                # ids-agent proxy returns gNMI notification format
+                notifs = (leaf_data.get("rules") or {}).get("notification", [])
+                for n in notifs:
+                    if not isinstance(n, dict):
+                        continue
+                    for upd in n.get("update", []):
+                        val = upd.get("val", {})
+                        if isinstance(val, dict) and val:
+                            rules.append(val)
+        return rules
+    return []

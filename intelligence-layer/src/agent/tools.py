@@ -1,32 +1,8 @@
-"""3 agent tools: get_alert_history, query_mitre_kb, generate_policy_intent."""
+"""Agent tools and forced-output schema."""
 from typing import Any
 
 from ..storage.redis import RedisStore
 
-# ChromaDB client — optional import
-try:
-    import chromadb
-    _CHROMA_AVAILABLE = True
-except ImportError:
-    _CHROMA_AVAILABLE = False
-
-_chroma_client = None
-_mitre_collection = None
-
-
-def init_chroma(host: str, port: int, collection_mitre: str) -> None:
-    global _chroma_client, _mitre_collection
-    if not _CHROMA_AVAILABLE:
-        return
-    try:
-        _chroma_client = chromadb.HttpClient(host=host, port=port)
-        _mitre_collection = _chroma_client.get_or_create_collection(collection_mitre)
-    except Exception:
-        _chroma_client = None
-        _mitre_collection = None
-
-
-# ── Tool definitions for function calling ────────────────────────────────────
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -41,21 +17,6 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     "limit": {"type": "integer", "description": "Max records to return", "default": 10},
                 },
                 "required": ["src_ip"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "query_mitre_kb",
-            "description": "Semantic search of MITRE ATT&CK knowledge base for technique context.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Natural language query about the technique"},
-                    "n_results": {"type": "integer", "description": "Number of results", "default": 3},
-                },
-                "required": ["query"],
             },
         },
     },
@@ -116,19 +77,6 @@ POLICY_INTENT_SCHEMA: dict[str, Any] = {
 }
 
 
-# ── Tool executors ────────────────────────────────────────────────────────────
-
 async def execute_get_alert_history(redis: RedisStore, src_ip: str, limit: int = 10) -> dict:
     history = await redis.get_alert_history(src_ip, limit=limit)
     return {"src_ip": src_ip, "count": len(history), "history": history}
-
-
-async def execute_query_mitre_kb(query: str, n_results: int = 3) -> dict:
-    if _mitre_collection is None:
-        return {"query": query, "results": [], "note": "ChromaDB unavailable"}
-    try:
-        results = _mitre_collection.query(query_texts=[query], n_results=n_results)
-        docs = results.get("documents", [[]])[0]
-        return {"query": query, "results": docs}
-    except Exception as exc:
-        return {"query": query, "results": [], "error": str(exc)}

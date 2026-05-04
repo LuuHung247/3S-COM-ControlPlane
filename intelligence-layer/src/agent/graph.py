@@ -4,10 +4,11 @@ import structlog
 
 from ..models.alert import SuricataAlert
 from ..models.decision import PolicyDecision, PolicyAction, DecisionOutcome
-from ..core.snapshot import ContextSnapshot
+from ..core.knowledge_loader import KnowledgeLoader
 from ..core.topology import ip_to_zone
 from ..storage.redis import RedisStore
 from ..storage.postgres import PostgresStore
+from ..storage.operational_memory import OperationalMemory
 from .llm.interface import LLMClient
 from .safety.rate_limiter import RateLimiter
 from .safety.circuit_breaker import CircuitBreaker
@@ -32,22 +33,24 @@ class DecisionAgent:
 
     def __init__(
         self,
-        snapshot: ContextSnapshot,
+        knowledge: KnowledgeLoader,
         fast_llm: LLMClient,
         primary_llm: LLMClient,
         redis: RedisStore,
         postgres: PostgresStore,
+        operational_memory: OperationalMemory,
         rate_limiter: RateLimiter,
         circuit_breaker: CircuitBreaker,
         enforcement_backend,  # EnforcementBackend ABC
         settings,
         dry_run: bool = True,
     ) -> None:
-        self._snapshot = snapshot
+        self._knowledge = knowledge
         self._fast_llm = fast_llm
         self._primary_llm = primary_llm
         self._redis = redis
         self._postgres = postgres
+        self._memory = operational_memory
         self._rate_limiter = rate_limiter
         self._circuit_breaker = circuit_breaker
         self._enforcement = enforcement_backend
@@ -60,7 +63,7 @@ class DecisionAgent:
 
         try:
             # ── Node 1: load context ──────────────────────────────────────
-            patch = await node_load_context(state, self._snapshot)
+            patch = await node_load_context(state, self._knowledge)
             state.update(patch)
 
             # ── Node 2: classify ─────────────────────────────────────────
@@ -73,7 +76,7 @@ class DecisionAgent:
                 return self._finalize(state, alert, t0)
 
             # ── Node 3: gather context ───────────────────────────────────
-            patch = await node_gather_context(state, self._redis)
+            patch = await node_gather_context(state, self._redis, self._memory, self._knowledge)
             state.update(patch)
 
             # ── Node 4: reason & decide ──────────────────────────────────

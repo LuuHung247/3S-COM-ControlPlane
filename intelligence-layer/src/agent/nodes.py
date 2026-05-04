@@ -5,8 +5,9 @@ import structlog
 from ..models.alert import SuricataAlert
 from ..models.decision import PolicyIntent, PolicyAction, DecisionOutcome
 from ..core.topology import ip_to_zone
-from ..core.snapshot import ContextSnapshot
+from ..core.knowledge_loader import KnowledgeLoader
 from ..storage.redis import RedisStore
+from ..storage.operational_memory import OperationalMemory
 from .llm.interface import LLMClient
 from .safety.guardrails import check_never_block, check_allowed_action
 from .safety.validators import validate_intent
@@ -17,7 +18,6 @@ from .safety.circuit_breaker import CircuitBreaker
 from .tools import (
     POLICY_INTENT_SCHEMA,
     execute_get_alert_history,
-    execute_query_mitre_kb,
 )
 from .prompts import build_system_prompt, build_classify_prompt, build_reason_prompt
 from .state import AgentState
@@ -27,10 +27,11 @@ log = structlog.get_logger()
 
 async def node_load_context(
     state: AgentState,
-    snapshot: ContextSnapshot,
+    knowledge: KnowledgeLoader,
 ) -> dict:
-    await snapshot.refresh_rules()
-    return {"context_snapshot": snapshot.render_for_prompt()}
+    """Tier 1 (static) is cached forever; Tier 2 (active rules) refreshes every 30s."""
+    system_prompt = await knowledge.build_system_prompt()
+    return {"context_snapshot": system_prompt}
 
 
 async def node_classify_alert(
@@ -73,12 +74,46 @@ async def node_log_and_end(state: AgentState) -> dict:
 async def node_gather_context(
     state: AgentState,
     redis: RedisStore,
+    memory: OperationalMemory,
+    knowledge: KnowledgeLoader,
 ) -> dict:
+    """Build per-alert context: Redis recent history + operational memory aggregated
+    summary + Tier 3 alert-specific knowledge render."""
     alert: SuricataAlert = state["alert"]
     history = await execute_get_alert_history(redis, alert.src_ip, limit=10)
-    # Push current alert to history for future lookups
     await redis.push_alert_history(alert.src_ip, alert.raw)
-    return {"alert_history": history.get("history", [])}
+
+    # Aggregated summary from Postgres (last 30 days)
+    try:
+        ip_summary = await memory.get_ip_summary(alert.src_ip, window_days=30)
+    except Exception as exc:
+        log.warning("operational_memory_summary_failed", error=str(exc))
+        ip_summary = None
+
+    # Short-window correlation (last 10 min) for kill chain detection
+    try:
+        correlation = await memory.get_recent_alerts_for_correlation(
+            alert.src_ip, window_minutes=10
+        )
+    except Exception as exc:
+        log.warning("operational_memory_correlation_failed", error=str(exc))
+        correlation = None
+
+    # Tier 3 alert-specific context
+    alert_context = knowledge.render_alert_context(
+        src_ip=alert.src_ip,
+        dst_ip=alert.dest_ip,
+        dst_port=alert.dest_port,
+        proto=alert.proto.lower() if alert.proto else "tcp",
+        alert_history_summary=ip_summary,
+    )
+
+    return {
+        "alert_history": history.get("history", []),
+        "ip_summary": ip_summary,
+        "correlation": correlation,
+        "alert_context": alert_context,
+    }
 
 
 async def node_reason_and_decide(
@@ -91,7 +126,14 @@ async def node_reason_and_decide(
     dst_zone = ip_to_zone(alert.dest_ip)
     history = state.get("alert_history", [])
     system = build_system_prompt(state.get("context_snapshot", ""))
-    user = build_reason_prompt(alert, src_zone, dst_zone, history)
+    user = build_reason_prompt(
+        alert,
+        src_zone,
+        dst_zone,
+        history,
+        alert_context=state.get("alert_context", ""),
+        correlation=state.get("correlation"),
+    )
 
     messages = [
         {"role": "system", "content": system},
@@ -176,12 +218,13 @@ async def node_validate_decision(
     alert: SuricataAlert = state["alert"]
     safety_checks: dict = dict(state.get("safety_checks", {}))
 
-    # L1+L3+L4+L5+L6 validators
+    # L1+L3+L4+L4b+L5+L6 validators (L4b = off-target enforcement check)
     val_result = validate_intent(
         intent,
         sid=alert.sid,
         ttl_min=settings.safety_ttl_min_seconds,
         ttl_max=settings.safety_ttl_max_seconds,
+        alert_src_ip=alert.src_ip,
     )
     safety_checks["validators"] = {
         "errors": val_result.errors,

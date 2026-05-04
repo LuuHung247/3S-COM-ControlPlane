@@ -147,9 +147,9 @@ ENFORCE → record audit
 
 ---
 
-## 5. Knowledge — Hybrid KG + RAG
+## 5. Knowledge — Knowledge Graph (NetworkX in-memory)
 
-### 5.1 KG (NetworkX in-memory) — structured lookup
+### 5.1 Structured lookup
 
 **Topology** (`core/topology.py`, hardcoded):
 - 4 zones: `WEB` (10.1.100.0/24), `DB` (10.1.200.0/24), `APP` (10.2.100.0/24), `MGT` (10.2.50.0/24)
@@ -176,15 +176,13 @@ MGT→*:  ALLOW (management can reach all)
 
 **KG snapshot** được render thành text ~2-4K tokens, inject vào system prompt tại startup → agent KHÔNG cần tool call cho topology/policy/SID lookup → giữ < 2 tool calls/decision.
 
-### 5.2 RAG (ChromaDB) — semantic search
+### 5.2 Anti-hallucination
 
-- Collection `mitre_attack`: MITRE ATT&CK technique descriptions cho deeper threat context
-- Collection `past_decisions`: ghi lại rationales sau mỗi decision (self-learning, optional, degrade gracefully)
+KG hardcoded, không có vector store / RAG. Lý do: domain security cần **exact match** (rule idempotency, IP boundaries, SID→technique mapping) — fuzzy semantic search dễ gây hallucination ở các trường mission-critical.
 
-**KHÔNG đưa vào RAG** (anti-hallucination cho domain security):
-- ❌ Active SF rules → KG snapshot exact match (idempotency cần exact, không fuzzy)
-- ❌ YANG schema → Pydantic models (constraint, không phải knowledge)
-- ❌ Topology, policy matrix → KG hardcoded
+- ✅ Topology, policy matrix, SID→MITRE → KG hardcoded
+- ✅ Active SF rules → KG snapshot exact match (idempotency)
+- ✅ YANG schema → Pydantic models (constraint, force schema)
 
 ---
 
@@ -262,10 +260,9 @@ DROP packet
 | 5 | P1/P2 → DROP rule, P3/P4 → log_only | ✅ | 10 runs thực nghiệm, tất cả P1 → DROP |
 | 6 | Adversarial tests pass | ✅ | 25/25 safety tests (L4 whitelist, L7 low conf, L6 P3 DROP reject) |
 | 7 | Latency p95 < 5s (end-to-end M1) | ✅ | M1 avg=4.75s, max=5.2s (N=1 self-consistency) |
-| 8 | Tool calls < 2 / decision | ✅ | chỉ `get_alert_history` (Redis); `query_mitre_kb` optional |
+| 8 | Tool calls < 2 / decision | ✅ | chỉ `get_alert_history` (Redis) |
 | 9 | Postgres full audit trail | ✅ | `GET /decisions` có `action`, `src_ip`, `dst_ip`, `safety_checks`, `latency_ms` |
 | 10 | 100% enforcement correctness | ✅ | M3=10/10 — tất cả rules đúng IP `10.1.100.10/32` |
-| 11 | LangSmith trace | ⚪ | infra ready, chưa có key thật |
 
 ### 8.2 Unit tests
 
@@ -341,7 +338,8 @@ intelligence-layer/
 │   └── integration/        (stubs — cần real infra để chạy)
 └── scripts/
     ├── benchmark_agent.py  (replay fixtures, đo latency)
-    └── seed_mitre_kb.py    (stub — cần MITRE data file)
+    ├── init_db.py          (Postgres schema bootstrap)
+    └── load_topology.py    (KG sanity check)
 ```
 
 **Total: 43 Python source files, 31 unit tests passing.**
@@ -422,7 +420,7 @@ docker compose up -d intelligence-layer
 ### Đã làm (v0.2.0)
 - ✅ Refactor ids-agent (Go) thành pure proxy — xóa `tryAutoBlock`, thêm `POST/DELETE /rules`
 - ✅ Toàn bộ intelligence-layer Python (43 source files, 31 unit tests)
-- ✅ Wire vào `docker-compose.yml` chung với redis/postgres/chroma/fe
+- ✅ Wire vào `docker-compose.yml` chung với redis/postgres/fe
 - ✅ 9-layer safety architecture
 - ✅ Phase A — Dataplane realism: services thật (pg-mock, sshd, busybox nc), cron traffic generators, scenario scripts (compromise/restore/status)
 - ✅ Phase B — Frontend: `/policy` page có AI Agent status bar + Agent Policy History timeline
@@ -433,15 +431,18 @@ docker compose up -d intelligence-layer
 ### Sắp tới (v0.3.0)
 - ⏳ Mở rộng eval sang P2 scenarios (SID 9000003, 9000004, 9000005)
 - ⏳ Adversarial eval (block whitelist IP, rate limit exhaustion, low confidence)
-- ⏳ LangSmith trace (cần API key)
-- ⏳ ChromaDB MITRE seed data (~700 techniques)
-- ⏳ `AGENT_SELF_CONSISTENCY_RUNS=3` benchmark (tradeoff: +latency vs +reliability)
+- ⏳ Prompt-injection defense: untrusted-data tag wrapping cho `alert.signature`/`alert.category`
+- ⏳ Off-target enforcement check: validator assert `intent.src_ip ≈ alert.src_ip`
+- ⏳ Per-source LLM call quota (DoS / cost control trước AlertGate)
+- ⏳ Idempotent `rule_id` deterministic: `agent-{sha256(src+dst+port+proto)[:8]}`
+- ⏳ HITL endpoints cho HELD decisions: `POST /decisions/{id}/approve|reject` + auto-expire
+- ⏳ Post-enforce health check + auto-revoke nếu connectivity degrade
 
 ### Tech debt (out of scope MVP)
 - SF REST RBAC theo cert OU (hiện tại bất kỳ ai POST với `source=agent` đều pass — đã control bằng cách enforce qua ids-agent layer)
 - SF webhook khi rule push/delete để intelligence-layer không phải poll mỗi 30s
 - ids-agent `/autoblock/transfer` atomic endpoint
-- Real ChromaDB MITRE seed data (~700 techniques)
+- Vendor-neutral OpenTelemetry tracing (per-decision span, token cost, LLM p50/p95)
 - Integration tests E2E
 
 ---

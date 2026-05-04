@@ -59,13 +59,10 @@ services:
       - IDS_AGENT_URL=http://ids-agent:8766
       - REDIS_URL=redis://redis:6379/0
       - POSTGRES_URL=postgresql+asyncpg://ztuser:ztpass@postgres:5432/zerotrust
-      - CHROMA_HOST=chroma
-      - CHROMA_PORT=8000
     depends_on:
       - ids-agent
       - redis
       - postgres
-      - chroma
     networks:
       - ztnet
     logging:
@@ -105,17 +102,6 @@ services:
         max-size: "5m"
         max-file: "2"
 
-  chroma:
-    image: chromadb/chroma:latest
-    container_name: zt-chroma
-    restart: unless-stopped
-    networks:
-      - ztnet
-    logging:
-      driver: json-file
-      options:
-        max-size: "5m"
-        max-file: "2"
 
 networks:
   ztnet:

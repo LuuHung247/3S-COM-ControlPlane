@@ -6,17 +6,16 @@ from fastapi import FastAPI
 
 from .config import get_settings
 from .observability.logging import configure_logging
-from .observability.tracing import configure_tracing
 from .storage.redis import RedisStore
 from .storage.postgres import PostgresStore
-from .core.snapshot import ContextSnapshot
+from .storage.operational_memory import OperationalMemory
+from .core.knowledge_loader import KnowledgeLoader
 from .pipeline.gate import AlertGate
 from .pipeline.consumer import SSEConsumer
 from .agent.llm.factory import get_llm_client
 from .agent.safety.rate_limiter import RateLimiter
 from .agent.safety.circuit_breaker import CircuitBreaker
 from .agent.graph import DecisionAgent
-from .agent.tools import init_chroma
 from .enforcement import get_backend
 from .api.routes import router
 
@@ -27,7 +26,6 @@ log = structlog.get_logger()
 async def lifespan(app: FastAPI):
     settings = get_settings()
     configure_logging(settings.log_level)
-    configure_tracing(settings.langsmith_api_key, settings.langsmith_project)
 
     log.info(
         "intelligence_layer_starting",
@@ -42,12 +40,11 @@ async def lifespan(app: FastAPI):
     postgres = PostgresStore(settings.postgres_url)
     await postgres.connect()
 
-    # ChromaDB (optional — degrades gracefully)
-    init_chroma(settings.chroma_host, settings.chroma_port, settings.chroma_collection_mitre)
-
-    # Knowledge snapshot
-    snapshot = ContextSnapshot(settings.ids_agent_url, refresh_interval=30)
-    await snapshot.refresh_rules()
+    # Knowledge loader (3-tier cache) + operational memory
+    knowledge = KnowledgeLoader(settings.ids_agent_url, semi_dynamic_ttl=30)
+    knowledge.render_static_core()         # Eagerly load Tier 1 at startup
+    await knowledge.refresh_semi_dynamic(force=True)
+    operational_memory = OperationalMemory(postgres)
 
     # LLM clients
     fast_llm = get_llm_client("fast", settings)
@@ -70,11 +67,12 @@ async def lifespan(app: FastAPI):
 
     # Decision agent
     agent = DecisionAgent(
-        snapshot=snapshot,
+        knowledge=knowledge,
         fast_llm=fast_llm,
         primary_llm=primary_llm,
         redis=redis,
         postgres=postgres,
+        operational_memory=operational_memory,
         rate_limiter=rate_limiter,
         circuit_breaker=circuit_breaker,
         enforcement_backend=enforcement_backend,

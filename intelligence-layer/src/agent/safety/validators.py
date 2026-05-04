@@ -1,4 +1,6 @@
 """L1+L3+L6: Schema, topology, policy conflict, and action-gradation validators."""
+import ipaddress
+
 from ...models.decision import PolicyIntent, PolicyAction
 from ...core.topology import ip_to_zone
 from ...core.policy import detect_conflict
@@ -31,7 +33,26 @@ class ValidationResult:
         self.warnings.append(msg)
 
 
-def validate_intent(intent: PolicyIntent, sid: int, ttl_min: int, ttl_max: int) -> ValidationResult:
+def _ip_matches_alert_src(intent_src_ip: str, alert_src_ip: str) -> bool:
+    """L4b: intent.src_ip must contain alert.src_ip — prevents off-target enforcement
+    from LLM hallucination or prompt injection nudging a different IP."""
+    if not alert_src_ip:
+        return False
+    try:
+        alert_addr = ipaddress.ip_address(alert_src_ip.strip())
+        intent_net = ipaddress.ip_network(intent_src_ip.strip(), strict=False)
+        return alert_addr in intent_net
+    except (ValueError, TypeError):
+        return False
+
+
+def validate_intent(
+    intent: PolicyIntent,
+    sid: int,
+    ttl_min: int,
+    ttl_max: int,
+    alert_src_ip: str = "",
+) -> ValidationResult:
     result = ValidationResult()
 
     # L1: Schema — Pydantic already validated types; check string lengths
@@ -48,6 +69,15 @@ def validate_intent(intent: PolicyIntent, sid: int, ttl_min: int, ttl_max: int) 
     action_err = check_allowed_action(intent.action.value)
     if action_err:
         result.fail(action_err)
+
+    # L4b: Off-target enforcement check — only meaningful for DROP rules,
+    # log_only doesn't push a rule so IP mismatch is not security-critical.
+    if intent.action == PolicyAction.DROP and alert_src_ip:
+        if not _ip_matches_alert_src(intent.src_ip, alert_src_ip):
+            result.fail(
+                f"L4b OFF-TARGET: intent.src_ip={intent.src_ip!r} does not contain "
+                f"alert.src_ip={alert_src_ip!r}. Possible LLM hallucination or prompt injection."
+            )
 
     if not result.ok:
         return result  # Short-circuit on L4 failures

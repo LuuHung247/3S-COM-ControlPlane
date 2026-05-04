@@ -290,7 +290,7 @@ Trong 10 runs, các guardrail sau đều pass:
 
 ```bash
 # Tất cả services phải running
-docker compose ps   # ids-agent, intelligence-layer, fe, redis, postgres, chroma
+docker compose ps   # ids-agent, intelligence-layer, fe, redis, postgres
 
 # Health check
 curl http://localhost:8767/health   # {"status":"ok","dry_run":false,...}

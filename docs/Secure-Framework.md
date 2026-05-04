@@ -458,7 +458,7 @@ services:
     env_file: ./intelligence-layer/.env
     environment:
       IDS_AGENT_URL: http://ids-agent:8766
-    depends_on: [ids-agent, redis, postgres, chroma]
+    depends_on: [ids-agent, redis, postgres]
     networks: [ztnet]
 
   fe:
@@ -481,10 +481,6 @@ services:
       POSTGRES_DB: zerotrust
       POSTGRES_USER: ztuser
       POSTGRES_PASSWORD: ztpass
-    networks: [ztnet]
-
-  chroma:
-    image: chromadb/chroma:latest
     networks: [ztnet]
 
 networks:

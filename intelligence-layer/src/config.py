@@ -28,12 +28,6 @@ class Settings(BaseSettings):
     # Postgres
     postgres_url: str = "postgresql+asyncpg://ztuser:ztpass@localhost:5432/zerotrust"
 
-    # ChromaDB
-    chroma_host: str = "localhost"
-    chroma_port: int = 8000
-    chroma_collection_mitre: str = "mitre_attack"
-    chroma_collection_decisions: str = "past_decisions"
-
     # IDS Agent
     ids_agent_url: str = "http://ids-agent:8766"
 
@@ -64,8 +58,6 @@ class Settings(BaseSettings):
     safety_circuit_halt_seconds: int = 300
 
     # Observability
-    langsmith_api_key: str = ""
-    langsmith_project: str = "zerotrust-agent"
     log_level: str = "INFO"
 
     @property

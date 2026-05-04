@@ -8,6 +8,7 @@ COPY pyproject.toml .
 RUN uv pip install --system --no-cache .
 
 COPY src/ ./src/
+COPY knowledge/ ./knowledge/
 
 EXPOSE 8767
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8767"]

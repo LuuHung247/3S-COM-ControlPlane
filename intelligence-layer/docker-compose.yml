@@ -22,15 +22,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  chroma:
-    image: chromadb/chroma:latest
-    container_name: zt-chroma
-    restart: unless-stopped
-    ports:
-      - "8001:8000"
-    volumes:
-      - chroma_data:/chroma/chroma
-
   intelligence-layer:
     build: .
     container_name: zt-intelligence
@@ -41,7 +32,6 @@ services:
     depends_on:
       - redis
       - postgres
-      - chroma
     logging:
       driver: json-file
       options:
@@ -51,4 +41,3 @@ services:
 volumes:
   redis_data:
   postgres_data:
-  chroma_data:

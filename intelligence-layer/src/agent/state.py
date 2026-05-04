@@ -12,8 +12,10 @@ class AgentState(TypedDict, total=False):
 
     # Intermediate
     classification: str            # "benign" | "suspicious" | "threat"
-    alert_history: list[dict]      # From Redis
-    mitre_context: str             # From ChromaDB RAG (optional)
+    alert_history: list[dict]      # From Redis (raw events)
+    ip_summary: dict | None        # Operational memory aggregated summary (30d window)
+    correlation: dict | None       # Short-window kill-chain correlation (10min)
+    alert_context: str             # Tier 3 alert-specific knowledge render
 
     # Output
     intent: PolicyIntent | None
