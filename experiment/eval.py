@@ -171,20 +171,27 @@ def get_agent_rules_from_sf() -> list:
 
 def rule_blocks_attacker(rules: list) -> bool:
     for r in rules:
-        src = r.get("source-ip") or r.get("src_ip") or r.get("source_ip") or ""
-        if ATTACKER_IP in src or src.startswith(ATTACKER_IP):
+        # SF returns src-prefix (gNMI YANG field name)
+        src = r.get("src-prefix") or r.get("src_ip") or r.get("source-ip") or ""
+        if ATTACKER_IP in src or src.startswith(ATTACKER_IP.split("/")[0]):
             return True
     return False
 
 def get_agent_rule_ids_from_agent() -> list:
-    data = http_get(f"{IDS_AGENT}/rules?source=agent")
-    if not isinstance(data, list):
+    """Parse gNMI notification format from IDS agent /rules endpoint."""
+    data = http_get(f"{IDS_AGENT}/rules")
+    if not data:
         return []
     ids = []
-    for r in data:
-        rid = r.get("rule-id") or r.get("rule_id") or r.get("id")
-        if rid:
-            ids.append(rid)
+    # Same gNMI format as SF API: {leaves: {leaf-N: {rules: {notification: [{update: [{val:{...}}]}]}}}}
+    for leaf_data in (data.get("leaves") or {}).values():
+        for notif in (leaf_data.get("rules") or {}).get("notification", []):
+            for upd in notif.get("update", []):
+                val = upd.get("val", {})
+                if val.get("source") == "agent":
+                    rid = val.get("rule-id") or val.get("rule_id")
+                    if rid and rid not in ids:
+                        ids.append(rid)
     return ids
 
 # ── Reset between runs ────────────────────────────────────────────────────────
@@ -258,6 +265,10 @@ class RunResult:
     checks_total: int = 5
     passed: bool = False
     notes: str = ""
+    # ── New metrics ──────────────────────────────────────────────────────────
+    t_alert_to_decision_s: Optional[float] = None    # Metric 1: T_decision.created_at − T_alert.timestamp
+    t_decision_to_enforce_ms: Optional[float] = None # Metric 2: SF rule visible − T_decision.created_at
+    enforcement_correct: Optional[bool] = None        # Metric 3: decision src_ip matches attacker
 
 def run_scenario(run_num: int, duration: int, anchor_ts: float = 0.0) -> RunResult:
     result = RunResult(run_num=run_num)
@@ -310,6 +321,43 @@ def run_scenario(run_num: int, duration: int, anchor_ts: float = 0.0) -> RunResu
                 result.rejection_reason = decision.get("rejection_reason") or ""
                 result.dry_run = decision.get("dry_run", True)
                 print(f"    ✓ Decision: outcome={result.outcome} latency={result.enforce_latency_ms}ms confidence={result.confidence}")
+
+                # ── Metric 1: Detection-to-Decision wall clock ───────────────
+                t_decision_created = None
+                try:
+                    t_decision_created = datetime.datetime.fromisoformat(
+                        decision["created_at"].replace("Z", "+00:00")
+                    ).timestamp()
+                    result.t_alert_to_decision_s = round(t_decision_created - t_first_alert, 2)
+                    print(f"    ✓ [M1] Alert→Decision: {result.t_alert_to_decision_s}s")
+                except Exception:
+                    pass
+
+                # ── Metric 3: Enforcement correctness ───────────────────────
+                src_ip = decision.get("src_ip") or ""
+                result.enforcement_correct = (
+                    ATTACKER_IP in src_ip or src_ip.startswith(ATTACKER_IP.rstrip("/"))
+                ) if src_ip else None
+                print(f"    ✓ [M3] Correct src_ip: {result.enforcement_correct} ({src_ip!r})")
+
+                # ── Metric 2: Decision-to-Enforcement (SF poll) ─────────────
+                # Enforcement is synchronous in intelligence-layer (rule applied
+                # before created_at is written). Poll SF now to confirm rule
+                # presence and measure propagation delay from created_at.
+                if result.outcome == "enforced" and t_decision_created is not None:
+                    for attempt in range(8):
+                        sf_rules = get_agent_rules_from_sf()
+                        if rule_blocks_attacker(sf_rules):
+                            t_rule_seen = time.time()
+                            result.t_decision_to_enforce_ms = round(
+                                max(0.0, t_rule_seen - t_decision_created) * 1000, 1
+                            )
+                            print(f"    ✓ [M2] Rule visible on LEAF at +{result.t_decision_to_enforce_ms}ms after decision")
+                            break
+                        time.sleep(1)
+                    else:
+                        print("    ✗ [M2] Rule NOT visible on LEAF after 8s")
+
                 break
 
         sys.stdout.write(f"\r    elapsed {elapsed:.0f}s ...")
@@ -362,23 +410,27 @@ HEADER = PatternFill("solid", fgColor="1F4E79")
 GRAY   = PatternFill("solid", fgColor="D9D9D9")
 
 COLS = [
-    ("Run",              "run_num"),
-    ("Started (UTC)",    "started_at"),
-    ("Pass?",            "passed"),
-    ("Outcome",          "outcome"),
-    ("MTTD (s)",         "mttd_s"),
-    ("Enforce (ms)",     "enforce_latency_ms"),
-    ("Total E2E (s)",    "total_latency_s"),
-    ("Confidence",       "confidence"),
-    ("P1 Alerts",        "alert_count_p1"),
-    ("Rule Pushed",      "rule_pushed"),
-    ("Rule ID",          "rule_id"),
-    ("Dry Run",          "dry_run"),
-    ("Checks",           "_checks"),
-    ("Rejection",        "rejection_reason"),
-    ("Notes",            "notes"),
+    ("Run",                    "run_num"),
+    ("Started (UTC)",          "started_at"),
+    ("Pass?",                  "passed"),
+    ("Outcome",                "outcome"),
+    ("MTTD IDS (s)",           "mttd_s"),
+    ("M1 Alert→Decision (s)",  "t_alert_to_decision_s"),
+    ("M2 Decision→LEAF (ms)",  "t_decision_to_enforce_ms"),
+    ("M3 Correct IP",          "enforcement_correct"),
+    ("Agent latency (ms)",     "enforce_latency_ms"),
+    ("Total E2E (s)",          "total_latency_s"),
+    ("Confidence",             "confidence"),
+    ("P1 Alerts",              "alert_count_p1"),
+    ("Rule Pushed",            "rule_pushed"),
+    ("Rule ID",                "rule_id"),
+    ("Dry Run",                "dry_run"),
+    ("Checks",                 "_checks"),
+    ("Rejection",              "rejection_reason"),
+    ("Notes",                  "notes"),
 ]
-NUMERIC_COLS = {"mttd_s", "enforce_latency_ms", "total_latency_s", "confidence", "alert_count_p1"}
+NUMERIC_COLS = {"mttd_s", "t_alert_to_decision_s", "t_decision_to_enforce_ms",
+                "enforce_latency_ms", "total_latency_s", "confidence", "alert_count_p1"}
 
 def export_excel(results: List[RunResult], path: str):
     wb = openpyxl.Workbook()
@@ -405,8 +457,8 @@ def export_excel(results: List[RunResult], path: str):
             cell.fill = row_fill
             cell.alignment = Alignment(horizontal="center")
 
-    # Column widths
-    widths = [6, 20, 7, 12, 10, 13, 13, 11, 10, 11, 40, 9, 8, 25, 20]
+    # Column widths (18 columns)
+    widths = [6, 20, 7, 12, 12, 20, 20, 13, 16, 13, 11, 10, 11, 40, 9, 8, 25, 20]
     for i, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
@@ -442,10 +494,15 @@ def export_excel(results: List[RunResult], path: str):
     stat_row("Total runs",            total)
     stat_row("Passed",                pass_rate, GREEN if passed == total else (YELLOW if passed else RED))
     stat_row("", "")
-    stat_row("MTTD (s)",              fmt(numeric["mttd_s"]))
-    stat_row("Enforce latency (ms)",  fmt(numeric["enforce_latency_ms"]))
-    stat_row("Total E2E (s)",         fmt(numeric["total_latency_s"]))
-    stat_row("Confidence score",      fmt(numeric["confidence"]))
+    stat_row("MTTD IDS (s)",                  fmt(numeric["mttd_s"]))
+    stat_row("M1 Alert→Decision (s)",         fmt(numeric["t_alert_to_decision_s"]))
+    stat_row("M2 Decision→LEAF (ms)",         fmt(numeric["t_decision_to_enforce_ms"]))
+    m3_vals = [r.enforcement_correct for r in results if r.enforcement_correct is not None]
+    m3_rate = f"{sum(m3_vals)}/{len(m3_vals)} ({100*sum(m3_vals)//len(m3_vals) if m3_vals else 0}%)" if m3_vals else "N/A"
+    stat_row("M3 Enforcement Correctness",    m3_rate, GREEN if m3_vals and all(m3_vals) else (YELLOW if m3_vals else None))
+    stat_row("Agent internal latency (ms)",   fmt(numeric["enforce_latency_ms"]))
+    stat_row("Total E2E (s)",                 fmt(numeric["total_latency_s"]))
+    stat_row("Confidence score",              fmt(numeric["confidence"]))
     stat_row("", "")
     outcomes = {}
     for r in results:
@@ -502,13 +559,22 @@ def preflight() -> bool:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
+
+def _default_output() -> str:
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    return os.path.join(RESULTS_DIR, f"report_{ts}.xlsx")
+
 def main():
     parser = argparse.ArgumentParser(description="Zero Trust Agent Evaluation")
-    parser.add_argument("--runs",      type=int, default=1,             help="Number of iterations (default: 1)")
-    parser.add_argument("--duration",  type=int, default=120,           help="Max wait per run in seconds (default: 120)")
-    parser.add_argument("--output",    default="results/report.xlsx",   help="Excel output path (default: results/report.xlsx)")
-    parser.add_argument("--dry-check", action="store_true",             help="Only run health checks, no attack")
+    parser.add_argument("--runs",      type=int, default=1,   help="Number of iterations (default: 1)")
+    parser.add_argument("--duration",  type=int, default=120, help="Max wait per run in seconds (default: 120)")
+    parser.add_argument("--output",    default=None,          help="Excel output path (default: results/report_YYYYMMDD_HHMM.xlsx)")
+    parser.add_argument("--dry-check", action="store_true",   help="Only run health checks, no attack")
     args = parser.parse_args()
+    if args.output is None:
+        args.output = _default_output()
 
     print("\n══════════════════════════════════════════════")
     print("  Zero Trust Intelligence Layer — Eval Runner")

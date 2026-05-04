@@ -256,24 +256,123 @@ tc filter add dev Vlan300 parent ffff: protocol ip u32 match u32 0 0 \
 
 **Quan trọng:** tc mirred chạy ở `ingress` qdisc, **trước** netfilter. IDS thấy được packet kể cả khi iptables DROP.
 
+> **Cảnh báo asymmetric capture:** mirred chỉ tap ingress của VLAN — chỉ thấy **một chiều** flow (zone→gateway), miss return path. Suricata flow tracking + `flow:to_server` không hoạt động chuẩn. Detection rules phải dùng `flags:S` workaround (xem Section 7.1).
+
+---
+
+## 6A. DCN Service Simulation — Realistic East-West Workload
+
+Để IDS có gì observe (không chỉ test với hping3), 4 Alpine hosts được provision với services + cron-driven traffic generator mô phỏng workload thực tế của một DCN.
+
+### 6A.1 Service inventory per zone
+
+| Zone | Host | Service | Port | Implementation | Listener pattern |
+|------|------|---------|------|----------------|------------------|
+| WEB | Alpine-1 (10.1.100.10) | banner HTTP | 80 | busybox `nc -l -p 80 < /tmp/banner.html` loop | request-then-reply (file redirect, không pipe) |
+| WEB | Alpine-1 | sshd | 22 | OpenSSH (`PermitRootLogin yes`, `PermitEmptyPasswords yes`) | persistent |
+| DB | Alpine-2 (10.1.200.10) | pg-mock SQL-aware | 5432 | busybox `nc -lk -e /usr/local/bin/pg-mock.sh` | connection-per-message, returns SQL-shape based on payload prefix |
+| DB | Alpine-2 | sshd | 22 | OpenSSH | persistent |
+| APP | Alpine-3 (10.2.100.10) | banner HTTP | 8080 | busybox `nc -l -p 8080 < banner` | request-then-reply |
+| APP | Alpine-3 | sshd | 22 | OpenSSH | persistent |
+| MGT | Alpine-5 (10.2.50.10) | sshd | 22 | OpenSSH | persistent (no app — control-only zone) |
+
+> **busybox 1.37 nc gotcha:** `nc -lk -e` works **chỉ khi handler emits 1 line then exits**; multi-line responses cần pattern `pre-render to file → nc -l -p PORT < file`. Discovery cost: nửa ngày debug, lessons-learned đã track trong memory.
+
+### 6A.2 Cron-driven traffic generators
+
+Tất cả crons trong `/etc/crontabs/root`, started bằng `crond -f -L /var/log/dcn/crond.log`:
+
+| Cron | Source | Direction | Cadence | Purpose |
+|------|--------|-----------|---------|---------|
+| `shopper` | WEB → APP:8080 | east-west, allowed | 30s | Mô phỏng web tier proxy → app tier |
+| `noise` | APP → DB:5432 | east-west, allowed | 30s | 4 SQL shapes (SELECT users, SELECT orders, INSERT log, UPDATE session) |
+| `mgt-scrape` | MGT → WEB:80 / APP:8080 / DB:5432 | inbound to all zones (audit-by-design) | 60s | banner + service-health probe |
+| `mgt-audit` | MGT → WEB:22 / APP:22 / DB:22 (rotating) | SSH | 2 min | Compliance SSH login + `uptime` capture |
+| `mgt-logpull` | MGT → APP:22 | SSH | 5 min | `tail -100 /var/log/dcn/*.log` over SSH |
+| `attacker-web` | WEB → DB:5432 | violation (P1) | dormant — armed by scenario | Injected only during demo |
+| `attacker-db` | DB → 8.8.8.8 / external | violation (P1) | dormant | Simulated C2 callback |
+
+**Kết quả continuous:** ~120 flows/min baseline, ~11 P4 audit alerts/min từ SID 9000020 (by design — MGT outbound = always alerted), 0 P1/P2 alerts trừ khi scenario chạy.
+
+### 6A.3 Bootstrap pipeline — provision 4 hosts
+
+| File | Target | LOC | Notes |
+|------|--------|-----|-------|
+| `/3s-com/dataplane/bootstrap/web-host.sh` | Alpine-1 | 135 | banner :80 + sshd + shopper cron + dormant attacker |
+| `/3s-com/dataplane/bootstrap/db-host.sh`  | Alpine-2 | 119 | pg-mock SQL-aware + sshd + dormant attacker |
+| `/3s-com/dataplane/bootstrap/app-host.sh` | Alpine-3 | 123 | banner :8080 + sshd + noise→DB cron |
+| `/3s-com/dataplane/bootstrap/mgt-host.sh` | Alpine-5 | 133 | sshd + audit/scrape/logpull crons + scenario controllers |
+
+**Push mechanism:** `/tmp/paste_bootstrap.py` — base64-encode script, paste qua GNS3 console proxy port (5008/5011/5014/5016), `base64 -d > /root/bootstrap.sh && sh /root/bootstrap.sh`. Idempotent: re-run sẽ overwrite cleanly.
+
+### 6A.4 Compromise / restore scenarios (MGT-driven demo)
+
+Scenario controllers ở `/root/scenario/` trên Alpine-5 (MGT). Mỗi scenario có 3 scripts (compromise/restore/status), trigger từ console hoặc qua AI agent's run.sh.
+
+| Script | Effect | Detection |
+|--------|--------|-----------|
+| `compromise-web.sh` | SSH→WEB, write `/usr/local/bin/attacker-web-loop.sh`, nohup loop `nc -z -w2 10.1.200.10 5432; sleep 15` | SID 9000001 P1 (~10s/alert) |
+| `compromise-db.sh`  | SSH→DB, write `/usr/local/bin/attacker-db-loop.sh`, nohup loop `nc -z -w2 8.8.8.8 443; sleep 15` | SID 9000002 P1 (~10s/alert) |
+| `restore-web.sh` / `restore-db.sh` | SSH, kill PID từ `/tmp/attacker-{web,db}.pid`, rm loop script | alert stream goes quiet |
+| `status-web.sh` / `status-db.sh`   | check `/tmp/scenario-{web,db}.state` → `armed (since TS)` hoặc `disarmed` | — |
+
+**State files:** `/tmp/scenario-{web,db}.state` trên MGT (chứa ISO timestamp khi arm). Idempotent: gọi compromise khi đã armed → no-op + thông báo. Gọi restore khi đã restored → no-op.
+
+> **Pitfall — `pkill -f` self-kill:** SSH command line containing substring `attacker-{web,db}-loop` sẽ bị `pkill -f attacker-{web,db}-loop` matched ngay chính cmdline của SSH session, gây SIGTERM lên parent shell → SSH exit 255. **Fix:** kill bằng PID file (`kill -9 $(cat /tmp/attacker-web.pid)`), không dùng pattern match.
+
+**Demo flow:** start clean → (P4 audit baseline only) → `compromise-web.sh` → SID 9000001 visible < 30s → `restore-web.sh` → quiet.
+
+### 6A.4.1 Validation 2026-05-04 (rewritten scripts)
+
+| Step | Result |
+|------|--------|
+| 6 scripts pushed via console 5016 (base64 paste) | ✅ |
+| `compromise-web` armed → 50s sau, SID 9000001 delta = +8 | ✅ ~10s/alert |
+| `restore-web` → status returns `disarmed`, alerts dừng | ✅ |
+| `compromise-db` armed → 50s sau, SID 9000002 delta = +8 | ✅ ~10s/alert |
+| `restore-db` → cleanup OK | ✅ |
+| `/alerts/clear` returns `{cleared_at: ISO}` (since-based) | ✅ working |
+| `/alerts?since=<cleared_at>` returns count=0 ngay sau clear | ✅ |
+
+### 6A.5 Validation checkpoint (2026-05-03)
+
+| Test | Result |
+|------|--------|
+| 4 zones up, services healthy | ✅ |
+| Continuous east-west traffic (cron-driven) | ✅ 120 flow/min |
+| SC compromise-web → SID 9000001 fires | ✅ < 30s |
+| SC compromise-db → SID 9000002 fires | ✅ < 30s |
+| Baseline FPR (P1+P2 false positives over 1h) | **0%** |
+| MGT audit baseline (SID 9000020) | ✅ ~11/min by design |
+
 ---
 
 ## 7. Detection Rules — Suricata 8.0
 
-**File:** `/etc/suricata/rules/3s-nos.rules` trên IDS node
+**Source:** `/3s-com/zma/suricata/rules/zt-lab.rules` (host) — mount-bind vào `/etc/suricata/rules/zt-lab.rules` trong IDS VM
+**Config:** `/3s-com/zma/suricata/suricata-zt.yaml` → mount vào `/etc/suricata/suricata-zt.yaml`
+**Capture:** `af-packet` cluster_flow trên `eth0` (mirror từ LEAF-1) + `eth1` (mirror từ LEAF-2)
+**eve.json types:** `alert`, `flow` (flow logging bật để dashboard show normal traffic)
 **Reload:** `kill -USR2 $(cat /var/run/suricata.pid)` — không cần restart
+
+### 7.1 Asymmetric capture workaround
+
+`tc mirred` ingress qdisc chỉ mirror **một chiều** (request hoặc reply, không phải cả hai) → Suricata không reassemble được full TCP session → `flow:to_server` keyword **không tin cậy**. Workaround: dùng `flags:S` (chỉ match SYN packet — connection initiation) + ràng buộc `dst_port` = service port. Chỉ fire trên init, suppress được FP từ return-traffic của shopper/scrape cron.
+
+### 7.2 Active rule set (8 rules)
 
 | SID | Priority | Class | Match | Msg |
 |-----|----------|-------|-------|-----|
-| 9000001 | P1 | policy-violation | `10.1.100.0/24 → 10.1.200.0/24` | WEB direct to DB |
-| 9000002 | P1 | policy-violation | `10.1.200.0/24 → !10.1.200.0/24` | DB initiating outbound |
-| 9000006 | P1 | policy-violation | `10.2.100.0/24 → 10.1.200.0/24` | APP direct to DB (lateral) |
-| 9000003 | P2 | lateral-movement | `10.2.100.0/24 → 10.1.100.0/24` | APP reverse call WEB |
-| 9000004 | P2 | lateral-movement | `10.1.100.0/24 → 10.2.50.0/24` | WEB to MGT |
-| 9000005 | P2 | lateral-movement | `10.2.100.0/24 → 10.2.50.0/24` | APP to MGT |
-| 9000010 | P3 | reconnaissance | ICMP threshold 3/10s | Ping sweep |
-| 9000011 | P3 | reconnaissance | TCP SYN threshold 10/5s | Port scan |
-| 9000020 | P4 | audit | `10.2.50.0/24 → ANY` (1/min/src) | MGT zone access |
+| 9000001 | P1 | policy-violation | `WEB → DB:[5432,3306,1433,27017] flags:S` | WEB direct to DB - microsegmentation bypass |
+| 9000002 | P1 | policy-violation | `DB → !lab-zones any flags:S` | DB initiating outbound connection |
+| 9000003 | P2 | policy-violation | `APP → WEB:[80,443,22] flags:S` | APP reverse call to WEB - lateral movement |
+| 9000004 | P2 | policy-violation | `WEB → MGT:[22,3389] flags:S` | WEB to MGT - unauthorized access |
+| 9000005 | P2 | policy-violation | `APP → MGT:[22,3389] flags:S` | APP to MGT - unauthorized access |
+| 9000010 | P3 | network-scan | ICMP echo, threshold 3/10s/src | ICMP ping sweep detected |
+| 9000011 | P3 | network-scan | TCP SYN, threshold 10/5s/src | Possible port scan |
+| 9000020 | P4 | policy-violation | `MGT → ANY` (1/min/src) | Management zone access (audit) |
+
+> Note: SID 9000006 (APP→DB direct) đã removed vì APP→DB là **allowed path** trong policy matrix (5.1). Đã thay bằng audit-by-design pattern qua SID 9000020 cho MGT.
 
 ---
 
@@ -282,17 +381,23 @@ tc filter add dev Vlan300 parent ffff: protocol ip u32 match u32 0 0 \
 ### 8.1 IDS Alert API (Suricata side)
 
 Base URL: `http://10.10.6.238:8765` (LAN) / `http://112.137.129.232:8765` (public NAT)
+**Source:** `/usr/local/bin/ids-api.py` **inside** IDS-Suricata VM (Python stdlib `BaseHTTPRequestHandler` + `ThreadingHTTPServer`, ~147 LOC). Process autostart, restart bằng `pkill -f ids-api.py; nohup python3 /usr/local/bin/ids-api.py >/tmp/api.log 2>&1 &`.
+**Exposure:** libvirt `virbr0` NAT bridge → DNAT từ host `:8765` → VM `192.168.122.205:8765`.
 
 | Method | Path | Response |
 |--------|------|----------|
-| GET | `/health` | `{status, suricata, ts}` |
-| GET | `/alerts` | `{count, summary, alerts[]}` |
-| GET | `/alerts?last=N` | last N alerts |
-| GET | `/stream` | SSE stream — 1 event = 1 alert JSON |
+| GET | `/health` | `{status, suricata: bool, ts}` |
+| GET | `/alerts?last=N&since=ts` | `{count, summary{sid:n}, alerts[]}` |
+| GET | `/alerts/clear` | `{cleared_at: ts}` — client dùng làm anchor cho `?since=` để skip pre-F5 alerts |
+| GET | `/flows?last=N&since=ts` | `[flow event objects]` — đọc reverse từ eve.json, max 500 |
+| GET | `/stream` | SSE — gồm cả alert events + flow events (rate-limit 10 flow/cycle/s) |
+| GET | `/service-health` | Passive flow-inference: `{services:[{name,ip,port,zone,status:up\|unknown}], method:"flow-inference"}` — quét eve.json 180s gần nhất |
 
-### 8.2 Go IDS Agent (real-time bridge)
+### 8.2 Go IDS Agent (real-time bridge + enforcement proxy)
 
 Base URL: `http://10.10.6.238:8766`
+
+> After refactor (2026-04-xx): pure proxy/bridge. `tryAutoBlock()` removed. Auto-enforcement is now handled by Intelligence Layer.
 
 | Method | Path | Use |
 |--------|------|-----|
@@ -300,6 +405,14 @@ Base URL: `http://10.10.6.238:8766`
 | GET | `/alerts` | Proxy → Suricata `/alerts` |
 | GET | `/events` | SSE — alerts + heartbeat (15s) + `{type:"connected"}` event |
 | GET | `/ws` | WebSocket — same payload as `/events` |
+| GET | `/stats` | Alert counters |
+| GET | `/rules` | Proxy → SF `GET /api/rules` (gNMI format: `{leaves:{leaf-N:{rules:{notification:[{update:[{path,val}]}]}}}}`) |
+| **POST** | **`/rules`** | **Push rule to SF; force `source=agent` server-side — Intelligence Layer primary path** |
+| **DELETE** | **`/rules/{rule_id}`** | **Revoke rule from SF + LEAF — Intelligence Layer TTL cleanup** |
+| POST | `/autoblock` | Frontend manual block by IP |
+| DELETE | `/autoblock/unblock/{id}` | Frontend manual unblock |
+
+**Note on gNMI response format:** `GET /rules` returns the raw gNMI notification structure. Rule fields use YANG names: `src-prefix` (not `src_ip`), `rule-id` (not `rule_id`), `src-port`/`dst-port`. Clients must parse accordingly.
 
 ### 8.3 Alert JSON Schema
 
@@ -395,6 +508,13 @@ def ip_to_zone(src_ip: str) -> str:
 | False Positive Rate (SC-5 baseline) | 0% | 2026-04-19 |
 | Browser dashboard | 8/8 PASS | 2026-04-19 |
 | **Total live alerts captured** | **38** | **2026-04-19** |
+| **Intelligence Layer automated enforcement (10-run eval)** | | **2026-05-04** |
+| — Outcome: ENFORCED (rule pushed to LEAF) | 10/10 PASS | 2026-05-04 |
+| — Enforcement Correctness (M3): correct IP blocked | 10/10 (100%) | 2026-05-04 |
+| — Alert→Decision latency (M1) avg | 4.75s | 2026-05-04 |
+| — LLM confidence avg | 0.955 | 2026-05-04 |
+| — 9-layer safety guardrails: all adversarial tests pass | PASS | 2026-05-04 |
+| Scenario compromise-web → SID 9000001 → auto-block → restore | full round-trip verified | 2026-05-04 |
 
 ---
 
@@ -408,17 +528,30 @@ def ip_to_zone(src_ip: str) -> str:
 | `/3s-com/zma/dc-fabric-setup/07-iptables-leaf1.sh` | Raw iptables rules LEAF-1 |
 | `/3s-com/zma/dc-fabric-setup/07-iptables-leaf2.sh` | Raw iptables rules LEAF-2 |
 | `/3s-com/zma/dc-fabric-setup/08-verify-policy.py` | 12-flow policy verification |
-| `/3s-com/zma/dc-fabric-setup/14-ids-webapi.py` | IDS REST API restore |
-| `/etc/suricata/rules/3s-nos.rules` (on IDS VM) | 9 detection rules |
+| `/3s-com/zma/dc-fabric-setup/14-ids-webapi.py` | IDS REST API restore (legacy) |
+| `/usr/local/bin/ids-api.py` (inside IDS VM) | Active REST API server (147 LOC, stdlib only) |
+| `/3s-com/zma/suricata/suricata-zt.yaml` | Suricata config (af-packet eth0+eth1, eve-log alert+flow) |
+| `/3s-com/zma/suricata/rules/zt-lab.rules` | 8 active detection rules (host-side, mounted into VM) |
+| `/3s-com/dataplane/bootstrap/web-host.sh` | WEB zone provisioning (banner :80 + sshd + shopper cron) |
+| `/3s-com/dataplane/bootstrap/db-host.sh`  | DB zone provisioning (pg-mock :5432 SQL-aware + sshd) |
+| `/3s-com/dataplane/bootstrap/app-host.sh` | APP zone provisioning (banner :8080 + sshd + noise→DB cron) |
+| `/3s-com/dataplane/bootstrap/mgt-host.sh` | MGT zone provisioning (sshd + audit/scrape/logpull + scenario controllers) |
+| `/tmp/paste_bootstrap.py` | Base64-encoded push of bootstrap script via GNS3 console proxy |
 
 ---
 
-## 12. Open Items for SDNC Agent
+## 12. Intelligence Layer — Implementation Status (2026-05-04)
 
-- [ ] Build SSH/telnet connector to SONiC-LEAF console (port 5010, 5015)
-- [ ] Implement iptables rule push API (mirror `07-apply-policy.py`)
-- [ ] Subscribe to IDS SSE stream (`http://10.10.6.238:8766/events`)
-- [ ] Implement auto-block workflow (alert P1 → iptables DROP src_ip on relevant LEAF)
-- [ ] Implement auto-unblock TTL (e.g., 5–15 min)
-- [ ] Send block-event back to dashboard (new endpoint to design)
-- [ ] Audit trail / compliance log (who blocked what, when, why)
+All items previously listed as "open for SDNC Agent" are now complete via the Intelligence Layer service.
+
+| Item | Status | Implementation |
+|------|--------|---------------|
+| Rule push to LEAF | ✅ DONE | Intelligence Layer → `POST ids-agent:8766/rules` → SF `/api/rules` → gNMI → nos-acl-bridge → iptables |
+| Subscribe IDS SSE stream | ✅ DONE | `pipeline/consumer.py` subscribes `http://ids-agent:8766/events`, auto-reconnect |
+| Auto-block workflow (P1 alert → DROP) | ✅ DONE | LangGraph: classify → reason → validate → enforce. Confidence gate ≥0.85 |
+| Auto-unblock TTL | ✅ DONE | `ttl_seconds` field in rule (default 3600s for P1); SF enforces via nos-acl-bridge timer |
+| Block event back to dashboard | ✅ DONE | `record_decision` node: Postgres audit + Redis history + SSE `/stream`; Frontend polls `/api/intel/decisions` |
+| Audit trail / compliance log | ✅ DONE | Postgres `decisions` table: full ReAct trace, safety check results, confidence, latency |
+| SSH/telnet connector to SONiC console | ❌ NOT needed | Route goes through SF gNMI — no direct console access required for enforcement |
+
+**Architecture:** No direct SSH/console to SONiC needed. Control path is: Intelligence Layer → ids-agent (REST) → Secure Framework (gNMI mTLS) → nos-acl-bridge → iptables FORWARD. All persistence in LEAF ConfigDB (Redis DB4) — survives restart.

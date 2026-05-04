@@ -1,7 +1,7 @@
 # Secure Framework — Pipeline Architecture
 
 > Mô tả chi tiết kiến trúc và luồng đẩy policy từ Control Plane → Dataplane  
-> Last updated: 2026-04-29
+> Last updated: 2026-05-04
 
 ---
 
@@ -12,12 +12,17 @@
 │  CONTROL PLANE  (Docker @ host máy tính cá nhân)                             │
 │                                                                              │
 │   ┌────────────────────┐       ┌──────────────────────┐                     │
-│   │   ThreatCrush UI   │ HTTP  │     IDS Agent (Go)   │                     │
+│   │   Frontend (fe)    │ HTTP  │     IDS Agent (Go)   │                     │
 │   │   Next.js :3000    │──────▶│     :8766            │                     │
-│   │   /policy page     │       │   /rules             │                     │
+│   │   /policy page     │       │   /rules (POST/DEL)  │                     │
 │   │   /monitor page    │       │   /autoblock         │                     │
 │   └────────────────────┘       │   /events (SSE/WS)   │                     │
-│                                └──────────┬───────────┘                     │
+│                                └──────┬───────▲───────┘                     │
+│   ┌────────────────────┐    SSE│      │ POST  │rules                        │
+│   │ Intelligence Layer │───────┘      │                                     │
+│   │ FastAPI :8767      │──────────────┘                                     │
+│   │ LangGraph pipeline │                                                    │
+│   └────────────────────┘                                                    │
 │                                           │ HTTP REST                       │
 └──────────────────────────────────────────┼──────────────────────────────────┘
                                            │
@@ -71,54 +76,64 @@
 
 ### 2.1 IDS Agent (`ids-agent/`)
 
-Go binary, chạy trong container `ids-agent` trên control plane.
+Go binary, container `ids-agent` trên control plane.
 
-**Vai trò:**
-- Bridge SSE/WebSocket từ Suricata IDS → ThreatCrush UI (real-time alerts)
-- Auto-block: nhận alert severity ≤ 2 → tự động push DROP rule lên SF
-- Proxy REST `/rules` → SF `/api/rules` (cho UI đọc danh sách rules)
-- REST `/autoblock` để UI bật/tắt auto-block và push rule thủ công
+**Vai trò (sau refactor — pure proxy/bridge):**
+- Bridge SSE/WebSocket từ Suricata IDS → Frontend + Intelligence Layer
+- Proxy REST `/rules` ↔ SF `/api/rules` (GET: list, POST: push với `source=agent` forced, DELETE: revoke)
+- REST `/autoblock` để Frontend push rule thủ công (manual block button)
+
+> ⚠️ `tryAutoBlock()`, `autoBlockEnabled`, `blockedIPs map`, `/autoblock/enable`, `/autoblock/disable` **đã bị xóa hoàn toàn** khỏi `main.go`. Auto-decision thuộc về Intelligence Layer, không phải ids-agent.
 
 **Key endpoints:**
 
 | Method | Path | Mô tả |
 |--------|------|-------|
-| GET | `/events` | SSE stream alerts từ Suricata |
+| GET | `/events` | SSE stream alerts từ Suricata (+ heartbeat 15s) |
 | GET | `/ws` | WebSocket — cùng payload |
-| GET | `/rules` | Proxy → SF `/api/rules` |
-| GET/POST | `/autoblock` | Status + enable/disable |
-| POST | `/autoblock/enable` | Bật auto-block |
-| POST | `/autoblock/disable` | Tắt + clear blocked list |
-| DELETE | `/autoblock/unblock/{id}` | Xóa 1 rule trên SF |
+| GET | `/health` | Proxy → Suricata `/health` |
+| GET | `/alerts` | Proxy → Suricata `/alerts` |
+| GET | `/stats` | Alert counters |
+| GET | `/rules` | Proxy → SF `/api/rules` (gNMI format) |
+| **POST** | **`/rules`** | **Push rule, force `source=agent` server-side — Intelligence Layer dùng** |
+| **DELETE** | **`/rules/{rule_id}`** | **Revoke rule khỏi SF + LEAF — Intelligence Layer dùng** |
+| POST | `/autoblock` | Frontend manual block by IP |
+| DELETE | `/autoblock/unblock/{id}` | Frontend manual unblock |
 
-**Auto-block flow:**
-```
-Suricata alert (severity ≤ 2)
-  → tryAutoBlock()
-  → check blockedIPs map (dedup)
-  → pushBlockRule(srcIP, "agent-<ip>", reason)
-       POST SF /api/rules
-       source="agent", action="DROP", priority=50
-```
+### 2.1b Intelligence Layer (`intelligence-layer/`)
 
-### 2.2 ThreatCrush (`threatcrush/`)
+Python FastAPI, container `intelligence-layer` port 8767, cùng Docker network `ztnet`.
 
-Next.js 15 app, container `threatcrush` :3000 trên control plane.
+**Vai trò:** LLM AI agent — single source of truth cho automated enforcement.
+- Subscribe SSE từ `ids-agent:8766/events`
+- LLM pipeline: classify → reason → validate → enforce
+- Push DROP rule qua `POST ids-agent:8766/rules`
+- Revoke rule qua `DELETE ids-agent:8766/rules/{id}`
+
+→ Chi tiết: [INTELLIGENCE-LAYER.md](INTELLIGENCE-LAYER.md)
+
+### 2.2 Frontend (`fe/`)
+
+Next.js 15 app, container `fe` port 3000 trên control plane.
 
 **Policy page** (`/policy`):
-- Đọc rules từ SF qua `/api/ids/rules` (poll 10s)
-- Push rule mới: form → POST `/api/ids/rules` → IDS Agent → SF
+- Active Rules: poll SF qua `/api/ids/rules` mỗi 8s, agent rules highlight orange
+- Push rule thủ công: form → POST `/api/ids/rules` → IDS Agent → SF (`source=manual`)
 - Xóa rule: DELETE `/api/ids/rules/{id}`
-- Toggle auto-block: POST `/api/ids/autoblock`
-- Source field bị ẩn khỏi form — luôn gửi `source="manual"` tự động
+- Manual block: POST `/api/ids/autoblock`
+- **AI Agent status bar**: live health từ `/api/intel/health` (model, dry_run, circuit breaker)
+- **Agent Policy History timeline**: decisions từ `/api/intel/decisions` (⚡ ENFORCED / ◎ DRY-RUN, confidence bar, latency)
 
-**Next.js API routes** (proxy layer):
+**Next.js API routes:**
 
 | Route | Proxies to |
 |-------|-----------|
-| `/api/ids/rules` GET/POST | IDS Agent `/rules` và `/autoblock` |
-| `/api/ids/rules/[id]` DELETE | IDS Agent `/autoblock/unblock/{id}` |
-| `/api/ids/autoblock` GET/POST | IDS Agent `/autoblock`, `/autoblock/enable`, `/autoblock/disable` |
+| `/api/ids/rules` GET/POST | IDS Agent `/rules` |
+| `/api/ids/rules/[id]` DELETE | IDS Agent `/rules/{id}` DELETE |
+| `/api/ids/autoblock` GET/POST | IDS Agent `/autoblock` |
+| `/api/ids/autoblock/unblock/[id]` DELETE | IDS Agent `/autoblock/unblock/{id}` |
+| `/api/intel/health` GET | Intelligence Layer `/health` |
+| `/api/intel/decisions` GET | Intelligence Layer `/policy-history?limit=50` |
 
 ### 2.3 Secure Framework (`secure-framework/`)
 
@@ -219,36 +234,68 @@ UI → reload rules sau 1s
 
 ---
 
-## 4. Pipeline — Auto-block từ IDS alert
+## 4. Pipeline — Intelligence Layer automated enforcement
+
+> ⚠️ `tryAutoBlock()` đã bị **xóa hoàn toàn** khỏi ids-agent. Mọi auto-decision đều do Intelligence Layer xử lý.
 
 ```
 Suricata phát hiện violation (e.g., WEB→DB lateral move)
         │
-        │  SSE event  data: {src_ip, alert.severity=1, alert.signature}
+        │  SSE event  data: {src_ip, alert.severity=1, alert.signature_id}
         ▼
   IDS Agent  consumeSSE() / runPoller()
         │
-        ├─ hub.broadcast(msg)  → ThreatCrush /monitor real-time
+        ├─ hub.broadcast(msg)  → Frontend /monitor real-time
         │
-        └─ if autoBlockEnabled:
-               tryAutoBlock(data)
-                     │
-                     ├─ severity > 2? → bỏ qua (chỉ block P1+P2)
-                     ├─ blockedIPs[srcIP]? → dedup, bỏ qua
-                     └─ pushBlockRule(srcIP, "agent-<ip>", "auto-block: <sig>")
-                               │
-                               │  POST SF /api/rules
-                               │  {source="agent", action="DROP", priority=50}
-                               ▼
-                         (pipeline tiếp theo giống mục 3)
-                         Bridge enforce: source="agent" → action phải DROP ✓
+        └─ SSE stream → Intelligence Layer  :8767  (subscriber)
+
+  Intelligence Layer  (FastAPI + LangGraph)
+        │
+        ├─ [pipeline/gate.py]  Filter chain:
+        │     SeverityFilter   → skip P3/P4 (severity > 2)
+        │     DedupFilter      → skip nếu đã xử lý trong 30s
+        │     RateLimiter      → tối đa 30 alerts/phút
+        │     WhitelistFilter  → skip nếu src_ip trong NEVER_BLOCK list
+        │
+        ├─ [agent/graph.py]  LangGraph pipeline:
+        │     classify_alert   → fast LLM (llama3.1-8b): benign/suspicious/threat
+        │     gather_context   → get_alert_history(src_ip) từ Redis
+        │     reason_and_decide→ primary LLM (zai-glm-4.7) + KG snapshot
+        │     validate_decision→ schema + policy conflict + confidence gate
+        │     enforce_policy   → POST http://ids-agent:8766/rules
+        │     record_decision  → Postgres + Redis + SSE /stream
+        │
+        │  POST http://ids-agent:8766/rules
+        │  {rule_id: "agent-...", action: "DROP", src_ip: "...", priority: 50,
+        │   dst_ip: "...", dst_port: 5432, ttl_seconds: 3600}
+        ▼
+  IDS Agent  /rules  POST handler
+        │  force source="agent" server-side
+        │  POST http://10.10.6.238:9090/api/rules
+        ▼
+  (pipeline tiếp theo giống mục 3)
+  Bridge enforce: source="agent" → action phải DROP ✓
 ```
+
+**Safety guardrails (9 layers) trước khi enforce:**
+
+| Layer | Check | Reject nếu |
+|-------|-------|-----------|
+| L1 Schema | Pydantic strict + forced function calling | Output tự do, field sai |
+| L2 Consistency | Self-consistency N=3 vote (P1/P2) | Disagreement > 1 |
+| L3 Validators | Schema, topology, policy conflict, idempotency | Bất kỳ violation |
+| L4 Whitelist | NEVER_BLOCK hardcoded (management IPs, SVIs) | Block IP trong whitelist |
+| L5 Blast radius | 5 rules/min, 50 total, 3/IP/5min, TTL 60–3600s | Vượt giới hạn |
+| L6 Severity↔action | P1/P2→DROP, P3/P4→log_only | P3/P4 với DROP |
+| L7 Confidence gate | ≥0.85 enforce, 0.70–0.85 enforce+notify, <0.70 hold | Confidence < 0.70 |
+| L8 Reversibility | TTL mandatory, `AGENT_DRY_RUN` kill switch, circuit breaker | 3 fail liên tiếp → halt |
+| L9 Tests | adversarial unit tests | Fail = block deploy |
 
 **Priority ordering trên LEAF:**
 
 | Priority | Loại rule | Source | Ví dụ |
 |----------|-----------|--------|-------|
-| 50 | IDS auto-block động | `agent` | `agent-10-1-100-55` |
+| 50 | Intelligence Layer auto-block | `agent` | `agent-10-1-100-55` |
 | 200 | ZT baseline (microseg) | `sdnc` | `zt-web-app-allow` |
 | 9999 | Default deny-all | `sdnc` | `zt-default-drop` |
 
@@ -394,22 +441,55 @@ UI hiển thị `rule["src-prefix"] ?? rule["src-ip"]` để handle cả hai.
 ## 10. Docker Compose — Control Plane
 
 ```yaml
-# /home/dis/deploy/docker-compose.yml
+# /home/dis/deploy/zerotrust/docker-compose.yml
 services:
   ids-agent:
-    build: ./Agent-IDS/ids-agent
+    build: ./ids-agent
     ports: ["8766:8766"]
-    env:
+    environment:
       IDS_API_URL: http://10.10.6.238:8765   # Suricata REST
       SF_API_URL:  http://10.10.6.238:9090   # Secure Framework Role API
       AGENT_ADDR:  :8766
+    networks: [ztnet]
 
-  threatcrush:
-    build: ./threatcrush
+  intelligence-layer:
+    build: ./intelligence-layer
+    ports: ["8767:8767"]
+    env_file: ./intelligence-layer/.env
+    environment:
+      IDS_AGENT_URL: http://ids-agent:8766
+    depends_on: [ids-agent, redis, postgres, chroma]
+    networks: [ztnet]
+
+  fe:
+    build: ./fe
     ports: ["3000:3000"]
-    env:
-      AGENT_URL: http://ids-agent:8766       # inter-container
-    depends_on: [ids-agent]
+    environment:
+      AGENT_URL: http://ids-agent:8766
+      INTEL_URL: http://intelligence-layer:8767
+      NODE_ENV: production
+    depends_on: [ids-agent, intelligence-layer]
+    networks: [ztnet]
+
+  redis:
+    image: redis:7-alpine
+    networks: [ztnet]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: zerotrust
+      POSTGRES_USER: ztuser
+      POSTGRES_PASSWORD: ztpass
+    networks: [ztnet]
+
+  chroma:
+    image: chromadb/chroma:latest
+    networks: [ztnet]
+
+networks:
+  ztnet:
+    driver: bridge
 ```
 
 ---
@@ -420,7 +500,7 @@ Sau khi thay đổi code SF hoặc bridge:
 
 ```bash
 # 1. Sync SF code lên dataplane
-rsync -av /home/dis/deploy/Agent-IDS/secure-framework/ \
+rsync -av /home/dis/deploy/zerotrust/secure-framework/ \
       dis@10.10.6.238:/3s-com/zma/secure-framework/
 
 # 2. Restart SF container
@@ -428,16 +508,16 @@ ssh dis@10.10.6.238 "docker restart nos-sf"
 
 # 3. Sync bridge code (nếu thay đổi validators.py, iptables.py, ...)
 for leaf in 192.168.122.20 192.168.122.21; do
-  scp /home/dis/deploy/Agent-IDS/secure-framework/../nos-acl-bridge/bridge/validators.py \
+  scp /home/dis/deploy/zerotrust/nos-acl-bridge/bridge/validators.py \
       admin@$leaf:/tmp/validators.py
   ssh admin@$leaf "sudo cp /tmp/validators.py /opt/nos-acl-bridge/bridge/ \
                    && sudo systemctl restart nos-acl-bridge"
 done
 
-# 4. Rebuild control plane (nếu thay đổi ids-agent/ hoặc threatcrush/)
-cd /home/dis/deploy
-docker compose build
-docker compose up -d
+# 4. Rebuild control plane (nếu thay đổi ids-agent/, fe/, intelligence-layer/)
+cd /home/dis/deploy/zerotrust
+docker compose build <service>
+docker compose up -d <service>
 ```
 
 **Credentials:**
@@ -449,14 +529,15 @@ docker compose up -d
 
 ## 12. End-to-end data flow summary
 
+**A. Manual block (Frontend)**
 ```
-[ThreatCrush /policy]
-        │ POST /api/ids/rules  {rule_id, action="DROP", src_ip="x.x.x.x/32"}
+[Frontend /policy]
+        │ POST /api/ids/autoblock  {ip="x.x.x.x"}
         │
-[Next.js API]  inject source="manual"
+[Next.js API]
         │ POST http://ids-agent:8766/autoblock
         │
-[IDS Agent]
+[IDS Agent]  pushBlockRule() → force source="manual"
         │ POST http://10.10.6.238:9090/api/rules
         │
 [SF role_api.py]
@@ -465,10 +546,44 @@ docker compose up -d
         │ gNMI Set /nos-iptables:acl/rule[rule-id=x]  (mTLS OU=sdnc)
         │
 [nos-acl-bridge LEAF-1]
-  validate_rule()  → OK
-  enforce_rbac(role=ADMIN) → OK
+  validate_rule() → OK  |  enforce_rbac(role=ADMIN) → OK
   Redis DB4: NOS_IPTABLES_RULE|x = {...}
   iptables -I FORWARD ... -j DROP
         │
         ✓  Rule active trên LEAF-1 iptables FORWARD
 ```
+
+**B. Automated enforcement (Intelligence Layer)**
+```
+[Suricata IDS]
+        │ EVE JSON alert → Suricata REST :8765
+        │
+[IDS Agent]  SSE broadcast
+        │
+[Intelligence Layer]  subscribe SSE :8766/events
+        │ LangGraph pipeline: classify → reason → validate → enforce
+        │ 9-layer safety guardrails: whitelist, confidence ≥0.85, blast radius, TTL
+        │ POST http://ids-agent:8766/rules
+        │   {rule_id:"agent-...", action:"DROP", src_ip:"10.1.100.10/32",
+        │    dst_ip:"10.1.200.10/32", dst_port:5432, ttl_seconds:3600}
+        │
+[IDS Agent]  force source="agent" server-side
+        │ POST http://10.10.6.238:9090/api/rules
+        │
+[SF role_api.py]
+  ip_to_leaf(src_ip) → 192.168.122.20
+        │ gNMI Set (mTLS OU=sdnc → ADMIN)
+        │
+[nos-acl-bridge LEAF-1]
+  validate_rule() → OK  |  enforce_rbac(source=agent, action=DROP) → OK
+  Redis DB4: NOS_IPTABLES_RULE|agent-... = {...}
+  iptables -I FORWARD -s 10.1.100.10/32 -d 10.1.200.10/32 --dport 5432 -j DROP
+        │
+        ✓  Rule active, TTL countdown → auto-revoke sau 3600s
+        ✓  Decision logged: Postgres audit + Redis history + SSE /stream
+```
+
+**Latency kết quả thực nghiệm (10 runs, 2026-05-04):**
+- M1 Alert→Decision: avg 4.75s (p95 < 10s)  
+- M3 Enforcement Correctness: 10/10 (100%)  
+- Confidence avg: 0.955

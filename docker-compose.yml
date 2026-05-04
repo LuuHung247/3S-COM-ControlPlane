@@ -31,9 +31,11 @@ services:
       - "3000:3000"
     environment:
       - AGENT_URL=http://ids-agent:8766
+      - INTEL_URL=http://intelligence-layer:8767
       - NODE_ENV=production
     depends_on:
       - ids-agent
+      - intelligence-layer
     networks:
       - ztnet
     logging:
