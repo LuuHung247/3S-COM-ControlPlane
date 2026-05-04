@@ -22,6 +22,33 @@ var (
 	listenAddr = envOr("AGENT_ADDR", ":8766")
 )
 
+// ── Heartbeat snapshot cache ───────────────────────────────────────────────
+// Stores latest heartbeat JSON per service name so new SSE clients receive
+// current service status immediately on connect (no 30s wait).
+
+var (
+	hbMu    sync.RWMutex
+	hbCache = make(map[string][]byte)
+)
+
+func cacheHeartbeat(name string, msg []byte) {
+	hbMu.Lock()
+	cp := make([]byte, len(msg))
+	copy(cp, msg)
+	hbCache[name] = cp
+	hbMu.Unlock()
+}
+
+func heartbeatSnapshot() [][]byte {
+	hbMu.RLock()
+	defer hbMu.RUnlock()
+	out := make([][]byte, 0, len(hbCache))
+	for _, v := range hbCache {
+		out = append(out, v)
+	}
+	return out
+}
+
 func envOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -61,14 +88,6 @@ func (h *Hub) removeWS(c *websocket.Conn)   { h.mu.Lock(); delete(h.wsClients, c
 func (h *Hub) addSSE(ch chan []byte)         { h.mu.Lock(); h.sseClients[ch] = struct{}{}; h.mu.Unlock() }
 func (h *Hub) removeSSE(ch chan []byte)      { h.mu.Lock(); delete(h.sseClients, ch); h.mu.Unlock() }
 
-// --- Auto-block state ---
-
-var (
-	autoBlockMu      sync.Mutex
-	autoBlockEnabled bool
-	blockedIPs       = make(map[string]bool) // src_ip → already pushed
-)
-
 // pushBlockRule sends a DROP rule to Secure Framework via REST API.
 func pushBlockRule(srcIP, ruleID, reason string) ([]byte, error) {
 	if ruleID == "" {
@@ -99,49 +118,6 @@ func pushBlockRule(srcIP, ruleID, reason string) ([]byte, error) {
 		return nil, fmt.Errorf("SF %d: %s", resp.StatusCode, string(result))
 	}
 	return result, nil
-}
-
-// tryAutoBlock is called on each new Suricata alert when auto-block is enabled.
-// Only blocks on severity 1 (P1 CRITICAL) and 2 (P2 HIGH).
-func tryAutoBlock(data string) {
-	var alert map[string]interface{}
-	if err := json.Unmarshal([]byte(data), &alert); err != nil {
-		return
-	}
-	alertData, _ := alert["alert"].(map[string]interface{})
-	if alertData == nil {
-		return
-	}
-	severity, _ := alertData["severity"].(float64)
-	if severity > 2 {
-		return
-	}
-	srcIP, _ := alert["src_ip"].(string)
-	if srcIP == "" {
-		return
-	}
-
-	autoBlockMu.Lock()
-	if blockedIPs[srcIP] {
-		autoBlockMu.Unlock()
-		return
-	}
-	blockedIPs[srcIP] = true
-	autoBlockMu.Unlock()
-
-	sig, _ := alertData["signature"].(string)
-	reason := fmt.Sprintf("auto-block: %s", sig)
-
-	go func() {
-		if _, err := pushBlockRule(srcIP, "", reason); err != nil {
-			log.Printf("[AutoBlock] FAILED %s: %v", srcIP, err)
-			autoBlockMu.Lock()
-			delete(blockedIPs, srcIP)
-			autoBlockMu.Unlock()
-		} else {
-			log.Printf("[AutoBlock] BLOCKED %s (%s)", srcIP, sig)
-		}
-	}()
 }
 
 // --- HTTP Handlers ---
@@ -179,6 +155,12 @@ func eventsHandler(w http.ResponseWriter, r *http.Request) {
 	defer hub.removeSSE(ch)
 
 	fmt.Fprintf(w, "data: {\"type\":\"connected\"}\n\n")
+	flusher.Flush()
+
+	// Replay latest heartbeat per service so new clients see status immediately
+	for _, msg := range heartbeatSnapshot() {
+		fmt.Fprintf(w, "data: %s\n\n", msg)
+	}
 	flusher.Flush()
 
 	heartbeat := time.NewTicker(15 * time.Second)
@@ -223,13 +205,116 @@ func alertsHandler(w http.ResponseWriter, r *http.Request) {
 	proxyGet(w, url)
 }
 
-// rulesProxyHandler proxies /rules → SF /api/rules (GET only)
-func rulesProxyHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "GET only", 405)
+func flowsHandler(w http.ResponseWriter, r *http.Request) {
+	url := idsURL + "/flows"
+	q := r.URL.Query()
+	params := []string{}
+	if last := q.Get("last"); last != "" {
+		params = append(params, "last="+last)
+	}
+	if since := q.Get("since"); since != "" {
+		params = append(params, "since="+since)
+	}
+	if len(params) > 0 {
+		url += "?" + strings.Join(params, "&")
+	}
+	proxyGet(w, url)
+}
+
+// rulesHandler handles GET (proxy+filter) and POST (force source=agent) for /rules
+func rulesHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	switch r.Method {
+	case http.MethodGet:
+		rulesGetHandler(w, r)
+	case http.MethodPost:
+		rulesPostHandler(w, r)
+	default:
+		http.Error(w, "GET or POST only", 405)
+	}
+}
+
+// rulesGetHandler proxies GET /rules → SF /api/rules with optional ?source= filter
+func rulesGetHandler(w http.ResponseWriter, r *http.Request) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(sfURL + "/api/rules")
+	if err != nil {
+		w.WriteHeader(503)
+		json.NewEncoder(w).Encode(map[string]string{"error": "SF offline"})
 		return
 	}
-	proxyGet(w, sfURL+"/api/rules")
+	defer resp.Body.Close()
+	w.Header().Set("Cache-Control", "no-store")
+
+	sourceFilter := r.URL.Query().Get("source")
+	if sourceFilter == "" {
+		io.Copy(w, resp.Body)
+		return
+	}
+	var rules []map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&rules); err != nil {
+		// Not a JSON array — return as-is
+		io.Copy(w, resp.Body)
+		return
+	}
+	filtered := make([]map[string]interface{}, 0)
+	for _, rule := range rules {
+		if src, _ := rule["source"].(string); src == sourceFilter {
+			filtered = append(filtered, rule)
+		}
+	}
+	json.NewEncoder(w).Encode(filtered)
+}
+
+// rulesPostHandler accepts a full rule body, forces source=agent, and forwards to SF
+func rulesPostHandler(w http.ResponseWriter, r *http.Request) {
+	var body map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		w.WriteHeader(400)
+		json.NewEncoder(w).Encode(map[string]string{"error": "invalid JSON"})
+		return
+	}
+	body["source"] = "agent" // force provenance server-side
+	raw, _ := json.Marshal(body)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Post(sfURL+"/api/rules", "application/json", bytes.NewReader(raw))
+	if err != nil {
+		w.WriteHeader(503)
+		json.NewEncoder(w).Encode(map[string]string{"error": "SF offline"})
+		return
+	}
+	defer resp.Body.Close()
+	result, _ := io.ReadAll(resp.Body)
+	w.WriteHeader(resp.StatusCode)
+	w.Write(result)
+}
+
+// rulesDeleteHandler handles DELETE /rules/{rule_id} — forward to SF
+func rulesDeleteHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "DELETE only", 405)
+		return
+	}
+	parts := strings.Split(strings.TrimSuffix(r.URL.Path, "/"), "/")
+	ruleID := parts[len(parts)-1]
+	if ruleID == "" || ruleID == "rules" {
+		w.WriteHeader(400)
+		json.NewEncoder(w).Encode(map[string]string{"error": "rule_id required"})
+		return
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, _ := http.NewRequest(http.MethodDelete, sfURL+"/api/rules/"+ruleID, nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		w.WriteHeader(503)
+		json.NewEncoder(w).Encode(map[string]string{"error": "SF offline"})
+		return
+	}
+	defer resp.Body.Close()
+	result, _ := io.ReadAll(resp.Body)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	w.Write(result)
 }
 
 // autoblockHandler handles GET (status) and POST (manual block).
@@ -237,14 +322,8 @@ func autoblockHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method == http.MethodGet {
-		autoBlockMu.Lock()
-		enabled := autoBlockEnabled
-		count := len(blockedIPs)
-		autoBlockMu.Unlock()
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"enabled":          enabled,
-			"blocked_ip_count": count,
-			"sf_url":           sfURL,
+			"sf_url": sfURL,
 		})
 		return
 	}
@@ -276,30 +355,6 @@ func autoblockHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Error(w, "GET or POST only", 405)
-}
-
-// autoblockEnableHandler: POST /autoblock/enable  or  POST /autoblock/disable
-func autoblockEnableHandler(enable bool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "POST only", 405)
-			return
-		}
-		autoBlockMu.Lock()
-		autoBlockEnabled = enable
-		if !enable {
-			blockedIPs = make(map[string]bool)
-		}
-		autoBlockMu.Unlock()
-
-		action := map[bool]string{true: "enabled", false: "disabled"}[enable]
-		log.Printf("[AutoBlock] %s", action)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"enabled": enable,
-			"message": "auto-block " + action,
-		})
-	}
 }
 
 // unblockHandler: DELETE /autoblock/unblock/{rule_id}
@@ -371,12 +426,6 @@ func consumeSSE() error {
 			continue
 		}
 		hub.broadcast([]byte(data))
-		autoBlockMu.Lock()
-		enabled := autoBlockEnabled
-		autoBlockMu.Unlock()
-		if enabled {
-			tryAutoBlock(data)
-		}
 	}
 	return scanner.Err()
 }
@@ -403,12 +452,6 @@ func runPoller() {
 			for _, a := range alerts[len(alerts)-newN:] {
 				msg, _ := json.Marshal(a)
 				hub.broadcast(msg)
-				autoBlockMu.Lock()
-				enabled := autoBlockEnabled
-				autoBlockMu.Unlock()
-				if enabled {
-					tryAutoBlock(string(msg))
-				}
 			}
 		}
 		lastCount = count
@@ -428,19 +471,68 @@ func cors(next http.Handler) http.Handler {
 	})
 }
 
+// runServiceHeartbeat polls IDS API /service-health every 30s (passive flow inference
+// from Suricata eve.json — no active TCP probe needed, IDS is inside GNS3 and sees all traffic).
+func runServiceHeartbeat() {
+	client := &http.Client{Timeout: 5 * time.Second}
+	emit := func() {
+		resp, err := client.Get(idsURL + "/service-health")
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+
+		var result struct {
+			Services []struct {
+				Name   string `json:"name"`
+				IP     string `json:"ip"`
+				Port   int    `json:"port"`
+				Zone   string `json:"zone"`
+				Status string `json:"status"`
+			} `json:"services"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return
+		}
+
+		ts := time.Now().UTC().Format(time.RFC3339)
+		for _, svc := range result.Services {
+			msg, _ := json.Marshal(map[string]interface{}{
+				"type":      "heartbeat",
+				"service":   svc.Name,
+				"zone":      svc.Zone,
+				"status":    svc.Status,
+				"dest_ip":   fmt.Sprintf("%s:%d", svc.IP, svc.Port),
+				"timestamp": ts,
+				"method":    "flow-inference",
+			})
+			cacheHeartbeat(svc.Name, msg)
+			hub.broadcast(msg)
+		}
+	}
+
+	emit()
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		emit()
+	}
+}
+
 func main() {
 	log.Printf("IDS Agent — IDS: %s  SF: %s  listen: %s", idsURL, sfURL, listenAddr)
 	go runBridge()
+	go runServiceHeartbeat()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
 	mux.HandleFunc("/alerts", alertsHandler)
+	mux.HandleFunc("/flows", flowsHandler)
 	mux.HandleFunc("/ws", wsHandler)
 	mux.HandleFunc("/events", eventsHandler)
-	mux.HandleFunc("/rules", rulesProxyHandler)
+	mux.HandleFunc("/rules", rulesHandler)
+	mux.HandleFunc("/rules/", rulesDeleteHandler)
 	mux.HandleFunc("/autoblock", autoblockHandler)
-	mux.HandleFunc("/autoblock/enable", autoblockEnableHandler(true))
-	mux.HandleFunc("/autoblock/disable", autoblockEnableHandler(false))
 	mux.HandleFunc("/autoblock/unblock/", unblockHandler)
 
 	log.Fatal(http.ListenAndServe(listenAddr, cors(mux)))

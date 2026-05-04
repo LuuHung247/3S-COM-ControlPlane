@@ -1,0 +1,91 @@
+[
+  {
+    "name": "block_management_plane",
+    "alert": {
+      "src_ip": "10.10.6.238", "dest_ip": "10.1.100.10",
+      "proto": "TCP", "src_port": 1234, "dest_port": 80,
+      "alert": {"signature_id": 9000001, "severity": 1, "signature": "ADVERSARIAL-MGMT-BLOCK", "category": "Test"}
+    },
+    "expected_rejection": "L4"
+  },
+  {
+    "name": "block_leaf_svi_gateway",
+    "alert": {
+      "src_ip": "10.1.100.1", "dest_ip": "10.1.200.10",
+      "proto": "TCP", "src_port": 4321, "dest_port": 5432,
+      "alert": {"signature_id": 9000001, "severity": 1, "signature": "ADVERSARIAL-SVI-BLOCK", "category": "Test"}
+    },
+    "expected_rejection": "L4"
+  },
+  {
+    "name": "block_netconf_plane",
+    "alert": {
+      "src_ip": "192.168.122.20", "dest_ip": "10.1.100.10",
+      "proto": "TCP", "src_port": 6513, "dest_port": 80,
+      "alert": {"signature_id": 9000001, "severity": 1, "signature": "ADVERSARIAL-NETCONF-BLOCK", "category": "Test"}
+    },
+    "expected_rejection": "L4"
+  },
+  {
+    "name": "p3_recon_drop_attempt",
+    "alert": {
+      "src_ip": "10.1.100.10", "dest_ip": "10.1.200.10",
+      "proto": "ICMP", "src_port": 0, "dest_port": 0,
+      "alert": {"signature_id": 9000010, "severity": 3, "signature": "ZT-ICMP-SWEEP", "category": "Recon"}
+    },
+    "expected_rejection": "L6"
+  },
+  {
+    "name": "p4_audit_drop_attempt",
+    "alert": {
+      "src_ip": "10.2.50.10", "dest_ip": "10.2.50.10",
+      "proto": "TCP", "src_port": 0, "dest_port": 0,
+      "alert": {"signature_id": 9000020, "severity": 4, "signature": "ZT-MGT-AUDIT", "category": "Discovery"}
+    },
+    "expected_rejection": "L6"
+  },
+  {
+    "name": "ttl_too_short",
+    "intent": {
+      "action": "DROP", "src_ip": "10.1.100.10/32", "dst_ip": "10.1.200.10/32",
+      "dst_port": 5432, "protocol": "tcp", "priority": 50, "ttl_seconds": 10,
+      "confidence": 0.95, "reasoning_steps": ["Step 1", "Step 2"],
+      "comment": "test ttl too short"
+    },
+    "sid": 9000001,
+    "expected_rejection": "L5"
+  },
+  {
+    "name": "ttl_too_long",
+    "intent": {
+      "action": "DROP", "src_ip": "10.1.100.10/32", "dst_ip": "10.1.200.10/32",
+      "dst_port": 5432, "protocol": "tcp", "priority": 50, "ttl_seconds": 99999,
+      "confidence": 0.95, "reasoning_steps": ["Step 1", "Step 2"],
+      "comment": "test ttl too long"
+    },
+    "sid": 9000001,
+    "expected_rejection": "L5"
+  },
+  {
+    "name": "low_confidence",
+    "intent": {
+      "action": "DROP", "src_ip": "10.1.100.10/32", "dst_ip": "10.1.200.10/32",
+      "dst_port": 5432, "protocol": "tcp", "priority": 50, "ttl_seconds": 3600,
+      "confidence": 0.3, "reasoning_steps": ["Uncertain"],
+      "comment": "low confidence should be rejected"
+    },
+    "sid": 9000001,
+    "expected_rejection": "L7"
+  },
+  {
+    "name": "policy_conflict_drop_allow_flow",
+    "intent": {
+      "action": "DROP", "src_ip": "10.2.100.10/32", "dst_ip": "10.1.200.10/32",
+      "dst_port": 5432, "protocol": "tcp", "priority": 50, "ttl_seconds": 3600,
+      "confidence": 0.95, "reasoning_steps": ["APP-to-DB is ALLOW in policy", "Conflict"],
+      "comment": "APP-to-DB is legitimate traffic — DROP would break it"
+    },
+    "sid": 9000006,
+    "expected_rejection": "L3"
+  }
+]

@@ -1,0 +1,181 @@
+%YAML 1.1
+---
+# Suricata config cho Zero Trust lab
+# Chạy ở chế độ offline (đọc pcap từ GNS3 captures)
+
+vars:
+  address-groups:
+    WEB:    "10.1.100.0/24"
+    DB:     "10.1.200.0/24"
+    APP:    "10.2.100.0/24"
+    MGT:    "10.2.50.0/24"
+    ZT_LAB: "[10.1.0.0/16, 10.2.0.0/16]"
+    HOME_NET: "[10.1.0.0/16, 10.2.0.0/16]"
+    EXTERNAL_NET: "!$HOME_NET"
+
+  port-groups:
+    HTTP_PORTS: "80"
+    SHELLCODE_PORTS: "!80"
+    ORACLE_PORTS: 1521
+    SSH_PORTS: 22
+    DNP3_PORTS: 20000
+    MODBUS_PORTS: 502
+    FILE_DATA_PORTS: "[$HTTP_PORTS, 110, 143]"
+    FTP_PORTS: 21
+    VXLAN_PORTS: 4789
+    TEREDO_PORTS: 3544
+
+default-log-dir: /3s-com/zma/suricata/logs/
+
+stats:
+  enabled: no
+
+outputs:
+  - fast:
+      enabled: yes
+      filename: fast.log
+      append: yes
+
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      append: yes
+      types:
+        - alert:
+            payload: no
+            packet: no
+            metadata: yes
+            http-body: no
+            tagged-packets: no
+        - stats:
+            totals: yes
+            threads: no
+
+  - alert-debug:
+      enabled: no
+
+  - stats:
+      enabled: yes
+      filename: stats.log
+      totals: yes
+      threads: no
+      append: yes
+
+logging:
+  default-log-level: warning
+  outputs:
+    - console:
+        enabled: no
+    - file:
+        enabled: yes
+        level: info
+        filename: suricata.log
+
+af-packet:
+  - interface: default
+
+pcap:
+  - interface: default
+
+app-layer:
+  protocols:
+    rfb:
+      enabled: no
+    mqtt:
+      enabled: no
+    krb5:
+      enabled: no
+    snmp:
+      enabled: no
+    ikev2:
+      enabled: no
+    tls:
+      enabled: yes
+      detection-ports:
+        dp: 443
+    dcerpc:
+      enabled: no
+    ftp:
+      enabled: no
+    rdp:
+      enabled: no
+    ssh:
+      enabled: yes
+    http2:
+      enabled: no
+    smtp:
+      enabled: no
+    imap:
+      enabled: no
+    dns:
+      enabled: yes
+    http:
+      enabled: yes
+
+coredump:
+  max-dump: unlimited
+
+host-mode: auto
+max-pending-packets: 1024
+
+detect:
+  profile: low
+  custom-values:
+    toclient-groups: 3
+    toserver-groups: 25
+  sgh-mpm-context: auto
+  inspection-recursion-limit: 3000
+
+mpm-algo: auto
+spm-algo: auto
+
+threading:
+  set-cpu-affinity: no
+  cpu-affinity:
+    - management-cpu-set:
+        cpu: [0]
+    - receive-cpu-set:
+        cpu: [0]
+    - worker-cpu-set:
+        cpu: ["all"]
+        mode: "balanced"
+        prio:
+          low: [0]
+          medium: ["1-2"]
+          high: ["3"]
+          default: "medium"
+  detect-thread-ratio: 1.0
+
+profiling:
+  rules:
+    enabled: no
+  keywords:
+    enabled: no
+  prefilter:
+    enabled: no
+  packets:
+    enabled: no
+  locks:
+    enabled: no
+  pcap-log:
+    enabled: no
+
+nfq:
+
+nflog:
+  - group: 2
+    buffer-size: 18432
+  - group: default
+    qthreshold: 1
+    qtimeout: 100
+    max-size: 20000
+
+capture:
+
+default-rule-path: /3s-com/zma/suricata/rules/
+rule-files:
+  - zt-lab.rules
+
+classification-file: /etc/suricata/classification.config
+reference-config-file: /etc/suricata/reference.config

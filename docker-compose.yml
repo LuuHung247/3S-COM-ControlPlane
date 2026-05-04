@@ -12,6 +12,8 @@ services:
       - IDS_API_URL=${IDS_API_URL:-http://10.10.6.238:8765}
       - SF_API_URL=${SF_API_URL:-http://10.10.6.238:9090}
       - AGENT_ADDR=:8766
+    networks:
+      - ztnet
     logging:
       driver: json-file
       options:
@@ -32,8 +34,90 @@ services:
       - NODE_ENV=production
     depends_on:
       - ids-agent
+    networks:
+      - ztnet
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+  intelligence-layer:
+    build:
+      context: ./intelligence-layer
+      dockerfile: Dockerfile
+    image: intelligence-layer:latest
+    container_name: intelligence-layer
+    restart: unless-stopped
+    ports:
+      - "8767:8767"
+    env_file:
+      - ./intelligence-layer/.env
+    environment:
+      - IDS_AGENT_URL=http://ids-agent:8766
+      - REDIS_URL=redis://redis:6379/0
+      - POSTGRES_URL=postgresql+asyncpg://ztuser:ztpass@postgres:5432/zerotrust
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+    depends_on:
+      - ids-agent
+      - redis
+      - postgres
+      - chroma
+    networks:
+      - ztnet
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: zt-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - ztnet
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: zt-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=ztuser
+      - POSTGRES_PASSWORD=ztpass
+      - POSTGRES_DB=zerotrust
+    volumes:
+      - zt_pgdata:/var/lib/postgresql/data
+    networks:
+      - ztnet
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: zt-chroma
+    restart: unless-stopped
+    networks:
+      - ztnet
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+networks:
+  ztnet:
+    driver: bridge
+
+volumes:
+  zt_pgdata:

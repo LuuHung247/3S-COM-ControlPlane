@@ -1,0 +1,72 @@
+[
+  {
+    "timestamp": "2026-05-03T00:01:00Z",
+    "src_ip": "10.1.100.10",
+    "dest_ip": "10.1.200.10",
+    "src_port": 54321,
+    "dest_port": 5432,
+    "proto": "TCP",
+    "alert": {
+      "signature_id": 9000001,
+      "severity": 1,
+      "signature": "ZT-WEB-TO-DB-DIRECT",
+      "category": "Lateral Movement"
+    }
+  },
+  {
+    "timestamp": "2026-05-03T00:02:00Z",
+    "src_ip": "10.1.200.10",
+    "dest_ip": "8.8.8.8",
+    "src_port": 45678,
+    "dest_port": 443,
+    "proto": "TCP",
+    "alert": {
+      "signature_id": 9000002,
+      "severity": 1,
+      "signature": "ZT-DB-EXFIL-OUTBOUND",
+      "category": "Exfiltration"
+    }
+  },
+  {
+    "timestamp": "2026-05-03T00:03:00Z",
+    "src_ip": "10.1.100.10",
+    "dest_ip": "10.2.50.10",
+    "src_port": 60000,
+    "dest_port": 22,
+    "proto": "TCP",
+    "alert": {
+      "signature_id": 9000004,
+      "severity": 2,
+      "signature": "ZT-WEB-TO-MGT-ESCALATION",
+      "category": "Privilege Escalation"
+    }
+  },
+  {
+    "timestamp": "2026-05-03T00:04:00Z",
+    "src_ip": "10.1.100.10",
+    "dest_ip": "10.1.100.20",
+    "src_port": 0,
+    "dest_port": 0,
+    "proto": "ICMP",
+    "alert": {
+      "signature_id": 9000010,
+      "severity": 3,
+      "signature": "ZT-ICMP-SWEEP",
+      "category": "Reconnaissance"
+    }
+  },
+  {
+    "timestamp": "2026-05-03T00:05:00Z",
+    "src_ip": "10.2.50.10",
+    "dest_ip": "10.2.50.10",
+    "src_port": 0,
+    "dest_port": 0,
+    "proto": "TCP",
+    "alert": {
+      "signature_id": 9000020,
+      "severity": 4,
+      "signature": "ZT-MGT-AUDIT",
+      "category": "Discovery"
+    }
+  }
+]
