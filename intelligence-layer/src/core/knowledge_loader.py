@@ -43,7 +43,9 @@ class KnowledgeLoader:
 
     # ── Tier 1: static core ──────────────────────────────────────────────────
     def render_static_core(self) -> str:
-        """Production-language knowledge base, loaded once. ~3K tokens."""
+        """FULL knowledge dump — used for startup verification, KG endpoint, debugging.
+        Per-alert use case should call build_alert_specific_prompt() instead (smaller).
+        """
         if self._tier1_cached is None:
             parts = [
                 "# DATACENTER ZERO TRUST OPERATIONS RUNBOOK",
@@ -64,6 +66,34 @@ class KnowledgeLoader:
             self._tier1_cached = "\n".join(parts)
             log.info("knowledge_tier1_loaded", token_estimate=len(self._tier1_cached) // 4)
         return self._tier1_cached
+
+    def render_alert_scoped_core(
+        self, sid: int, src_ip: str = "", dst_ip: str = ""
+    ) -> str:
+        """Tier 1 alert-conditioned: render ONLY zones/assets/SIDs/baselines relevant
+        to THIS alert. Cuts prompt size ~52% vs render_static_core().
+
+        Always includes: invariants + enforcement summary (mandatory hard constraints).
+        Conditional: zones+assets involved, this SID's detail + matching kill chains,
+        baselines involving these IPs.
+        """
+        parts = [
+            "# DATACENTER ZERO TRUST OPERATIONS RUNBOOK (alert-scoped)",
+            "",
+            "You are the AI security agent. The runbook below describes the slice of "
+            "production knowledge most relevant to this specific alert.",
+            "",
+            system_model.render_for_alert(src_ip, dst_ip),
+            "",
+            baselines.render_for_alert(src_ip, dst_ip),
+            "",
+            threat_playbook.render_for_alert(sid),
+            "",
+            enforcement_plane.render_summary(),
+            "",
+            invariants.render_for_prompt(),
+        ]
+        return "\n".join(parts)
 
     # ── Tier 2: semi-dynamic (active SF rules) ──────────────────────────────
     async def refresh_semi_dynamic(self, force: bool = False) -> None:
@@ -116,8 +146,13 @@ class KnowledgeLoader:
         dst_port: int = 0,
         proto: str = "tcp",
         alert_history_summary: dict | None = None,
+        investigation: dict | None = None,
     ) -> str:
-        """Per-alert micro-context — only what's relevant for this specific alert."""
+        """Per-alert micro-context — only what's relevant for this specific alert.
+
+        If `investigation` dict is provided (from tools.prefetch_investigation_context),
+        renders structured tool output sections.
+        """
         parts = ["## ALERT-SPECIFIC CONTEXT\n"]
 
         # Source asset profile
@@ -159,22 +194,100 @@ class KnowledgeLoader:
                     "\n### Baseline match: NONE — flow is NOT in known production traffic patterns."
                 )
 
-        # Recent alert history (aggregated summary, not raw)
+        # Recent activity (aggregated summary)
         if alert_history_summary:
             parts.append(
                 f"\n### Recent activity from {src_ip} (last 30 days)\n"
                 f"- Total alerts: {alert_history_summary.get('total_alerts', 0)}\n"
                 f"- Distinct SIDs: {alert_history_summary.get('distinct_sids', 0)}\n"
+                f"- Trust score: {alert_history_summary.get('trust_score')}\n"
                 f"- Past decisions: {alert_history_summary.get('decision_summary', '(none)')}"
             )
+
+        # Investigation tool outputs (NEW — Phase 1)
+        if investigation:
+            parts.append("\n## INVESTIGATION FINDINGS (pre-fetched, structured)\n")
+
+            # Tool 1: blast radius
+            neighbors = investigation.get("asset_neighbors", {})
+            if neighbors and not neighbors.get("error"):
+                parts.append("### Blast radius assessment (if we block source)")
+                parts.append(f"- Asset known: {neighbors.get('asset_known')}, criticality={neighbors.get('criticality')}")
+                parts.append(f"- Blast radius score: **{neighbors.get('blast_radius_score')}**")
+                outbound = neighbors.get("outbound_flows", [])
+                inbound = neighbors.get("inbound_flows", [])
+                if outbound:
+                    flows_str = ", ".join(f"{f['name']}({f['criticality']})" for f in outbound)
+                    parts.append(f"- Outbound flows from this IP: {flows_str}")
+                if inbound:
+                    parts.append(f"- Inbound flows to this IP: {len(inbound)} flows")
+                if neighbors.get("if_blocked"):
+                    parts.append(f"- If blocked: {neighbors.get('if_blocked')}")
+
+            # Tool 2: past incidents
+            past = investigation.get("past_incidents", {})
+            if past and not past.get("error"):
+                parts.append("\n### Past similar incidents (90-day lookback)")
+                if past.get("match_count", 0) == 0:
+                    parts.append(f"- {past.get('note', 'No history')}")
+                else:
+                    parts.append(f"- Match count: {past['match_count']}")
+                    parts.append(f"- Outcome breakdown: {past.get('outcome_breakdown')}")
+                    parts.append(f"- Pattern: {past.get('pattern_assessment')}")
+                    last = past.get("last_decisions", [])[:3]
+                    if last:
+                        last_str = "; ".join(
+                            f"[{d['date'][:10]}] {d['outcome']} action={d['action']} conf={d['confidence']}"
+                            for d in last
+                        )
+                        parts.append(f"- Last decisions: {last_str}")
+
+            # Tool 3: block impact simulation
+            impact = investigation.get("block_impact", {})
+            if impact and not impact.get("error"):
+                parts.append("\n### Block impact simulation (counterfactual)")
+                full = impact.get("full_block_impact", {})
+                targeted = impact.get("targeted_block_impact", {})
+                if full.get("outbound_flows_broken"):
+                    parts.append("- Full-source block would break:")
+                    for f in full["outbound_flows_broken"]:
+                        parts.append(f"  - {f['name']} (criticality={f['criticality']}): {f['consequence']}")
+                if targeted.get("rule_form") and "(no dst" not in targeted["rule_form"]:
+                    parts.append(f"- Targeted block ({targeted['rule_form']}): "
+                                 f"matches baseline={targeted.get('matches_legitimate_baseline')}")
+                parts.append(f"- Recommendation: {impact.get('recommendation')}")
+
+            # Kill chain match
+            kc_match = investigation.get("kill_chain_match", [])
+            if kc_match:
+                parts.append("\n### Kill-chain stage matches")
+                for m in kc_match:
+                    parts.append(
+                        f"- **{m['kill_chain']}** stage {m['stage']} ({m['tactic']}): {m['indicator']}"
+                    )
+                    parts.append(f"  - Recommended intervention: {m['intervention_point']}")
+                    parts.append(f"  - Containment: {m['containment_strategy']}")
 
         return "\n".join(parts)
 
     # ── Composite: full system prompt ────────────────────────────────────────
     async def build_system_prompt(self) -> str:
-        """Assemble Tier 1 + Tier 2 for system message. Tier 3 goes in user message."""
+        """Legacy full-knowledge system prompt. Use build_alert_specific_prompt for
+        per-alert path."""
         await self.refresh_semi_dynamic()
         return f"{self.render_static_core()}\n\n{self.render_semi_dynamic()}"
+
+    async def build_alert_specific_prompt(
+        self, sid: int, src_ip: str = "", dst_ip: str = ""
+    ) -> str:
+        """Composite per-alert system prompt: alert-scoped Tier 1 + Tier 2 active rules.
+        Significantly smaller than build_system_prompt() — typical 3K vs 6.3K tokens.
+        """
+        await self.refresh_semi_dynamic()
+        return (
+            f"{self.render_alert_scoped_core(sid, src_ip, dst_ip)}\n\n"
+            f"{self.render_semi_dynamic()}"
+        )
 
 
 def _flatten_rules(data: Any) -> list[dict]:

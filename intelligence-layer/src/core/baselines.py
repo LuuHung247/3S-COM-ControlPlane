@@ -206,7 +206,18 @@ def match_baseline(src_ip: str, dst_ip: str, dst_port: int, proto: str = "tcp") 
     return None
 
 
+def _render_pattern_full(p: TrafficPattern) -> str:
+    return (
+        f"- **{p.name}**: {p.src_ip} → {p.dst_ip}:{p.dst_port}/{p.proto}, {p.cadence}, "
+        f"~{p.expected_volume_per_hour}/hr, criticality={p.criticality_to_business.value}\n"
+        f"  - {p.production_description}\n"
+        f"  - Anomaly trigger: {p.burst_anomaly_threshold}\n"
+        f"  - If disrupted: {p.if_disrupted}"
+    )
+
+
 def render_for_prompt() -> str:
+    """Full baseline render — startup verification."""
     parts: list[str] = ["## PRODUCTION TRAFFIC BASELINES\n"]
     parts.append(
         f"Steady-state east-west volume: ~{STEADY_STATE_FLOWS_PER_MINUTE} flows/minute. "
@@ -214,26 +225,40 @@ def render_for_prompt() -> str:
         "REQUIRED VISIBILITY, not incidents.\n"
     )
     parts.append("### Application traffic (business workload)\n")
-    for p in APPLICATION_FLOWS:
-        parts.append(
-            f"- **{p.name}**: {p.src_ip} → {p.dst_ip}:{p.dst_port}/{p.proto}, {p.cadence}, "
-            f"~{p.expected_volume_per_hour}/hr, criticality={p.criticality_to_business.value}\n"
-            f"  - {p.production_description}\n"
-            f"  - Anomaly trigger: {p.burst_anomaly_threshold}\n"
-            f"  - If disrupted: {p.if_disrupted}"
-        )
+    parts.extend(_render_pattern_full(p) for p in APPLICATION_FLOWS)
+    parts.append("\n### Management plane traffic\n")
+    parts.extend(_render_pattern_full(p) for p in MANAGEMENT_FLOWS)
+    parts.append("\n### Anomalous patterns (NOT in baseline — red flags)\n")
+    parts.extend(f"- {s}" for s in ANOMALOUS_PATTERNS)
+    return "\n".join(parts)
 
-    parts.append("\n### Management plane traffic (audit/scrape/logpull)\n")
-    for p in MANAGEMENT_FLOWS:
-        parts.append(
-            f"- **{p.name}**: {p.src_ip} → {p.dst_ip}:{p.dst_port}/{p.proto}, {p.cadence}, "
-            f"criticality={p.criticality_to_business.value}\n"
-            f"  - {p.production_description}\n"
-            f"  - If disrupted: {p.if_disrupted}"
-        )
+
+def render_for_alert(src_ip: str = "", dst_ip: str = "") -> str:
+    """Render ONLY baselines involving src_ip or dst_ip + always-relevant anomaly patterns.
+
+    If neither src nor dst matches any baseline, emits a short note and full anomaly list.
+    """
+    bare_src = src_ip.split("/")[0] if src_ip else ""
+    bare_dst = dst_ip.split("/")[0] if dst_ip else ""
+
+    relevant: list[TrafficPattern] = []
+    for p in ALL_BASELINES:
+        if (bare_src and p.src_ip == bare_src) or (bare_dst and p.dst_ip in (bare_dst, "rotating")):
+            relevant.append(p)
+
+    parts: list[str] = ["## PRODUCTION TRAFFIC BASELINES (alert-specific slice)\n"]
+    parts.append(
+        f"Steady-state datacenter volume: ~{STEADY_STATE_FLOWS_PER_MINUTE} flows/minute. "
+        f"SID 9000020 emissions ~{MGT_AUDIT_ALERT_RATE_PER_MINUTE}/minute are required visibility, not incidents.\n"
+    )
+
+    if relevant:
+        parts.append("### Baselines involving the alert IPs\n")
+        parts.extend(_render_pattern_full(p) for p in relevant)
+    else:
+        parts.append("### Baselines: this src/dst pair is NOT part of any known production flow.\n"
+                     "All other east-west baselines involve other IPs and are not relevant to this decision.")
 
     parts.append("\n### Anomalous patterns (NOT in baseline — red flags)\n")
-    for s in ANOMALOUS_PATTERNS:
-        parts.append(f"- {s}")
-
+    parts.extend(f"- {s}" for s in ANOMALOUS_PATTERNS)
     return "\n".join(parts)

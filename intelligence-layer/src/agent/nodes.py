@@ -3,7 +3,10 @@ import json
 import structlog
 
 from ..models.alert import SuricataAlert
-from ..models.decision import PolicyIntent, PolicyAction, DecisionOutcome
+from ..models.decision import (
+    PolicyIntent, PolicyAction, DecisionOutcome,
+    Hypothesis, AlternativeAction, RollbackPlan,
+)
 from ..core.topology import ip_to_zone
 from ..core.knowledge_loader import KnowledgeLoader
 from ..storage.redis import RedisStore
@@ -18,7 +21,10 @@ from .safety.circuit_breaker import CircuitBreaker
 from .tools import (
     POLICY_INTENT_SCHEMA,
     execute_get_alert_history,
+    prefetch_investigation_context,
 )
+from .response_cache import ResponseCache, rebind_cached_intent
+from ..storage.postgres import PostgresStore
 from .prompts import build_system_prompt, build_classify_prompt, build_reason_prompt
 from .state import AgentState
 
@@ -29,8 +35,16 @@ async def node_load_context(
     state: AgentState,
     knowledge: KnowledgeLoader,
 ) -> dict:
-    """Tier 1 (static) is cached forever; Tier 2 (active rules) refreshes every 30s."""
-    system_prompt = await knowledge.build_system_prompt()
+    """Build alert-conditioned system prompt: only zones/SIDs/baselines relevant
+    to this alert + always-on invariants + enforcement contract summary.
+    Cuts prompt size ~52% vs full knowledge dump.
+    """
+    alert: SuricataAlert = state["alert"]
+    system_prompt = await knowledge.build_alert_specific_prompt(
+        sid=alert.sid,
+        src_ip=alert.src_ip,
+        dst_ip=alert.dest_ip,
+    )
     return {"context_snapshot": system_prompt}
 
 
@@ -42,6 +56,14 @@ async def node_classify_alert(
     src_zone = ip_to_zone(alert.src_ip)
     system = build_system_prompt(state.get("context_snapshot", ""))
     user = build_classify_prompt(alert, src_zone)
+
+    # L1+ prompt-injection scan on attacker-controllable fields. Pure logging here —
+    # build_*_prompt already sanitizes before LLM sees the text.
+    from .safety.prompt_injection import sanitize_alert_fields
+    _, _, injection_meta = sanitize_alert_fields(alert.signature, alert.category)
+    if injection_meta.get("signature_flagged") or injection_meta.get("category_flagged"):
+        log.warning("prompt_injection_flagged",
+                    sid=alert.sid, src_ip=alert.src_ip, **injection_meta)
 
     try:
         result = await fast_llm.chat(
@@ -57,7 +79,10 @@ async def node_classify_alert(
         classification = "suspicious"
 
     log.info("alert_classified", sid=alert.sid, src_ip=alert.src_ip, classification=classification)
-    return {"classification": classification}
+    return {
+        "classification": classification,
+        "safety_checks": {"prompt_injection": injection_meta},
+    }
 
 
 async def node_log_and_end(state: AgentState) -> dict:
@@ -76,36 +101,54 @@ async def node_gather_context(
     redis: RedisStore,
     memory: OperationalMemory,
     knowledge: KnowledgeLoader,
+    postgres: PostgresStore,
 ) -> dict:
     """Build per-alert context: Redis recent history + operational memory aggregated
-    summary + Tier 3 alert-specific knowledge render."""
+    summary + Tier 3 alert-specific knowledge render + investigation tools (parallel)."""
+    import asyncio
+
     alert: SuricataAlert = state["alert"]
-    history = await execute_get_alert_history(redis, alert.src_ip, limit=10)
     await redis.push_alert_history(alert.src_ip, alert.raw)
 
-    # Aggregated summary from Postgres (last 30 days)
-    try:
-        ip_summary = await memory.get_ip_summary(alert.src_ip, window_days=30)
-    except Exception as exc:
-        log.warning("operational_memory_summary_failed", error=str(exc))
+    # Run all data fetches in parallel — operational memory + investigation tools
+    history_task = execute_get_alert_history(redis, alert.src_ip, limit=10)
+    summary_task = memory.get_ip_summary(alert.src_ip, window_days=30)
+    correlation_task = memory.get_recent_alerts_for_correlation(alert.src_ip, window_minutes=10)
+    investigation_task = prefetch_investigation_context(
+        postgres=postgres,
+        src_ip=alert.src_ip,
+        dst_ip=alert.dest_ip,
+        dst_port=alert.dest_port,
+        sid=alert.sid,
+    )
+
+    history, ip_summary, correlation, investigation = await asyncio.gather(
+        history_task, summary_task, correlation_task, investigation_task,
+        return_exceptions=True,
+    )
+
+    # Coerce exceptions to None — keep pipeline robust
+    if isinstance(history, Exception):
+        log.warning("alert_history_fetch_failed", error=str(history))
+        history = {"history": []}
+    if isinstance(ip_summary, Exception):
+        log.warning("ip_summary_failed", error=str(ip_summary))
         ip_summary = None
-
-    # Short-window correlation (last 10 min) for kill chain detection
-    try:
-        correlation = await memory.get_recent_alerts_for_correlation(
-            alert.src_ip, window_minutes=10
-        )
-    except Exception as exc:
-        log.warning("operational_memory_correlation_failed", error=str(exc))
+    if isinstance(correlation, Exception):
+        log.warning("correlation_failed", error=str(correlation))
         correlation = None
+    if isinstance(investigation, Exception):
+        log.warning("investigation_failed", error=str(investigation))
+        investigation = None
 
-    # Tier 3 alert-specific context
+    # Tier 3 alert-specific context (now includes investigation findings)
     alert_context = knowledge.render_alert_context(
         src_ip=alert.src_ip,
         dst_ip=alert.dest_ip,
         dst_port=alert.dest_port,
         proto=alert.proto.lower() if alert.proto else "tcp",
         alert_history_summary=ip_summary,
+        investigation=investigation,
     )
 
     return {
@@ -113,6 +156,50 @@ async def node_gather_context(
         "ip_summary": ip_summary,
         "correlation": correlation,
         "alert_context": alert_context,
+    }
+
+
+async def node_check_response_cache(
+    state: AgentState,
+    response_cache: ResponseCache,
+) -> dict:
+    """Check Redis for cached PolicyIntent matching this alert's threat shape.
+    On hit: rebind src_ip to current alert and skip LLM call. On miss: continue.
+    """
+    alert: SuricataAlert = state["alert"]
+    correlation = state.get("correlation") or {}
+    correlation_signal = correlation.get("kill_chain_signal", "")
+
+    cache_key = ResponseCache.compute_key(
+        sid=alert.sid,
+        src_ip=alert.src_ip,
+        dst_ip=alert.dest_ip or "",
+        dst_port=alert.dest_port or 0,
+        protocol=alert.proto.lower() if alert.proto else "tcp",
+        correlation_signal=correlation_signal,
+    )
+
+    cached = await response_cache.get(cache_key)
+    if cached is None:
+        return {"cache_key": cache_key, "cache_hit": False}
+
+    intent = rebind_cached_intent(cached, alert)
+    if intent is None:
+        return {"cache_key": cache_key, "cache_hit": False}
+
+    log.info(
+        "response_cache_hit",
+        cache_key=cache_key[-16:],
+        sid=alert.sid,
+        src_ip=alert.src_ip,
+        cached_at=cached.get("cached_at"),
+    )
+    return {
+        "cache_key": cache_key,
+        "cache_hit": True,
+        "intent": intent,
+        "safety_checks": {"cache": {"hit": True, "key": cache_key[-16:],
+                                     "cached_at": cached.get("cached_at")}},
     }
 
 
@@ -181,6 +268,69 @@ async def node_reason_and_decide(
     except ValueError:
         action = PolicyAction.LOG_ONLY
 
+    # Parse V2 hypothesis fields — schema uses flat strings (Cerebras tool-call parser
+    # cannot reliably handle nested objects). Strings are persisted as-is.
+    hypotheses_raw = result.get("hypotheses") or []
+    hypotheses: list[Hypothesis] = []
+    for h in hypotheses_raw:
+        try:
+            if isinstance(h, str):
+                # Try to extract probability from formatted string like:
+                # "name (probability=0.6) — description. Evidence: ..."
+                import re as _re
+                prob_match = _re.search(r"probability\s*=\s*([0-9.]+)", h)
+                prob = float(prob_match.group(1)) if prob_match else 0.5
+                # Name = text before first '(' if present
+                name = h.split("(")[0].strip() or "unnamed"
+                hypotheses.append(Hypothesis(
+                    name=name[:80], description=h, probability=min(max(prob, 0.0), 1.0),
+                ))
+            elif isinstance(h, dict):
+                hypotheses.append(Hypothesis(
+                    name=h.get("name", "unnamed"),
+                    description=h.get("description", ""),
+                    probability=float(h.get("probability", 0.5)),
+                    supporting_evidence=h.get("supporting_evidence", []) or [],
+                    disconfirming_evidence=h.get("disconfirming_evidence", []) or [],
+                ))
+        except Exception:
+            continue
+
+    alt_raw = result.get("alternative_actions") or []
+    alternatives: list[AlternativeAction] = []
+    for a in alt_raw:
+        try:
+            if isinstance(a, str):
+                # Format: "if <trigger> then <action> because <rationale>"
+                action_word = "log_only"
+                if "DROP" in a.upper():
+                    action_word = "DROP"
+                elif "ESCALATE" in a.upper():
+                    action_word = "ESCALATE_HUMAN"
+                alternatives.append(AlternativeAction(
+                    trigger_condition=a, action=action_word, rationale=a,
+                ))
+            elif isinstance(a, dict):
+                alternatives.append(AlternativeAction(
+                    trigger_condition=a.get("trigger_condition", ""),
+                    action=a.get("action", "log_only"),
+                    rationale=a.get("rationale", ""),
+                ))
+        except Exception:
+            continue
+
+    rollback_raw = result.get("rollback_plan")
+    if isinstance(rollback_raw, dict):
+        rollback = RollbackPlan(
+            trigger=rollback_raw.get("trigger", ""),
+            action=rollback_raw.get("action", ""),
+            monitor_seconds=int(rollback_raw.get("monitor_seconds", 300)),
+        )
+    elif isinstance(rollback_raw, str):
+        rollback = RollbackPlan(trigger=rollback_raw, action=rollback_raw, monitor_seconds=300)
+    else:
+        rollback = RollbackPlan()
+
     try:
         intent = PolicyIntent(
             action=action,
@@ -195,6 +345,11 @@ async def node_reason_and_decide(
             reasoning_steps=result.get("reasoning_steps", []),
             mitre_technique=result.get("mitre_technique", ""),
             mitre_tactic=result.get("mitre_tactic", ""),
+            hypotheses=hypotheses,
+            primary_hypothesis=result.get("primary_hypothesis", ""),
+            alternative_actions=alternatives,
+            rollback_plan=rollback,
+            follow_up_actions=result.get("follow_up_actions", []) or [],
         )
     except Exception as exc:
         return {

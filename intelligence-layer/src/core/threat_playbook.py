@@ -344,30 +344,79 @@ def find_kill_chain_stage(sid: int) -> list[tuple[KillChain, KillChainStage]]:
     return matches
 
 
+def _render_sid_detail(d: SidDetection) -> str:
+    return (
+        f"- **SID {d.sid}** (P{d.severity_p_level}, {d.mitre_tactic} / {d.mitre_technique})\n"
+        f"  - Signature: {d.signature_msg}\n"
+        f"  - {d.production_description}\n"
+        f"  - Detection: {d.detection_logic}\n"
+        f"  - Recommended: {d.recommended_response} (TTL {d.default_ttl_seconds}s)\n"
+        f"  - False positive likelihood: {d.false_positive_likelihood}\n"
+        f"  - FP scenarios: {'; '.join(d.false_positive_scenarios) or '(none)'}"
+    )
+
+
+def _render_kill_chain(kc: KillChain) -> str:
+    parts = [
+        f"\n**{kc.name}**",
+        f"- Threat: {kc.production_description}",
+        f"- Dwell between stages: {kc.typical_dwell_between_stages}",
+        f"- Intervention point: {kc.recommended_intervention_point}",
+        f"- Containment: {kc.containment_strategy}",
+        "- Stages:",
+    ]
+    for stage in kc.stages:
+        sids_str = ", ".join(f"SID {s}" for s in stage.expected_signals)
+        parts.append(f"  - Stage {stage.stage} ({stage.tactic}) — signals: {sids_str}. {stage.production_indicators}")
+    return "\n".join(parts)
+
+
 def render_for_prompt() -> str:
+    """FULL render — used for startup verification."""
     parts: list[str] = ["## THREAT PLAYBOOK — Active Suricata Detections & Kill Chains\n"]
-
     parts.append("### Active SID Inventory (8 detections)\n")
-    for sid, d in SID_DETECTIONS.items():
-        parts.append(
-            f"- **SID {sid}** (P{d.severity_p_level}, {d.mitre_tactic} / {d.mitre_technique})\n"
-            f"  - Signature: {d.signature_msg}\n"
-            f"  - {d.production_description}\n"
-            f"  - Detection: {d.detection_logic}\n"
-            f"  - Recommended: {d.recommended_response} (TTL {d.default_ttl_seconds}s)\n"
-            f"  - False positive likelihood: {d.false_positive_likelihood}"
-        )
-
+    parts.extend(_render_sid_detail(d) for d in SID_DETECTIONS.values())
     parts.append("\n### Kill Chains (multi-stage adversary playbooks)\n")
+    parts.extend(_render_kill_chain(kc) for kc in KILL_CHAINS)
+    return "\n".join(parts)
+
+
+def render_for_alert(sid: int) -> str:
+    """Render ONLY this SID's detail + kill chains containing this SID.
+    For other SIDs, list short reference (just sid + severity + tactic) so LLM has
+    awareness without verbose detail.
+    """
+    parts: list[str] = ["## THREAT PLAYBOOK (alert-specific slice)\n"]
+
+    # Full detail for this SID
+    target = SID_DETECTIONS.get(sid)
+    parts.append("### Triggered detection\n")
+    if target:
+        parts.append(_render_sid_detail(target))
+    else:
+        parts.append(f"- SID {sid}: UNKNOWN — not in active inventory. Treat with caution.")
+
+    # Short reference of other SIDs (for context awareness)
+    other_sids = [d for s, d in SID_DETECTIONS.items() if s != sid]
+    if other_sids:
+        parts.append("\n### Other SIDs in active inventory (reference only)\n")
+        for d in other_sids:
+            parts.append(
+                f"- SID {d.sid} (P{d.severity_p_level}): {d.signature_msg} — {d.recommended_response}"
+            )
+
+    # Only kill chains that involve this SID
+    matching_chains = []
     for kc in KILL_CHAINS:
-        parts.append(f"\n**{kc.name}**")
-        parts.append(f"- Threat: {kc.production_description}")
-        parts.append(f"- Dwell between stages: {kc.typical_dwell_between_stages}")
-        parts.append(f"- Intervention point: {kc.recommended_intervention_point}")
-        parts.append(f"- Containment: {kc.containment_strategy}")
-        parts.append("- Stages:")
         for stage in kc.stages:
-            sids_str = ", ".join(f"SID {s}" for s in stage.expected_signals)
-            parts.append(f"  - Stage {stage.stage} ({stage.tactic}) — signals: {sids_str}. {stage.production_indicators}")
+            if sid in stage.expected_signals:
+                matching_chains.append(kc)
+                break
+
+    if matching_chains:
+        parts.append("\n### Kill chains containing this SID\n")
+        parts.extend(_render_kill_chain(kc) for kc in matching_chains)
+    else:
+        parts.append("\n### Kill chains: this SID is not part of any modeled multi-stage attack.")
 
     return "\n".join(parts)

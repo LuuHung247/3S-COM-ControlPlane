@@ -77,6 +77,18 @@ class OperationalMemory:
             )
             outcome_breakdown = {row[0]: row[1] for row in outcome_q.all()}
 
+            # Retrospective accuracy (V2 — Phase 4)
+            retro_q = await sess.execute(
+                select(DecisionRecord.retrospective_outcome, func.count())
+                .where(
+                    DecisionRecord.alert_src_ip == src_ip,
+                    DecisionRecord.created_at >= cutoff,
+                    DecisionRecord.retrospective_outcome.is_not(None),
+                )
+                .group_by(DecisionRecord.retrospective_outcome)
+            )
+            retro_breakdown = {row[0]: row[1] for row in retro_q.all()}
+
             # Recent SID frequency
             sid_q = await sess.execute(
                 select(DecisionRecord.alert_sid, func.count())
@@ -108,6 +120,7 @@ class OperationalMemory:
             "last_seen": last_seen.isoformat() if last_seen else None,
             "distinct_sids": distinct_sids,
             "outcome_breakdown": outcome_breakdown,
+            "retrospective_breakdown": retro_breakdown,   # NEW Phase 4
             "top_sids": top_sids,
             "decision_summary": f"alerts: {decisions_str}; top SIDs: {sids_str}",
             "trust_score": round(trust_score, 2),

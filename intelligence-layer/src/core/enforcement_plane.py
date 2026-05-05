@@ -181,6 +181,7 @@ Defense-in-depth on enforcement plane:
 
 
 def render_for_prompt() -> str:
+    """Full enforcement plane render — startup / KG visualization."""
     parts: list[str] = ["## ENFORCEMENT PLANE — Secure Framework Contract\n"]
 
     parts.append(
@@ -188,23 +189,34 @@ def render_for_prompt() -> str:
         "NO Redis/iptables access. SF endpoint: `http://ids-agent:8766/...` (proxied through "
         "ids-agent which forwards to SF).\n"
     )
-
     parts.append("### Endpoints in scope\n")
     for ep, desc in ENDPOINT_CONTRACTS.items():
         parts.append(f"- **{ep}**: {desc}")
-
-    parts.append("\n### RBAC\n")
-    parts.append(RBAC_CONTRACT.strip())
-
-    parts.append("\n### Critical gotchas (read carefully)\n")
+    parts.append("\n### RBAC\n" + RBAC_CONTRACT.strip())
+    parts.append("\n### Critical gotchas\n")
     for g in CRITICAL_GOTCHAS:
         parts.append(f"- {g}")
-
     parts.append("\n### Failure modes & agent recovery\n")
     for fm in FAILURE_MODES:
         parts.append(
             f"- **{fm.name}**: trigger={fm.trigger} → status {fm.rest_status}, body `{fm.body_signature}`. "
             f"State: {fm.state}. Agent action: {fm.agent_action}"
         )
+    return "\n".join(parts)
 
+
+def render_summary() -> str:
+    """Compact enforcement contract for per-alert prompts. Just gotchas + RBAC + key
+    endpoints, no failure mode walkthroughs (those rarely apply per alert)."""
+    parts: list[str] = ["## ENFORCEMENT PLANE (summary)\n"]
+    parts.append(
+        "Single source of truth: SF REST via `http://ids-agent:8766`. "
+        "Push: `POST /rules` (returns 201, sync — when 201 received rule is on iptables). "
+        "Revoke: `DELETE /rules/{id}` (idempotent). "
+        "Verify: `GET /rules/{id}`."
+    )
+    parts.append("\n### RBAC (must obey)\n" + RBAC_CONTRACT.strip())
+    parts.append("\n### Critical gotchas (must obey)\n")
+    for g in CRITICAL_GOTCHAS:
+        parts.append(f"- {g}")
     return "\n".join(parts)

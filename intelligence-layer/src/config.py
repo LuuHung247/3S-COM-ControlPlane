@@ -57,6 +57,16 @@ class Settings(BaseSettings):
     safety_circuit_fail_threshold: int = 3
     safety_circuit_halt_seconds: int = 300
 
+    # Response cache (Phase B — Redis-backed PolicyIntent cache)
+    response_cache_enabled: bool = True
+    response_cache_ttl_seconds: int = 60
+
+    # Langfuse — LLM observability (self-hosted v2)
+    langfuse_enabled: bool = True
+    langfuse_host: str = "http://langfuse:3000"
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+
     # Observability
     log_level: str = "INFO"
 

@@ -5,7 +5,7 @@ from collections import deque
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 
 from ..models.alert import SuricataAlert
 from .schemas import AlertIngest, DecisionResponse, HealthResponse, RevokeResponse
@@ -136,6 +136,73 @@ async def admin_reset(request: Request) -> dict:
     agent = request.app.state.agent
     await agent._rate_limiter.reset()
     return {"ok": True, "reset": ["rate_limiter"]}
+
+
+@router.get("/cache/stats")
+async def response_cache_stats(request: Request) -> dict:
+    """Hit/miss counters for the LLM response cache (Phase B)."""
+    cache = request.app.state.response_cache
+    return await cache.stats()
+
+
+@router.post("/cache/reset")
+async def response_cache_reset(request: Request) -> dict:
+    """Reset cache counters (does NOT flush cached entries — TTL handles those)."""
+    cache = request.app.state.response_cache
+    await cache.reset_stats()
+    return {"ok": True, "reset": "stats"}
+
+
+@router.get("/prompt/preview")
+async def prompt_preview(
+    request: Request,
+    sid: int = 9000001,
+    src_ip: str = "10.1.100.10",
+    dst_ip: str = "10.1.200.10",
+) -> dict:
+    """Inspect the alert-scoped system prompt for a given alert shape.
+    Useful to verify Part A dynamic knowledge selection is working."""
+    knowledge = request.app.state.knowledge
+    prompt = await knowledge.build_alert_specific_prompt(sid=sid, src_ip=src_ip, dst_ip=dst_ip)
+    full = knowledge.render_static_core()
+    return {
+        "alert": {"sid": sid, "src_ip": src_ip, "dst_ip": dst_ip},
+        "alert_scoped_prompt_chars": len(prompt),
+        "alert_scoped_tokens_approx": len(prompt) // 4,
+        "full_prompt_chars_for_comparison": len(full),
+        "full_tokens_approx": len(full) // 4,
+        "reduction_percent": round(100 * (1 - len(prompt) / max(len(full), 1)), 1),
+        "prompt": prompt,
+    }
+
+
+@router.get("/kg/visualize", response_class=HTMLResponse)
+async def visualize_knowledge_graph() -> HTMLResponse:
+    """Render the agent's knowledge graph as interactive HTML.
+
+    Shows: zones, assets, leafs, SIDs, kill chains, baselines, and relationships
+    (membership, enforcement, policy ALLOW/DENY, kill-chain stages, traffic flows).
+    Open in browser to inspect what the agent 'knows'.
+    """
+    from ..core.kg_visualizer import render_html_string
+    html = render_html_string()
+    return HTMLResponse(content=html)
+
+
+@router.get("/kg/stats")
+async def knowledge_graph_stats() -> dict:
+    """Lightweight summary of KG contents — counts of each node type and edges."""
+    from ..core.kg_visualizer import build_knowledge_graph
+    G = build_knowledge_graph()
+    type_counts: dict[str, int] = {}
+    for _, attrs in G.nodes(data=True):
+        t = attrs.get("type", "unknown")
+        type_counts[t] = type_counts.get(t, 0) + 1
+    return {
+        "total_nodes": G.number_of_nodes(),
+        "total_edges": G.number_of_edges(),
+        "by_type": type_counts,
+    }
 
 
 @router.get("/stream")

@@ -17,6 +17,14 @@ class AgentState(TypedDict, total=False):
     correlation: dict | None       # Short-window kill-chain correlation (10min)
     alert_context: str             # Tier 3 alert-specific knowledge render
 
+    # Cache (Phase B — response cache)
+    cache_key: str
+    cache_hit: bool
+
+    # Tracing (Langfuse)
+    trace_id: str
+    _trace: Any   # Langfuse trace handle (or no-op stub)
+
     # Output
     intent: PolicyIntent | None
     outcome: DecisionOutcome
