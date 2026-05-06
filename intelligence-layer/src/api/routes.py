@@ -92,6 +92,18 @@ async def list_decisions(request: Request, limit: int = 50) -> list[dict]:
     return await postgres.list_decisions(limit=limit)
 
 
+@router.get("/decisions/{decision_id}")
+async def get_decision(decision_id: str, request: Request) -> dict:
+    """Full decision detail incl V3 reasoning trace fields. Used by frontend
+    'Reasoning' modal. If reasoning_loading=true, frontend should poll until
+    reasoning_completed_at is set (or give up after timeout)."""
+    postgres = request.app.state.postgres
+    record = await postgres.get_decision(decision_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="decision not found")
+    return record
+
+
 @router.delete("/decisions/{rule_id}", response_model=RevokeResponse)
 async def revoke_decision(rule_id: str, request: Request) -> RevokeResponse:
     """Emergency revert — delete a rule from the dataplane."""
@@ -136,6 +148,41 @@ async def admin_reset(request: Request) -> dict:
     agent = request.app.state.agent
     await agent._rate_limiter.reset()
     return {"ok": True, "reset": ["rate_limiter"]}
+
+
+@router.get("/events")
+async def get_events(
+    request: Request,
+    since: str = "",
+    limit: int = 600,
+    kind: str = "all",
+) -> list[dict]:
+    """Fetch buffered events (alerts + flows) from Redis DB 1 (7-day retention).
+
+    `since` accepts:
+      - empty string → return last `limit` events newest-first
+      - integer string → unix epoch milliseconds
+      - ISO 8601 timestamp → parsed to ms
+    `kind` is one of all | violation | flow.
+    """
+    store = request.app.state.events_store
+    since_ms = 0
+    if since:
+        try:
+            since_ms = int(since)
+        except ValueError:
+            try:
+                from datetime import datetime
+                since_ms = int(datetime.fromisoformat(since.replace("Z", "+00:00")).timestamp() * 1000)
+            except Exception:
+                since_ms = 0
+    return await store.get_events(since_ms=since_ms, limit=min(limit, 2000), kind=kind)
+
+
+@router.get("/events/stats")
+async def events_stats(request: Request) -> dict:
+    store = request.app.state.events_store
+    return await store.stats()
 
 
 @router.get("/cache/stats")

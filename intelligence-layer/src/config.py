@@ -22,8 +22,12 @@ class Settings(BaseSettings):
 
     llm_timeout_seconds: int = 10
 
-    # Redis
+    # Redis — DB 0 = agent state (dedup, cache, eval-flushable),
+    # DB 1 = events stream (traffic + violations, 7-day retention, NOT flushed by eval)
     redis_url: str = "redis://localhost:6379/0"
+    redis_events_url: str = "redis://localhost:6379/1"
+    events_retention_days: int = 7
+    events_max_total: int = 100_000
 
     # Postgres
     postgres_url: str = "postgresql+asyncpg://ztuser:ztpass@localhost:5432/zerotrust"

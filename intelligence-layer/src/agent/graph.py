@@ -1,4 +1,5 @@
 """LangGraph StateGraph: load_context → classify → [gather/reason/validate] → enforce → record."""
+import asyncio
 import time
 import structlog
 
@@ -20,6 +21,8 @@ from .nodes import (
     node_gather_context,
     node_check_response_cache,
     node_reason_and_decide,
+    node_decide_policy,
+    node_collect_reasoning,
     node_validate_decision,
 )
 from .response_cache import ResponseCache
@@ -123,10 +126,12 @@ class DecisionAgent:
                 state.update(patch)
                 sp.update(metadata={"cache_hit": bool(state.get("cache_hit"))})
 
-            # ── Node 4: reason & decide (skipped on cache hit) ───────────
+            # ── Node 4 (V3): policy decision — Stage 1, BLOCKING ─────────
+            # Cerebras-friendly schema (9 scalar fields, 0 arrays). Reasoning
+            # trace (Stage 2) runs in parallel with enforce after this returns.
             if not state.get("cache_hit"):
-                with self._tracer.span(trace, "reason_and_decide"):
-                    patch = await node_reason_and_decide(state, self._primary_llm, self._settings)
+                with self._tracer.span(trace, "policy_decision"):
+                    patch = await node_decide_policy(state, self._primary_llm, self._settings)
                     state.update(patch)
 
             if state.get("outcome") in (DecisionOutcome.REJECTED, DecisionOutcome.HELD):
@@ -145,9 +150,30 @@ class DecisionAgent:
             if state.get("outcome") in (DecisionOutcome.REJECTED, DecisionOutcome.HELD, DecisionOutcome.BENIGN):
                 return self._finalize(state, alert, t0)
 
-            # ── Node 6: enforce ──────────────────────────────────────────
-            with self._tracer.span(trace, "enforce"):
-                await self._enforce(state)
+            # ── Node 6 (V3): PARALLEL FORK — enforce + reasoning trace ──
+            # Enforce runs on critical path (push SF rule).
+            # Reasoning trace runs concurrently — fail-tolerant; if it fails,
+            # the decision is still enforced, just without rich audit metadata.
+            # Cache hit decisions skip Call 2 (reasoning was already cached).
+            async def _enforce_path():
+                with self._tracer.span(trace, "enforce"):
+                    await self._enforce(state)
+
+            async def _reasoning_path():
+                if state.get("cache_hit"):
+                    return  # Cached decision already has reasoning
+                with self._tracer.span(trace, "reasoning_trace"):
+                    patch = await node_collect_reasoning(
+                        state, self._primary_llm, self._settings
+                    )
+                    if patch:
+                        state.update(patch)
+
+            await asyncio.gather(
+                _enforce_path(),
+                _reasoning_path(),
+                return_exceptions=True,
+            )
 
         except Exception as exc:
             log.error("agent_pipeline_error", error=str(exc), sid=alert.sid)

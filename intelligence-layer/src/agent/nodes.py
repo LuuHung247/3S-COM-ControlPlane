@@ -1,4 +1,5 @@
 """LangGraph node functions. Each takes AgentState and returns a state patch."""
+import asyncio
 import json
 import structlog
 
@@ -20,12 +21,20 @@ from .safety.rate_limiter import RateLimiter
 from .safety.circuit_breaker import CircuitBreaker
 from .tools import (
     POLICY_INTENT_SCHEMA,
+    POLICY_DECISION_SCHEMA,
+    REASONING_TRACE_SCHEMA,
     execute_get_alert_history,
     prefetch_investigation_context,
 )
 from .response_cache import ResponseCache, rebind_cached_intent
 from ..storage.postgres import PostgresStore
-from .prompts import build_system_prompt, build_classify_prompt, build_reason_prompt
+from .prompts import (
+    build_system_prompt,
+    build_classify_prompt,
+    build_reason_prompt,
+    build_policy_decision_prompt,
+    build_reasoning_trace_prompt,
+)
 from .state import AgentState
 
 log = structlog.get_logger()
@@ -360,6 +369,208 @@ async def node_reason_and_decide(
         }
 
     return {"intent": intent, "safety_checks": {}}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# V3: Split decide_and_reason into two LLM calls
+#   node_decide_policy   — Call 1, blocking, scalar-only schema, ~0% parser fail
+#   node_collect_reasoning — Call 2, fail-tolerant, audit metadata only
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def node_decide_policy(
+    state: AgentState,
+    primary_llm: LLMClient,
+    settings,
+) -> dict:
+    """V3 Stage 1: produce just the rule fields needed to enforce. Cerebras-friendly
+    schema (9 scalar fields, 0 arrays). Blocking — pipeline stops if this fails."""
+    alert: SuricataAlert = state["alert"]
+    src_zone = ip_to_zone(alert.src_ip)
+    dst_zone = ip_to_zone(alert.dest_ip)
+    history = state.get("alert_history", [])
+    system = build_system_prompt(state.get("context_snapshot", ""))
+    user = build_policy_decision_prompt(
+        alert, src_zone, dst_zone, history,
+        alert_context=state.get("alert_context", ""),
+        correlation=state.get("correlation"),
+    )
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+
+    # Stage 1 retries on transient parser failures. No self-consistency vote here —
+    # the simple schema rarely fails; if it fails, retry is more useful than vote.
+    last_err = ""
+    result: dict | None = None
+    for attempt in range(3):
+        try:
+            result = await primary_llm.chat_json(messages=messages, schema=POLICY_DECISION_SCHEMA)
+            break
+        except Exception as exc:
+            last_err = f"{type(exc).__name__}: {str(exc)[:140]}"
+            log.warning("policy_decision_attempt_failed", attempt=attempt + 1, error=last_err)
+            await asyncio.sleep(0.5 * (attempt + 1))
+
+    if result is None:
+        return {
+            "outcome": DecisionOutcome.REJECTED,
+            "intent": None,
+            "rejection_reason": f"L1: policy_decision LLM failed after retries — {last_err}",
+            "safety_checks": {"policy_decision_error": last_err},
+        }
+
+    try:
+        action = PolicyAction(result.get("action", "log_only"))
+    except ValueError:
+        action = PolicyAction.LOG_ONLY
+
+    try:
+        intent = PolicyIntent(
+            action=action,
+            src_ip=result.get("src_ip", alert.src_ip),
+            dst_ip=result.get("dst_ip", ""),
+            dst_port=int(result.get("dst_port", 0)),
+            protocol=result.get("protocol", "tcp"),
+            priority=int(result.get("priority", 50)),
+            ttl_seconds=int(result.get("ttl_seconds", 3600)),
+            comment=result.get("comment", ""),
+            confidence=float(result.get("confidence", 0.0)),
+            reasoning_steps=[],            # Will be populated by Call 2
+            mitre_technique="",            # Will be populated by Call 2
+            mitre_tactic="",               # Will be populated by Call 2
+            hypotheses=[],
+            primary_hypothesis="",
+            alternative_actions=[],
+            rollback_plan=RollbackPlan(),
+            follow_up_actions=[],
+        )
+    except Exception as exc:
+        return {
+            "outcome": DecisionOutcome.REJECTED,
+            "intent": None,
+            "rejection_reason": f"L1 policy schema validation failed: {exc}",
+            "safety_checks": {"schema_error": str(exc)},
+        }
+
+    return {"intent": intent, "safety_checks": {}}
+
+
+async def node_collect_reasoning(
+    state: AgentState,
+    primary_llm: LLMClient,
+    settings,
+) -> dict:
+    """V3 Stage 2: explain the decision after it's been made. Fail-tolerant —
+    on any error, returns empty reasoning patch and the decision still enforces.
+    Designed to run in parallel with enforce, after Call 1 success."""
+    intent: PolicyIntent | None = state.get("intent")
+    if intent is None:
+        return {}
+
+    alert: SuricataAlert = state["alert"]
+    src_zone = ip_to_zone(alert.src_ip)
+    dst_zone = ip_to_zone(alert.dest_ip)
+    history = state.get("alert_history", [])
+    system = build_system_prompt(state.get("context_snapshot", ""))
+    user = build_reasoning_trace_prompt(
+        alert, src_zone, dst_zone, history,
+        alert_context=state.get("alert_context", ""),
+        correlation=state.get("correlation"),
+        decided_action=intent.action.value,
+        decided_src_ip=intent.src_ip,
+        decided_dst_ip=intent.dst_ip,
+        decided_dst_port=intent.dst_port,
+        decided_confidence=intent.confidence,
+        decided_ttl=intent.ttl_seconds,
+    )
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+
+    last_err = ""
+    result: dict | None = None
+    for attempt in range(2):
+        try:
+            result = await primary_llm.chat_json(messages=messages, schema=REASONING_TRACE_SCHEMA)
+            break
+        except Exception as exc:
+            last_err = str(exc)[:200]
+            log.warning("reasoning_trace_attempt_failed", attempt=attempt + 1, error=last_err)
+            await asyncio.sleep(0.5)
+
+    if result is None or not isinstance(result, dict):
+        log.warning("reasoning_trace_failed", error=last_err or "non-dict result")
+        return {"reasoning_complete": False, "reasoning_error": last_err or "non-dict result"}
+
+    # Parse hypotheses / alternatives — same as before, string format
+    hypotheses_raw = result.get("hypotheses") or []
+    hypotheses: list[Hypothesis] = []
+    import re as _re
+    for h in hypotheses_raw:
+        try:
+            if isinstance(h, str):
+                prob_match = _re.search(r"probability\s*=\s*([0-9.]+)", h)
+                prob = float(prob_match.group(1)) if prob_match else 0.5
+                name = h.split("(")[0].strip() or "unnamed"
+                hypotheses.append(Hypothesis(
+                    name=name[:80], description=h, probability=min(max(prob, 0.0), 1.0),
+                ))
+            elif isinstance(h, dict):
+                hypotheses.append(Hypothesis(
+                    name=h.get("name", "unnamed"),
+                    description=h.get("description", ""),
+                    probability=float(h.get("probability", 0.5)),
+                    supporting_evidence=h.get("supporting_evidence", []) or [],
+                    disconfirming_evidence=h.get("disconfirming_evidence", []) or [],
+                ))
+        except Exception:
+            continue
+
+    alt_raw = result.get("alternative_actions") or []
+    alternatives: list[AlternativeAction] = []
+    for a in alt_raw:
+        try:
+            if isinstance(a, str):
+                action_word = "log_only"
+                if "DROP" in a.upper():
+                    action_word = "DROP"
+                elif "ESCALATE" in a.upper():
+                    action_word = "ESCALATE_HUMAN"
+                alternatives.append(AlternativeAction(trigger_condition=a, action=action_word, rationale=a))
+            elif isinstance(a, dict):
+                alternatives.append(AlternativeAction(
+                    trigger_condition=a.get("trigger_condition", ""),
+                    action=a.get("action", "log_only"),
+                    rationale=a.get("rationale", ""),
+                ))
+        except Exception:
+            continue
+
+    rollback_raw = result.get("rollback_plan")
+    if isinstance(rollback_raw, dict):
+        rollback = RollbackPlan(
+            trigger=rollback_raw.get("trigger", ""),
+            action=rollback_raw.get("action", ""),
+            monitor_seconds=int(rollback_raw.get("monitor_seconds", 300)),
+        )
+    elif isinstance(rollback_raw, str):
+        rollback = RollbackPlan(trigger=rollback_raw, action=rollback_raw, monitor_seconds=300)
+    else:
+        rollback = RollbackPlan()
+
+    # Patch the existing intent with reasoning fields (mutate in place)
+    object.__setattr__(intent, "reasoning_steps", result.get("reasoning_steps", []) or [])
+    object.__setattr__(intent, "hypotheses", hypotheses)
+    object.__setattr__(intent, "primary_hypothesis", result.get("primary_hypothesis", ""))
+    object.__setattr__(intent, "alternative_actions", alternatives)
+    object.__setattr__(intent, "rollback_plan", rollback)
+    object.__setattr__(intent, "follow_up_actions", result.get("follow_up_actions", []) or [])
+    object.__setattr__(intent, "mitre_technique", result.get("mitre_technique", ""))
+    object.__setattr__(intent, "mitre_tactic", result.get("mitre_tactic", ""))
+
+    return {"reasoning_complete": True, "intent": intent}
 
 
 async def node_validate_decision(

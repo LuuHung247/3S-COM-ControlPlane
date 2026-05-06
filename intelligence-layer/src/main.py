@@ -11,6 +11,7 @@ from .storage.redis import RedisStore
 from .storage.postgres import PostgresStore
 from .storage.operational_memory import OperationalMemory
 from .storage.incident_memory import IncidentLabeler
+from .storage.events_store import EventsStore
 from .core.knowledge_loader import KnowledgeLoader
 from .pipeline.gate import AlertGate
 from .pipeline.consumer import SSEConsumer
@@ -45,9 +46,16 @@ async def lifespan(app: FastAPI):
     )
     set_global_tracer(tracer)
 
-    # Storage
+    # Storage — DB 0 for agent state (eval-flushable), DB 1 for events (NOT flushed)
     redis = RedisStore(settings.redis_url, dedup_window=settings.filter_dedup_window_seconds)
     await redis.connect()
+
+    events_store = EventsStore(
+        settings.redis_events_url,
+        retention_days=settings.events_retention_days,
+        max_total=settings.events_max_total,
+    )
+    await events_store.connect()
 
     postgres = PostgresStore(settings.postgres_url)
     await postgres.connect()
@@ -128,6 +136,7 @@ async def lifespan(app: FastAPI):
     app.state.incident_labeler = incident_labeler
     app.state.response_cache = response_cache
     app.state.tracer = tracer
+    app.state.events_store = events_store
 
     # SSE consumer — subscribe to ids-agent events
     async def on_alert(alert):
@@ -136,40 +145,77 @@ async def lifespan(app: FastAPI):
             return
         from .api.routes import _push_decision
         decision = await agent.process(alert)
+        from datetime import datetime as _dt, timezone as _tz
+        intent = decision.intent
+        # V3: reasoning fields are populated async by Stage 2 LLM call. If Stage 2
+        # didn't finish or failed, these are empty/None — UI shows "loading".
+        reasoning_done = bool(intent and intent.reasoning_steps)
         decision_dict = {
             "id": decision.id,
             "alert_sid": decision.alert_sid,
             "alert_src_ip": decision.alert_src_ip,
             "outcome": decision.outcome.value,
-            "action": decision.intent.action.value if decision.intent else None,
-            "src_ip": decision.intent.src_ip if decision.intent else None,
-            "dst_ip": decision.intent.dst_ip if decision.intent else None,
-            "dst_port": decision.intent.dst_port if decision.intent else None,
-            "confidence": decision.intent.confidence if decision.intent else None,
+            "action": intent.action.value if intent else None,
+            "src_ip": intent.src_ip if intent else None,
+            "dst_ip": intent.dst_ip if intent else None,
+            "dst_port": intent.dst_port if intent else None,
+            "confidence": intent.confidence if intent else None,
             "rejection_reason": decision.rejection_reason,
             "safety_checks": decision.safety_checks,
-            "reasoning": decision.intent.reasoning_steps if decision.intent else [],
-            "hypotheses": [h.model_dump() for h in decision.intent.hypotheses] if decision.intent else [],
-            "rollback_plan": decision.intent.rollback_plan.model_dump() if decision.intent else {},
-            "rule_id": decision.intent.rule_id if decision.intent else None,
-            "ttl_seconds": decision.intent.ttl_seconds if decision.intent else None,
+            "reasoning": intent.reasoning_steps if intent else [],
+            "hypotheses": [h.model_dump() for h in intent.hypotheses] if intent else [],
+            "rollback_plan": intent.rollback_plan.model_dump() if intent else {},
+            "rule_id": intent.rule_id if intent else None,
+            "ttl_seconds": intent.ttl_seconds if intent else None,
             "latency_ms": decision.latency_ms,
             "dry_run": settings.agent_dry_run,
             "trace_id": getattr(decision, "trace_id", "") or "",
+            # V3 reasoning trace fields
+            "primary_hypothesis": intent.primary_hypothesis if intent else None,
+            "alternative_actions": [a.model_dump() for a in intent.alternative_actions] if intent else [],
+            "follow_up_actions": intent.follow_up_actions if intent else [],
+            "mitre_technique": intent.mitre_technique if intent else None,
+            "mitre_tactic": intent.mitre_tactic if intent else None,
+            "reasoning_completed_at": _dt.now(_tz.utc) if reasoning_done else None,
         }
         await postgres.save_decision(decision_dict)
         await redis.cache_decision(decision.id, decision_dict)
         _push_decision(decision_dict)
 
-    consumer = SSEConsumer(ids_agent_url=settings.ids_agent_url, on_alert=on_alert)
+    consumer = SSEConsumer(
+        ids_agent_url=settings.ids_agent_url,
+        on_alert=on_alert,
+        events_store=events_store,
+    )
     await consumer.start()
+
+    # Background prune coroutine — every hour, drop events older than retention
+    import asyncio as _asyncio
+    async def _prune_events_loop():
+        while True:
+            try:
+                await _asyncio.sleep(3600)
+                stats = await events_store.prune()
+                log.info("events_prune_done", **stats)
+            except _asyncio.CancelledError:
+                return
+            except Exception as exc:
+                log.warning("events_prune_error", error=str(exc))
+    prune_task = _asyncio.create_task(_prune_events_loop())
+
     log.info("intelligence_layer_ready", ids_agent=settings.ids_agent_url)
 
     yield
 
     # Shutdown
+    prune_task.cancel()
+    try:
+        await prune_task
+    except (BaseException, _asyncio.CancelledError):
+        pass
     await consumer.stop()
     await incident_labeler.stop()
+    await events_store.close()
     tracer.flush()
     tracer.shutdown()
     await redis.close()

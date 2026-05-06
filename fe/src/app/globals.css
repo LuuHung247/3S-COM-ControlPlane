@@ -1,25 +1,40 @@
 @import "tailwindcss";
 
 :root {
-  --tc-green: #00ff41;
-  --tc-green-dim: #00cc33;
-  --tc-dark: #0a0a0a;
-  --tc-darker: #050505;
-  --tc-card: #0d1117;
-  --tc-border: #1a2332;
-  --tc-text: #c9d1d9;
+  /* Default = dark theme — softened from neon to harmonious */
+  --tc-green: #4ade80;        /* gentler emerald (was #00ff41 neon) */
+  --tc-green-dim: #22c55e;
+  --tc-dark: #0f1419;         /* slightly warmer than pure black */
+  --tc-darker: #0a0e13;
+  --tc-card: #131a22;
+  --tc-border: #1f2a36;
+  --tc-text: #d4dae0;
   --tc-text-dim: #8b949e;
 }
 
+/* Light theme — GitHub Primer + IBM Carbon inspired, optimized for thesis PDF
+   Pure white is harsh; we use #f6f8fa canvas with white cards floating above
+   for clear visual hierarchy on print/screenshots. */
+html[data-theme="light"] {
+  --tc-green: #1a7f37;        /* deeper green — readable on white, print-safe */
+  --tc-green-dim: #116329;
+  --tc-dark: #eaeef2;         /* secondary surface */
+  --tc-darker: #f6f8fa;       /* main canvas — GitHub light gray */
+  --tc-card: #ffffff;         /* cards float above canvas */
+  --tc-border: #d0d7de;       /* visible but quiet */
+  --tc-text: #1f2328;         /* near-black for body text */
+  --tc-text-dim: #59636e;     /* secondary text — WCAG AA on white */
+}
+
 @theme inline {
-  --color-tc-green: #00ff41;
-  --color-tc-green-dim: #00cc33;
-  --color-tc-dark: #0a0a0a;
-  --color-tc-darker: #050505;
-  --color-tc-card: #0d1117;
-  --color-tc-border: #1a2332;
-  --color-tc-text: #c9d1d9;
-  --color-tc-text-dim: #8b949e;
+  --color-tc-green: var(--tc-green);
+  --color-tc-green-dim: var(--tc-green-dim);
+  --color-tc-dark: var(--tc-dark);
+  --color-tc-darker: var(--tc-darker);
+  --color-tc-card: var(--tc-card);
+  --color-tc-border: var(--tc-border);
+  --color-tc-text: var(--tc-text);
+  --color-tc-text-dim: var(--tc-text-dim);
 }
 
 html {
@@ -38,24 +53,34 @@ body {
   color: var(--tc-green);
 }
 
-/* Glow effects */
+/* Glow effects — toned down for harmonious dark mode, disabled in light mode */
 .glow-green {
-  text-shadow: 0 0 10px rgba(0, 255, 65, 0.5), 0 0 20px rgba(0, 255, 65, 0.3), 0 0 40px rgba(0, 255, 65, 0.1);
+  text-shadow: 0 0 4px rgba(74, 222, 128, 0.25);
 }
 
 .glow-green-strong {
-  text-shadow: 0 0 10px rgba(0, 255, 65, 0.7), 0 0 30px rgba(0, 255, 65, 0.5), 0 0 60px rgba(0, 255, 65, 0.2);
+  text-shadow: 0 0 6px rgba(74, 222, 128, 0.35), 0 0 12px rgba(74, 222, 128, 0.15);
 }
 
 .glow-box {
-  box-shadow: 0 0 15px rgba(0, 255, 65, 0.15), 0 0 30px rgba(0, 255, 65, 0.05);
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.08);
 }
 
 .glow-box-hover:hover {
-  box-shadow: 0 0 20px rgba(0, 255, 65, 0.3), 0 0 40px rgba(0, 255, 65, 0.1);
+  box-shadow: 0 0 12px rgba(74, 222, 128, 0.18);
 }
 
-/* Scanline overlay */
+/* Disable all glow in light mode for clean print/screenshot rendering */
+html[data-theme="light"] .glow-green,
+html[data-theme="light"] .glow-green-strong {
+  text-shadow: none;
+}
+html[data-theme="light"] .glow-box,
+html[data-theme="light"] .glow-box-hover:hover {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Scanline overlay — very subtle */
 .scanlines::after {
   content: '';
   position: absolute;
@@ -64,26 +89,26 @@ body {
     0deg,
     transparent,
     transparent 2px,
-    rgba(0, 255, 65, 0.015) 2px,
-    rgba(0, 255, 65, 0.015) 4px
+    rgba(74, 222, 128, 0.008) 2px,
+    rgba(74, 222, 128, 0.008) 4px
   );
   pointer-events: none;
 }
 
-/* Matrix rain background */
+/* Matrix rain background — softer ambient */
 .matrix-bg {
   background-image:
-    radial-gradient(ellipse at 20% 50%, rgba(0, 255, 65, 0.03) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(0, 255, 65, 0.02) 0%, transparent 50%);
+    radial-gradient(ellipse at 20% 50%, rgba(74, 222, 128, 0.015) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(74, 222, 128, 0.01) 0%, transparent 50%);
 }
 
-/* Pulse animation for CTA */
+/* Pulse animation for CTA — softer */
 @keyframes pulse-glow {
   0%, 100% {
-    box-shadow: 0 0 15px rgba(0, 255, 65, 0.3), 0 0 30px rgba(0, 255, 65, 0.1);
+    box-shadow: 0 0 8px rgba(74, 222, 128, 0.18);
   }
   50% {
-    box-shadow: 0 0 25px rgba(0, 255, 65, 0.5), 0 0 50px rgba(0, 255, 65, 0.2);
+    box-shadow: 0 0 14px rgba(74, 222, 128, 0.28);
   }
 }
 
@@ -108,13 +133,160 @@ body {
   opacity: 0;
 }
 
-/* Grid pattern */
+/* Grid pattern — subtle */
 .grid-pattern {
   background-image:
-    linear-gradient(rgba(0, 255, 65, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 255, 65, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(74, 222, 128, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(74, 222, 128, 0.015) 1px, transparent 1px);
   background-size: 60px 60px;
 }
+
+/* Hide grid + matrix backgrounds entirely in light mode for clean look */
+html[data-theme="light"] .grid-pattern,
+html[data-theme="light"] .matrix-bg {
+  background-image: none;
+}
+html[data-theme="light"] .scanlines::after {
+  background: none;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   LIGHT THEME — severity & semantic color remap for thesis-friendly output
+   Dark-mode classes (text-red-400 on bg-red-900/60) look glaring on white.
+   Remap to GitHub Primer / Tailwind 700-shade with soft tinted backgrounds.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* Body text & dim text — proper grays */
+html[data-theme="light"] .text-tc-text { color: #1f2328; }
+html[data-theme="light"] .text-tc-text-dim { color: #59636e; }
+html[data-theme="light"] .text-white { color: #1f2328; }
+
+/* Body background uses subtle canvas, not pure white */
+html[data-theme="light"] .bg-tc-darker { background-color: #f6f8fa; }
+html[data-theme="light"] .bg-tc-darker\/80 { background-color: rgba(246, 248, 250, 0.92); }
+html[data-theme="light"] .bg-tc-darker\/95 { background-color: rgba(246, 248, 250, 0.97); }
+html[data-theme="light"] .bg-tc-card { background-color: #ffffff; }
+
+/* Card depth — subtle shadow defines hierarchy without ink-heavy borders */
+html[data-theme="light"] .border-tc-border {
+  border-color: #d0d7de;
+}
+html[data-theme="light"] .rounded-xl.border.border-tc-border,
+html[data-theme="light"] .rounded-lg.border.border-tc-border {
+  box-shadow: 0 1px 0 rgba(31, 35, 40, 0.04), 0 0 0 1px rgba(31, 35, 40, 0.02);
+}
+
+/* Brand green (tc-green) — already remapped via CSS var. Hover state. */
+html[data-theme="light"] .text-tc-green { color: #1a7f37; }
+html[data-theme="light"] .border-tc-green\/30 { border-color: rgba(26, 127, 55, 0.35); }
+html[data-theme="light"] .border-tc-green\/40 { border-color: rgba(26, 127, 55, 0.45); }
+html[data-theme="light"] .bg-tc-green\/10 { background-color: rgba(26, 127, 55, 0.08); }
+html[data-theme="light"] .bg-tc-green\/20 { background-color: rgba(26, 127, 55, 0.12); }
+html[data-theme="light"] .bg-tc-green\/5 { background-color: rgba(26, 127, 55, 0.04); }
+/* Solid tc-green CTA button: green bg + white text in light mode for contrast */
+html[data-theme="light"] .bg-tc-green {
+  background-color: #1a7f37;
+  color: #ffffff;
+}
+
+/* RED — severity P1 / DROP / blocked */
+html[data-theme="light"] .text-red-400,
+html[data-theme="light"] .text-red-500 { color: #b91c1c; }
+html[data-theme="light"] .bg-red-900\/60 { background-color: #fef2f2; }
+html[data-theme="light"] .bg-red-900\/40 { background-color: #fef2f2; }
+html[data-theme="light"] .bg-red-900\/25,
+html[data-theme="light"] .bg-red-900\/20,
+html[data-theme="light"] .bg-red-900\/15,
+html[data-theme="light"] .bg-red-900\/10 { background-color: #fef2f2; }
+html[data-theme="light"] .bg-red-950\/20 { background-color: #fef7f7; }
+html[data-theme="light"] .border-red-700\/50,
+html[data-theme="light"] .border-red-700\/40,
+html[data-theme="light"] .border-red-600\/60,
+html[data-theme="light"] .border-red-600\/40,
+html[data-theme="light"] .border-red-500\/50,
+html[data-theme="light"] .border-red-500\/60,
+html[data-theme="light"] .border-red-500\/40 { border-color: #fca5a5; }
+html[data-theme="light"] .border-l-red-500,
+html[data-theme="light"] .border-l-red-500\/60 { border-left-color: #b91c1c; }
+
+/* ORANGE — severity P2 / warnings */
+html[data-theme="light"] .text-orange-400,
+html[data-theme="light"] .text-orange-300,
+html[data-theme="light"] .text-orange-500 { color: #c2410c; }
+html[data-theme="light"] .bg-orange-900\/60,
+html[data-theme="light"] .bg-orange-900\/40,
+html[data-theme="light"] .bg-orange-900\/25,
+html[data-theme="light"] .bg-orange-900\/15,
+html[data-theme="light"] .bg-orange-900\/10 { background-color: #fff7ed; }
+html[data-theme="light"] .bg-orange-950\/20 { background-color: #fffbf5; }
+html[data-theme="light"] .border-orange-700\/50,
+html[data-theme="light"] .border-orange-700\/40,
+html[data-theme="light"] .border-orange-600\/60,
+html[data-theme="light"] .border-orange-600\/40,
+html[data-theme="light"] .border-orange-500\/40 { border-color: #fdba74; }
+html[data-theme="light"] .border-l-orange-500 { border-left-color: #c2410c; }
+
+/* YELLOW — severity P3 / info */
+html[data-theme="light"] .text-yellow-400,
+html[data-theme="light"] .text-yellow-300,
+html[data-theme="light"] .text-yellow-500 { color: #a16207; }
+html[data-theme="light"] .bg-yellow-900\/60,
+html[data-theme="light"] .bg-yellow-900\/15,
+html[data-theme="light"] .bg-yellow-900\/10,
+html[data-theme="light"] .bg-yellow-950\/10 { background-color: #fefce8; }
+html[data-theme="light"] .border-yellow-700\/50,
+html[data-theme="light"] .border-yellow-600\/40 { border-color: #fcd34d; }
+html[data-theme="light"] .border-l-yellow-500,
+html[data-theme="light"] .border-l-yellow-600\/40 { border-left-color: #a16207; }
+
+/* BLUE — informational / sdnc badge */
+html[data-theme="light"] .text-blue-400,
+html[data-theme="light"] .text-blue-300 { color: #1d4ed8; }
+html[data-theme="light"] .bg-blue-900\/40,
+html[data-theme="light"] .bg-blue-900\/20 { background-color: #eff6ff; }
+html[data-theme="light"] .border-blue-700\/40 { border-color: #93c5fd; }
+
+/* Hover overlay tints */
+html[data-theme="light"] .hover\:bg-white\/2:hover { background-color: rgba(31, 35, 40, 0.025); }
+html[data-theme="light"] .hover\:bg-white\/5:hover { background-color: rgba(31, 35, 40, 0.04); }
+
+/* Scrollbar — subtle in light mode */
+html[data-theme="light"] ::-webkit-scrollbar { width: 8px; height: 8px; }
+html[data-theme="light"] ::-webkit-scrollbar-track { background: transparent; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #d0d7de;
+  border-radius: 4px;
+}
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #afb8c1; }
+
+/* Inputs / form fields — clean white with quiet borders */
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea {
+  background-color: #ffffff;
+  border-color: #d0d7de;
+  color: #1f2328;
+}
+html[data-theme="light"] input::placeholder,
+html[data-theme="light"] textarea::placeholder {
+  color: #8b95a1;
+}
+html[data-theme="light"] input:focus,
+html[data-theme="light"] select:focus,
+html[data-theme="light"] textarea:focus {
+  border-color: #1a7f37;
+  box-shadow: 0 0 0 2px rgba(26, 127, 55, 0.18);
+  outline: none;
+}
+
+/* Buttons in light mode: when used as toggles, ensure visible borders */
+html[data-theme="light"] button[class*="border-tc-border"]:not(:disabled):hover {
+  border-color: #afb8c1;
+}
+
+/* Modal backdrop — softer than pure black 70% on light pages */
+html[data-theme="light"] .bg-black\/70 { background-color: rgba(31, 35, 40, 0.45); }
+html[data-theme="light"] .bg-black\/50 { background-color: rgba(31, 35, 40, 0.32); }
 
 /* Typing cursor blink */
 @keyframes blink {

@@ -71,6 +71,45 @@ function formatTime(ts: string) {
   catch { return ts; }
 }
 
+// ── Server-side events buffer ─────────────────────────────────────────────────
+// Events (alerts + flows) are persisted in Redis DB 1 (7-day retention) by
+// intelligence-layer. Frontend hydrates from /api/intel/events on mount, so F5
+// no longer flashes blank. SSE stream still appends real-time on top.
+const FEED_DISPLAY_MAX = 600;
+
+function eventKey(ev: FeedEvent): string {
+  if (ev.kind === "violation") {
+    return `v|${ev.timestamp}|${ev.alert?.signature_id ?? ""}|${ev.src_ip}|${ev.dest_ip}`;
+  }
+  return `f|${ev.timestamp}|${ev.src_ip}|${ev.src_port}|${ev.dest_ip}|${ev.dest_port}`;
+}
+
+function dedupMerge(...lists: FeedEvent[][]): FeedEvent[] {
+  const seen = new Map<string, FeedEvent>();
+  for (const list of lists) {
+    for (const ev of list) {
+      const k = eventKey(ev);
+      if (!seen.has(k)) seen.set(k, ev);
+    }
+  }
+  return Array.from(seen.values()).sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+}
+
+// Coerce backend /events response (raw Suricata-shape items with __kind hint)
+// into our FeedEvent union. Backend stores both alerts and flows.
+function coerceServerEvent(raw: Record<string, unknown>): FeedEvent | null {
+  const kind = raw.__kind as string | undefined;
+  if (kind === "violation" || raw.alert) {
+    return { kind: "violation", ...raw } as unknown as ViolationEvent;
+  }
+  if (kind === "flow" || raw.event_type === "flow") {
+    return { kind: "flow", ...raw } as unknown as TrafficFlow;
+  }
+  return null;
+}
+
 // ── Component ──────────────────────────────────────────────────────────────
 export default function MonitorPage() {
   const [feed, setFeed]         = useState<FeedEvent[]>([]);
@@ -82,37 +121,44 @@ export default function MonitorPage() {
   const [loading, setLoading]   = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [mounted, setMounted]   = useState(false);
+  const [autoFollow, setAutoFollow] = useState(true);     // auto-scroll to top on new events
+  const [pendingNew, setPendingNew] = useState(0);        // count of events arrived while paused
   const topRef      = useRef<HTMLDivElement>(null);
   const scrollRef   = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Load history on mount: violations + recent flows
+  // Load history on mount from server-side Redis buffer (7-day window).
+  // Falls back to Suricata transient API only if intel layer unavailable.
   useEffect(() => {
-    const loadViolations = fetch("/api/ids/alerts?last=50")
-      .then(r => r.json())
-      .then(json => {
-        const raw: object[] = Array.isArray(json) ? json : (json.alerts ?? []);
-        return raw.map((a: object) => ({ kind: "violation", ...(a as object) } as unknown as ViolationEvent));
+    fetch("/api/intel/events?limit=600")
+      .then(r => r.ok ? r.json() : [])
+      .then((raw: unknown) => {
+        if (!Array.isArray(raw) || raw.length === 0) {
+          // Fallback: Suricata transient API (3-min window)
+          return Promise.all([
+            fetch("/api/ids/alerts?last=50").then(r => r.json()).catch(() => []),
+            fetch("/api/ids/flows?last=100").then(r => r.json()).catch(() => []),
+          ]).then(([alertsJson, flowsJson]) => {
+            const alerts: FeedEvent[] = (Array.isArray(alertsJson) ? alertsJson : (alertsJson.alerts ?? []))
+              .map((a: object) => ({ kind: "violation", ...(a as object) } as unknown as ViolationEvent));
+            const flows: FeedEvent[] = (Array.isArray(flowsJson) ? flowsJson : [])
+              .map((f: object) => ({ kind: "flow", ...(f as object) } as unknown as TrafficFlow));
+            return dedupMerge(alerts, flows);
+          });
+        }
+        const events: FeedEvent[] = [];
+        for (const r of raw) {
+          const ev = coerceServerEvent(r as Record<string, unknown>);
+          if (ev) events.push(ev);
+        }
+        return dedupMerge(events);
       })
-      .catch(() => [] as ViolationEvent[]);
-
-    const loadFlows = fetch("/api/ids/flows?last=100")
-      .then(r => r.json())
-      .then(json => {
-        const raw: object[] = Array.isArray(json) ? json : [];
-        return raw.map((f: object) => ({ kind: "flow", ...(f as object) } as unknown as TrafficFlow));
+      .then((merged) => {
+        setFeed(merged.slice(0, FEED_DISPLAY_MAX));
+        setLoading(false);
       })
-      .catch(() => [] as TrafficFlow[]);
-
-    Promise.all([loadViolations, loadFlows]).then(([violations, flows]) => {
-      // Merge and sort newest-first
-      const merged: FeedEvent[] = [...violations, ...flows].sort(
-        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
-      setFeed(merged.slice(0, 300));
-      setLoading(false);
-    });
+      .catch(() => setLoading(false));
   }, []);
 
   // SSE real-time
@@ -164,13 +210,43 @@ export default function MonitorPage() {
     return () => { clearTimeout(reconnectTimer); es?.close(); };
   }, []);
 
-  // Only auto-scroll when user is already near the top (< 120px scrolled)
+  // Auto-follow: when new events arrive, scroll to top (where newest items render).
+  // If user has scrolled away (>250px), pause follow and accumulate "N new" badge.
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && el.scrollTop < 120) {
-      topRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!el) return;
+    if (autoFollow) {
+      // Instant scroll to keep feed pinned to newest item
+      el.scrollTop = 0;
+      setPendingNew(0);
+    } else {
+      setPendingNew((c) => c + 1);
     }
-  }, [feed.length]);
+  }, [feed.length, autoFollow]);
+
+  // Detect manual scroll: if user scrolled away from top, pause auto-follow.
+  // If user scrolled back near top, resume.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const atTop = el.scrollTop < 80;
+      if (atTop && !autoFollow) {
+        setAutoFollow(true);
+      } else if (!atTop && autoFollow && el.scrollTop > 250) {
+        setAutoFollow(false);
+      }
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [autoFollow]);
+
+  // Resume follow + jump to top
+  const resumeFollow = () => {
+    setAutoFollow(true);
+    setPendingNew(0);
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  };
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const violations = feed.filter(e => e.kind === "violation") as ViolationEvent[];
@@ -315,13 +391,35 @@ export default function MonitorPage() {
             }`}>
             {showFlows ? "● Traffic ON" : "○ Traffic OFF"}
           </button>
+          <button onClick={() => setAutoFollow(f => !f)}
+            title={autoFollow
+              ? "Auto-scroll to newest event (click to pause)"
+              : "Paused — click to resume auto-scroll"}
+            className={`px-2.5 py-1 rounded text-xs font-mono border transition-all ${
+              autoFollow
+                ? "bg-tc-green/10 text-tc-green border-tc-green/40"
+                : "border-orange-600/40 text-orange-400 bg-orange-900/15"
+            }`}>
+            {autoFollow ? "⇣ Follow ON" : "⏸ Follow OFF"}
+          </button>
         </div>
 
         {/* Unified Event Feed */}
-        <div className="rounded-xl border border-tc-border bg-tc-card overflow-hidden">
+        <div className="rounded-xl border border-tc-border bg-tc-card overflow-hidden relative">
           <div className="hidden sm:grid grid-cols-[120px_80px_1fr_1fr_90px_90px] gap-2 border-b border-tc-border px-4 py-2 text-xs font-mono text-tc-text-dim">
             <span>Time</span><span>Type</span><span>Src</span><span>Dst</span><span>Proto</span><span>Info</span>
           </div>
+
+          {/* Floating "N new events" pill — visible while user has paused follow */}
+          {!autoFollow && pendingNew > 0 && (
+            <button
+              onClick={resumeFollow}
+              className="absolute top-12 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-full bg-tc-green text-black border border-tc-green text-xs font-mono font-bold shadow-lg hover:scale-105 transition-transform animate-pulse"
+            >
+              ↑ {pendingNew} new event{pendingNew > 1 ? "s" : ""} — click to resume
+            </button>
+          )}
+
           <div ref={scrollRef} className="max-h-[65vh] overflow-y-auto">
             <div ref={topRef} />
             {loading ? (
@@ -396,9 +494,14 @@ export default function MonitorPage() {
           </div>
         </div>
 
-        <p className="mt-2 text-xs text-tc-text-dim font-mono text-right">
-          {filtered.filter(e => e.kind === "flow").length} flows · {filtered.filter(e => e.kind === "violation").length} violations
-        </p>
+        <div className="mt-2 flex items-center justify-between text-xs text-tc-text-dim font-mono">
+          <span className="text-tc-text-dim/70">
+            server buffer · Redis DB1 · 7-day retention · auto-prune
+          </span>
+          <span>
+            {filtered.filter(e => e.kind === "flow").length} flows · {filtered.filter(e => e.kind === "violation").length} violations · loaded {feed.length}/{FEED_DISPLAY_MAX}
+          </span>
+        </div>
       </div>
     </main>
   );

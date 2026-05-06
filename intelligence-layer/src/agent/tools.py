@@ -39,7 +39,89 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# POLICY_INTENT_SCHEMA — forced output schema (V2 with hypotheses + alternatives)
+# SPLIT SCHEMAS (V3) — separate critical-path policy from audit-only reasoning
+#
+# Group 1 — POLICY_DECISION_SCHEMA: scalar fields only, ~0% Cerebras parser fail
+#   Used for: SF rule push, L7 confidence gate, response cache key
+#   Blocking — agent cannot enforce without this
+#
+# Group 2 — REASONING_TRACE_SCHEMA: array-heavy, audit/HITL metadata
+#   Used for: Langfuse trace, frontend modal, retrospective learning
+#   Non-blocking — fail-tolerant, decision still enforces if this call fails
+#
+# The legacy POLICY_INTENT_SCHEMA (15 fields, 4 arrays) is kept as alias for
+# backward-compatibility with existing self_consistency_vote callsite, but
+# graph.py now invokes the two split schemas separately.
+# ─────────────────────────────────────────────────────────────────────────────
+
+POLICY_DECISION_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "action": {
+            "type": "string",
+            "enum": ["DROP", "log_only"],
+            "description": "Policy action. DROP for P1/P2 threats. log_only for P3/P4 or low confidence.",
+        },
+        "src_ip": {"type": "string", "description": "CIDR e.g. 10.1.100.10/32. MUST contain alert.src_ip."},
+        "dst_ip": {"type": "string", "description": "CIDR or empty string."},
+        "dst_port": {"type": "integer"},
+        "protocol": {"type": "string", "description": "tcp / udp / icmp / all"},
+        "priority": {"type": "integer", "description": "MUST be 50 for agent rules."},
+        "ttl_seconds": {"type": "integer", "description": "3600 for P1, 1800 for P2, 0 for log_only."},
+        "comment": {"type": "string", "description": "Short rule description (under 80 chars)."},
+        "confidence": {
+            "type": "number",
+            "minimum": 0.0, "maximum": 1.0,
+            "description": "Calibrated confidence in this decision; gates enforcement at 0.85/0.70/0.50.",
+        },
+    },
+    "required": ["action", "src_ip", "confidence"],
+}
+
+
+REASONING_TRACE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "primary_hypothesis": {
+            "type": "string",
+            "description": "Short name of the leading hypothesis that drove the action.",
+        },
+        "hypotheses": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "2-3 candidate hypotheses, each as one string: "
+                "'<name> (probability=<0.X>) — <description>. Evidence: ... Counter: ...'."
+            ),
+        },
+        "reasoning_steps": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Step-by-step reasoning chain leading to the decision.",
+        },
+        "alternative_actions": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Plan B entries as strings: 'if <condition> then <action> because <reason>'.",
+        },
+        "rollback_plan": {
+            "type": "string",
+            "description": "Trigger + action + monitor window if rule causes outage.",
+        },
+        "follow_up_actions": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Things to monitor after enforce (kill-chain progression).",
+        },
+        "mitre_technique": {"type": "string", "description": "T-number, e.g. T1021."},
+        "mitre_tactic": {"type": "string", "description": "TA-number, e.g. TA0008."},
+    },
+    "required": ["primary_hypothesis", "reasoning_steps"],
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Legacy combined schema — kept for self_consistency_vote backward compat
 # ─────────────────────────────────────────────────────────────────────────────
 POLICY_INTENT_SCHEMA: dict[str, Any] = {
     "type": "object",

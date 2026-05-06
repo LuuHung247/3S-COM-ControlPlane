@@ -55,9 +55,9 @@ def validate_intent(
 ) -> ValidationResult:
     result = ValidationResult()
 
-    # L1: Schema — Pydantic already validated types; check string lengths
-    if len(intent.reasoning_steps) == 0:
-        result.fail("L1: reasoning_steps is empty — LLM must provide reasoning chain")
+    # L1: Schema — Pydantic already validated types; check string lengths.
+    # Note: reasoning_steps populate in V3 Stage 2 (parallel with enforce), so
+    # validator runs before reasoning is available. Empty here is expected and OK.
     if intent.comment and len(intent.comment) < 10:
         result.warn("L1: comment is very short — may indicate shallow reasoning")
 

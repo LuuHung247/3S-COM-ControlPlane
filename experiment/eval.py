@@ -196,28 +196,40 @@ def get_agent_rule_ids_from_agent() -> list:
 
 # ── Reset between runs ────────────────────────────────────────────────────────
 
+def cleanup_agent_rules(prefix: str = "  [cleanup]") -> int:
+    """Delete every agent-pushed rule from the SF (via ids-agent proxy).
+    Returns number of rules deleted. Idempotent."""
+    rule_ids = get_agent_rule_ids_from_agent()
+    if not rule_ids:
+        print(f"{prefix} no agent rules to remove")
+        return 0
+    deleted = 0
+    for rid in rule_ids:
+        ok = http_delete(f"{IDS_AGENT}/rules/{rid}")
+        status = "✓" if ok else "✗"
+        print(f"{prefix} {status} DELETE rule {rid}")
+        if ok:
+            deleted += 1
+    return deleted
+
+
 def reset(run_num: int) -> float:
     """Reset state between runs. Returns unix timestamp anchor from /alerts/clear."""
     print(f"  [reset] Disarming scenario...")
     console_run("/root/scenario/restore-web.sh", wait=5.0)
 
     print(f"  [reset] Deleting agent-pushed rules...")
-    rule_ids = get_agent_rule_ids_from_agent()
-    for rid in rule_ids:
-        ok = http_delete(f"{IDS_AGENT}/rules/{rid}")
-        status = "✓" if ok else "✗"
-        print(f"    {status} DELETE rule {rid}")
-    if not rule_ids:
-        print("    (no agent rules)")
+    cleanup_agent_rules(prefix="    ")
 
-    print(f"  [reset] Flushing Redis...")
+    print(f"  [reset] Flushing Redis DB 0 (agent state only — events DB 1 preserved)...")
     try:
+        # FLUSHDB on default DB (0) — leaves DB 1 (events buffer for frontend) intact
         subprocess.run(
             ["docker", "compose", "-f", "/home/dis/deploy/zerotrust/docker-compose.yml",
-             "exec", "-T", "redis", "redis-cli", "FLUSHDB"],
+             "exec", "-T", "redis", "redis-cli", "-n", "0", "FLUSHDB"],
             capture_output=True, timeout=10
         )
-        print("    ✓ Redis flushed")
+        print("    ✓ Redis DB 0 flushed (DB 1 events stream preserved)")
     except Exception as e:
         print(f"    ✗ Redis flush failed: {e}")
 
@@ -604,6 +616,11 @@ def main():
               f"latency={result.enforce_latency_ms}ms confidence={result.confidence} "
               f"checks={result.checks_pass}/{result.checks_total}")
 
+        # Per-run post-cleanup: delete every agent rule pushed during this run so
+        # subsequent runs (or eval termination) leave the LEAFs clean.
+        print(f"  [post-run] cleaning agent rules pushed in this run...")
+        cleanup_agent_rules(prefix="    ")
+
         if i < args.runs:
             print(f"  [pause] 10s before next run...\n")
             time.sleep(10)
@@ -611,6 +628,12 @@ def main():
     print("\n══ Results ══════════════════════════════════")
     passed = sum(1 for r in results if r.passed)
     print(f"  {passed}/{len(results)} runs PASSED\n")
+
+    # Final safety net: even if eval crashed mid-run or rule push happened after
+    # post-run cleanup, ensure no agent rules are left on the LEAFs.
+    print("[Final cleanup]")
+    cleanup_agent_rules(prefix="  ")
+    print()
 
     export_excel(results, args.output)
 
