@@ -273,9 +273,14 @@ export default function MonitorPage() {
   const monitoredCount = nodeStatus.filter(n => n.monitored).length;
 
   const filtered = feed.filter(ev => {
-    const zone = ev.kind === "violation" ? ipZone(ev.src_ip) : ipZone(ev.src_ip);
+    const zone = ipZone(ev.src_ip);
     if (filterZone !== "ALL" && zone !== filterZone) return false;
-    if (ev.kind === "flow") return showFlows;
+    if (ev.kind === "flow") {
+      // Priority filters (P1/P2/P3/P4) are alert-severity filters — when one is
+      // active, the user is inspecting violations, so suppress flow noise.
+      if (filterPriority !== 0) return false;
+      return showFlows;
+    }
     if (filterPriority !== 0 && ev.alert?.severity !== filterPriority) return false;
     return true;
   });

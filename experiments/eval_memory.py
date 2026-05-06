@@ -1,17 +1,28 @@
 #!/usr/bin/env python3
 """
-eval_iid.py — Zero Trust Intelligence Layer · I.I.D. Statistical Baseline
+eval_memory.py — Zero Trust Intelligence Layer · Memory-Stateful Eval
 
-Chạy N runs độc lập của 1 attack scenario (WEB→DB microsegmentation bypass),
-reset workspace giữa các runs, đo:
+Đối ngược với eval_iid.py:
+  - eval_iid TRUNCATE `decisions` mỗi run → memory empty mỗi lần → i.i.d. baseline
+  - eval_memory KEEP `decisions` qua các runs → run N thấy lịch sử run 1..N-1
+
+Mục đích: kiểm tra agent memory thực sự có hoạt động không. Cùng attacker IP,
+cùng scenario lặp N lần. Kỳ vọng:
+  - Run 1: agent thấy attack lần đầu → confidence baseline, MTTD đầy đủ
+  - Run N (N lớn): agent past-incident retrieval kéo về N-1 decisions trước
+                   → confidence cao hơn / latency thấp hơn / reasoning ngắn hơn
+
+Đo lường (giống eval_iid):
   - MTTD (alert ghi → decision created)
-  - Decision→Enforcement latency (created → SF rule active)
-  - Outcome correctness (enforced / dry_run / rejected)
-  - Confidence score
-Xuất Excel + JSON. Dùng cho stat baseline (mean ± stdev across N runs).
+  - M1 Alert→Decision (s)
+  - M2 Decision→LEAF (ms)
+  - Confidence — kỳ vọng tăng dần theo run number
+  - Outcome correctness
+
+Xuất Excel + JSON. Run number được preserve để có thể plot confidence vs run.
 
 Usage:
-    python3 eval_iid.py        # constants ở đầu file (RUNS=10)
+    python3 eval_memory.py        # constants ở đầu file (RUNS=10)
 
 Requires: openpyxl, rich
 """
@@ -234,40 +245,53 @@ def cleanup_agent_rules(prefix: str = "  [cleanup]") -> int:
 
 
 def reset(run_num: int) -> float:
-    """Reset state between runs. Returns unix timestamp anchor from /alerts/clear."""
+    """Reset between runs but PRESERVE `decisions` (agent memory).
+
+    Difference vs eval_iid.reset():
+      - eval_iid TRUNCATEs `decisions` table → each run sees empty memory (i.i.d.)
+      - eval_memory KEEPS `decisions` → run N sees memory from runs 1..N-1
+
+    This is the whole point of this eval: measure if accumulated memory
+    (past-incident retrieval, asset reputation, kill-chain correlation) makes
+    the agent faster / more confident on subsequent attacks from the same src_ip.
+
+    What we still reset:
+      - Disarm attack scenario (so next run can re-trigger cleanly)
+      - Delete prior agent-pushed SF rules (else LEAF blocks SYN before Suricata
+        sees it → no alert → can't measure)
+      - Flush Redis DB 0 (rate limiter / circuit breaker / cache — should not
+        leak across runs; the durable memory lives in Postgres)
+      - Reset intel-layer rate limiter
+
+    What stays intact:
+      - Postgres `decisions` table  ← THE memory under test
+      - Postgres `decisions_history` ← FE audit (also untouched in eval_iid)
+      - Redis DB 1 EventsStore       ← FE Monitor buffer
+    """
     console.print("  [yellow]\[reset][/] Disarming scenario...")
     console_run("/root/scenario/restore-web.sh", wait=5.0)
 
-    console.print("  [yellow]\[reset][/] Deleting agent-pushed rules...")
+    console.print("  [yellow]\[reset][/] Deleting agent-pushed rules [dim](else LEAF blocks SYN before Suricata)[/]...")
     cleanup_agent_rules(prefix="    ")
 
-    console.print("  [yellow]\[reset][/] Flushing Redis DB 0 only (DB 1 EventsStore preserved for FE Monitor)...")
+    console.print("  [yellow]\[reset][/] Flushing Redis DB 0 [dim](rate limiter / cache; DB 1 + Postgres `decisions` preserved)[/]...")
     try:
-        # Agent reads memory/reputation from Postgres `decisions` (already truncated
-        # below) and Redis DB 0 cache. DB 1 is persistent FE Monitor buffer —
-        # flushing it would erase the live monitor display while eval runs.
         subprocess.run(
             ["docker", "compose", "-f", "/home/dis/deploy/zerotrust/docker-compose.yml",
              "exec", "-T", "redis", "redis-cli", "-n", "0", "FLUSHDB"],
             capture_output=True, timeout=10
         )
-        console.print("    [green]✓[/] Redis DB 0 flushed [dim]— DB 1 EventsStore intact[/]")
+        console.print("    [green]✓[/] Redis DB 0 flushed")
     except Exception as e:
         console.print(f"    [red]✗[/] Redis flush failed: {e}")
 
-    console.print("  [yellow]\[reset][/] Truncating workspace decisions table [dim](decisions_history preserved)[/]...")
-    try:
-        subprocess.run(
-            ["docker", "compose", "-f", "/home/dis/deploy/zerotrust/docker-compose.yml",
-             "exec", "-T", "postgres", "psql", "-U", "ztuser", "-d", "zerotrust",
-             "-c", "TRUNCATE TABLE decisions;"],
-            capture_output=True, timeout=10
-        )
-        console.print("    [green]✓[/] decisions truncated [dim]— decisions_history kept for FE display[/]")
-    except Exception as e:
-        console.print(f"    [red]✗[/] Postgres truncate failed: {e}")
+    # NOTE: NO `TRUNCATE TABLE decisions` here — that's the whole point.
+    # Agent reads Postgres `decisions` for asset reputation, multi-strategy
+    # past-incident search, kill-chain correlation. Keeping those rows means
+    # run N sees memory of runs 1..N-1.
+    console.print("  [yellow]\[reset][/] Postgres `decisions` [bold magenta]PRESERVED[/] [dim](memory under test)[/]")
 
-    console.print("  [yellow]\[reset][/] Resetting intelligence layer state...")
+    console.print("  [yellow]\[reset][/] Resetting intel-layer rate limiter...")
     try:
         req = urllib.request.Request(f"{INTEL}/admin/reset", data=b"", method="POST")
         with urllib.request.urlopen(req, timeout=5) as r:
@@ -623,20 +647,20 @@ def _default_output() -> str:
     # Filename: <test_title>_<YYYYMMDD>_<HHMMSS>.xlsx  (date + time of run)
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    return os.path.join(RESULTS_DIR, f"eval_iid_{ts}.xlsx")
+    return os.path.join(RESULTS_DIR, f"eval_memory_{ts}.xlsx")
 
 # ── Rich UI helpers ──────────────────────────────────────────────────────────
 
 def _render_header(output_path: str) -> None:
     """Top banner + config panel — printed once at start."""
     title = Text()
-    title.append("ZT-EVAL · IID", style="bold cyan")
+    title.append("ZT-EVAL · MEMORY", style="bold magenta")
     title.append("  ", style="")
-    title.append("Statistical Baseline", style="dim")
+    title.append("Stateful — `decisions` preserved across runs", style="dim")
     console.print()
     console.print(Panel(
         Align.center(title),
-        border_style="cyan",
+        border_style="magenta",
         padding=(0, 2),
     ))
 
@@ -650,6 +674,7 @@ def _render_header(output_path: str) -> None:
     cfg.add_row("run timeout",    f"{DURATION_SECONDS}s")
     cfg.add_row("pause between",  f"{PAUSE_BETWEEN_RUNS_SECONDS}s")
     cfg.add_row("est. duration",  f"~{(DURATION_SECONDS + PAUSE_BETWEEN_RUNS_SECONDS) * RUNS // 60} min")
+    cfg.add_row("memory mode",    "[bold magenta]STATEFUL[/] — `decisions` preserved")
     cfg.add_row("output",         output_path)
     console.print(Panel(cfg, title="[bold]config[/]", border_style="dim", padding=(1, 2)))
     console.print()
@@ -693,7 +718,7 @@ def _render_summary(results: List[RunResult]) -> None:
         title="per-run results",
         title_style="bold",
         show_lines=False,
-        header_style="bold cyan",
+        header_style="bold magenta",
         border_style="dim",
     )
     runs_tbl.add_column("#",          justify="right", width=3)
@@ -736,7 +761,7 @@ def _render_summary(results: List[RunResult]) -> None:
     metr_tbl = Table(
         title="aggregate metrics",
         title_style="bold",
-        header_style="bold cyan",
+        header_style="bold magenta",
         border_style="dim",
     )
     metr_tbl.add_column("metric",  style="bold")
@@ -772,6 +797,35 @@ def _render_summary(results: List[RunResult]) -> None:
     summary.add_row("src_ip correct",   f"{correct_ip}/{n}")
     console.print(Panel(summary, title="[bold]summary[/]", border_style=pass_color, padding=(1, 2)))
 
+    # ── Memory effect: first run vs last run (the headline metric for this eval) ──
+    if n >= 2:
+        first, last = results[0], results[-1]
+        def _delta(name: str, a, b, unit: str = "", lower_is_better: bool = True):
+            if a is None or b is None:
+                return f"  {name:<28}  [dim]—[/]"
+            delta = b - a
+            pct = (delta / a * 100) if a else 0
+            arrow = "↓" if delta < 0 else ("↑" if delta > 0 else "→")
+            good = (delta < 0) if lower_is_better else (delta > 0)
+            color = "green" if good else ("red" if delta != 0 else "dim")
+            return f"  {name:<28}  {a:.2f}{unit} → {b:.2f}{unit}   [{color}]{arrow} {abs(pct):.1f}%[/]"
+
+        console.print()
+        console.print(Panel(
+            "\n".join([
+                f"[bold]Run 1 (cold memory) → Run {n} (warm memory)[/]\n",
+                _delta("MTTD (s)",            first.mttd_s,                last.mttd_s,                "s"),
+                _delta("M1 Alert→Decision (s)", first.t_alert_to_decision_s, last.t_alert_to_decision_s, "s"),
+                _delta("Agent latency (ms)",  first.enforce_latency_ms,    last.enforce_latency_ms,    "ms"),
+                _delta("Confidence",          first.confidence,            last.confidence,            "", lower_is_better=False),
+                "",
+                "[dim]Lower latency / higher confidence on later runs ⇒ memory helps.[/]",
+            ]),
+            title="[bold magenta]memory effect[/]",
+            border_style="magenta",
+            padding=(1, 2),
+        ))
+
 
 def main():
     output_path = _default_output()
@@ -790,7 +844,7 @@ def main():
     results: List[RunResult] = []
 
     for i in range(1, RUNS + 1):
-        console.print(Rule(f"run {i}/{RUNS}", style="cyan", characters="─"))
+        console.print(Rule(f"run {i}/{RUNS}", style="magenta", characters="─"))
         anchor_ts = reset(i)
         result = run_scenario(i, DURATION_SECONDS, anchor_ts=anchor_ts)
         results.append(result)
@@ -815,7 +869,7 @@ def main():
             time.sleep(PAUSE_BETWEEN_RUNS_SECONDS)
 
     console.print()
-    console.print(Rule("results", style="bold cyan"))
+    console.print(Rule("results", style="bold magenta"))
     console.print()
     _render_summary(results)
 

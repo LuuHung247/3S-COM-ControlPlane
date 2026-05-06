@@ -203,7 +203,21 @@ export default function PolicyPage() {
     setTimeout(() => setPushStatus(null), 5000);
   };
 
-  const deleteRule = async (id: string) => {
+  const deleteRule = async (rule: Rule) => {
+    const id = rule["rule-id"];
+    const src = rule["src-prefix"] ?? rule["src-ip"] ?? "*";
+    const dst = rule["dst-prefix"] ?? rule["dst-ip"] ?? "*";
+    const dport = rule["dst-port"] ?? "*";
+    const summary = `${rule.action} ${src} → ${dst}:${dport}`;
+    const ok = window.confirm(
+      `Xoá rule này?\n\n` +
+      `  ID:     ${id}\n` +
+      `  Action: ${summary}\n` +
+      `  Source: ${rule.source ?? "manual"}\n\n` +
+      `Hành động này không thể hoàn tác.`
+    );
+    if (!ok) return;
+
     setDeleting(id);
     try {
       const d = await (await fetch(`/api/ids/rules/${encodeURIComponent(id)}`, { method: "DELETE" })).json();
@@ -369,7 +383,7 @@ export default function PolicyPage() {
                     {rule.source ?? "—"}
                   </span>
                   <span className="text-xs font-mono text-tc-text-dim">{rule.priority ?? "—"}</span>
-                  <button onClick={() => deleteRule(rule["rule-id"])} disabled={deleting === rule["rule-id"]}
+                  <button onClick={() => deleteRule(rule)} disabled={deleting === rule["rule-id"]}
                     className="text-xs font-mono text-red-400 border border-red-700/40 rounded px-2 py-1 hover:bg-red-900/20 disabled:opacity-50">
                     {deleting === rule["rule-id"] ? "…" : "Del"}
                   </button>
@@ -379,7 +393,7 @@ export default function PolicyPage() {
                     <span className="text-xs font-mono text-white truncate">{rule["rule-id"]}</span>
                     <span className={`px-2 py-0.5 rounded border text-xs font-mono font-bold ${ACTION_BADGE[rule.action] ?? ACTION_BADGE.DROP}`}>{rule.action}</span>
                   </div>
-                  <button onClick={() => deleteRule(rule["rule-id"])} disabled={deleting === rule["rule-id"]}
+                  <button onClick={() => deleteRule(rule)} disabled={deleting === rule["rule-id"]}
                     className="text-xs font-mono text-red-400 border border-red-700/40 rounded px-2 py-0.5 hover:bg-red-900/20 w-fit">
                     {deleting === rule["rule-id"] ? "..." : "Delete"}
                   </button>

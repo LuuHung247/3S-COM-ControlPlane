@@ -1,63 +1,76 @@
 # Experiments — Zero Trust Intelligence Layer
 
-Hai experiment đánh giá agent từ 2 góc nhìn khác nhau:
+Hai eval cùng template (REAL attack qua console MGT → Suricata → intel-layer → SF), khác đúng **1 dòng** trong `reset()`:
 
-| File | Purpose | Stat. mode | State giữa iterations |
-|------|---------|-----------|------------------------|
-| `eval_iid.py` | Statistical baseline — N i.i.d. trials của 1 attack scenario | mean / min / max / p95 across N runs | **Reset** giữa runs (workspace `decisions` + Redis DB 0 flushed) |
-| `eval_killchain.py` | Case study — multi-stage kill chain (recon → lateral → exfil) | per-stage μ ± σ across chains | **Preserved** giữa các alerts trong cùng chain (cumulative state là point) |
+| File | Purpose | Memory mode |
+|------|---------|-------------|
+| `eval_iid.py` | Statistical baseline — N i.i.d. trials | Reset `decisions` mỗi run → memory empty |
+| `eval_memory.py` | Stateful — N runs với memory accumulating | **Preserve** `decisions` → run N thấy lịch sử run 1..N-1 |
 
-Cả 2 chỉ truncate workspace `decisions`. Bảng `decisions_history` (frontend Policy History đọc) **không bao giờ** bị truncate — mọi decision vẫn inspectable trong UI sau khi experiment xoá workspace.
+Cả 2 dùng cùng:
+- Scenario: WEB→DB microsegmentation bypass (`compromise-web.sh` → SID 9000001)
+- Trigger path: console MGT (10.1.100.10) → Suricata mirror → ids-agent SSE → intel-layer
+- Schema kết quả: xlsx + json với same columns
+- Rich UI k6-style: header panel, per-run rule, summary table, metrics avg/min/max/p95
 
-Redis DB 1 (EventsStore — FE Monitor 7-day buffer) **cũng không bị flush** — Monitor vẫn hiển thị live activity trong lúc eval chạy.
-
-## How to run
+## Workflow đề xuất cho thesis
 
 ```bash
 cd /home/dis/deploy/zerotrust/experiments
-python3 eval_iid.py          # 10 i.i.d. runs, exports xlsx + json
-python3 eval_killchain.py    # 3-alert sequential case study × N chains, exports md + json
+
+# 1. Baseline (memory OFF) — single-shot detection performance
+python3 eval_iid.py
+
+# 2. With memory (state preserved) — does memory help?
+python3 eval_memory.py
 ```
 
-Cả 2 script **không có CLI flags** — mọi tham số (run count, attacker IP, target SID, gap seconds, output path) là constant ở đầu file. Edit constant nếu cần scenario khác.
+So 2 file xlsx → delta confidence / latency / MTTD = **giá trị memory architecture**.
 
-**Dependencies:**
-```bash
-pip3 install openpyxl rich
-```
+## What gets reset between runs
 
-`rich` cho output k6-style: live progress, colored badges (✓/✗ PASS/FAIL), tables với avg/min/max/p95.
+| Reset action | `eval_iid` | `eval_memory` |
+|--------------|:--:|:--:|
+| Disarm `compromise-web.sh` | ✓ | ✓ |
+| Delete agent SF rules (else LEAF blocks SYN) | ✓ | ✓ |
+| Flush Redis DB 0 (rate limiter / cache) | ✓ | ✓ |
+| **TRUNCATE Postgres `decisions`** | **✓** | **✗ KEEP** |
+| Reset intel-layer rate limiter | ✓ | ✓ |
+| Preserve Redis DB 1 (FE Monitor 7-day buffer) | ✓ | ✓ |
+| Preserve Postgres `decisions_history` (FE audit) | ✓ | ✓ |
 
 ## Outputs
 
 ```
 experiments/results/
-├── eval_iid_<timestamp>.xlsx        # per-run table + summary stats
-├── eval_iid_<timestamp>.json        # raw RunResult dicts
-├── eval_killchain_<timestamp>.md    # narrative timeline + reasoning per stage (1 file per chain)
-└── eval_killchain_<timestamp>.json  # raw StageResult dicts
+├── eval_iid_<timestamp>.xlsx       # per-run + aggregate stats
+├── eval_iid_<timestamp>.json
+├── eval_memory_<timestamp>.xlsx    # per-run + aggregate + memory effect
+└── eval_memory_<timestamp>.json
 ```
 
-## Data model — vì sao 2 bảng
+`eval_memory.xlsx` có thêm **memory effect panel** trong stdout: Run 1 (cold) vs Run N (warm) delta cho confidence + latency.
 
-Intelligence layer persist mỗi decision 2 lần:
+## Dependencies
 
-```
-agent.process(alert)
-        │
-        ▼
-   save_decision()  ──► INSERT into  decisions          (workspace)
-                   ──► INSERT into  decisions_history  (audit)
+```bash
+pip3 install openpyxl rich
 ```
 
-| Table | Eval truncate? | Frontend đọc? | Purpose |
-|-------|:-:|:-:|------|
-| `decisions` | **Có** — mỗi `eval_iid` run, và đầu `eval_killchain` | Agent (asset reputation, multi-strategy past-incident search, operational memory) | Workspace — giữ mỗi iteration i.i.d. |
-| `decisions_history` | **Không** | Frontend (Policy History page, Reasoning modal) | Full audit forever |
+## Adding new evals
 
-Split này cho phép statistical evaluation reproducible (mỗi run thấy workspace empty) trong khi FE vẫn hiển thị mọi decision agent từng đưa ra, kể cả từ session experiment trước đó.
+Template chính thức là **`eval_iid.py`**. Mọi eval mới copy file này, sửa `reset()` cho phù hợp test goal:
+
+| Test goal | Reset modification |
+|-----------|--------------------|
+| Stress test under load | Add concurrent attack triggers, no other change |
+| Multi-source attack | Loop over multiple ATTACKER_IP, otherwise i.i.d. |
+| Alert spoof / noise injection | Inject decoy alerts before trigger, measure FP rate |
+| Long-window memory | Same as `eval_memory` but pause longer between runs |
+
+Giữ nguyên: HTTP helpers, console_run, run_scenario, RunResult dataclass, export_excel, rich UI. Chỉ tinker với `reset()` và config constants.
 
 ## Per-experiment docs
 
-- [`eval_iid.md`](./eval_iid.md) — statistical baseline methodology + interpretation
-- [`eval_killchain.md`](./eval_killchain.md) — chain-attack case study methodology + interpretation
+- [`eval_iid.md`](./eval_iid.md) — statistical baseline methodology
+- [`eval_memory.md`](./eval_memory.md) — stateful memory test methodology
