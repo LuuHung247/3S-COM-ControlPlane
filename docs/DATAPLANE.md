@@ -508,13 +508,23 @@ def ip_to_zone(src_ip: str) -> str:
 | False Positive Rate (SC-5 baseline) | 0% | 2026-04-19 |
 | Browser dashboard | 8/8 PASS | 2026-04-19 |
 | **Total live alerts captured** | **38** | **2026-04-19** |
-| **Intelligence Layer automated enforcement (10-run eval)** | | **2026-05-04** |
-| — Outcome: ENFORCED (rule pushed to LEAF) | 10/10 PASS | 2026-05-04 |
-| — Enforcement Correctness (M3): correct IP blocked | 10/10 (100%) | 2026-05-04 |
-| — Alert→Decision latency (M1) avg | 4.75s | 2026-05-04 |
-| — LLM confidence avg | 0.955 | 2026-05-04 |
-| — 9-layer safety guardrails: all adversarial tests pass | PASS | 2026-05-04 |
-| Scenario compromise-web → SID 9000001 → auto-block → restore | full round-trip verified | 2026-05-04 |
+| **Intelligence Layer V2 (single-call) — 10-run eval** | | **2026-05-04** |
+| — Outcome: ENFORCED | 10/10 PASS | 2026-05-04 |
+| — M1 Alert→Decision avg | 4.75s | 2026-05-04 |
+| — Confidence avg | 0.955 | 2026-05-04 |
+| — Cerebras 400 fail rate | ~5-10% (mitigated via retry+fallback) | 2026-05-04 |
+| **Intelligence Layer V3 (schema split) — 10-run eval** | | **2026-05-05** |
+| — Outcome: ENFORCED | **10/10 PASS** | 2026-05-05 |
+| — M3 Enforcement Correctness (correct IP) | **10/10 (100%)** | 2026-05-05 |
+| — M1 Alert→Decision avg | **8.5s** (range 6.5-12.0s) | 2026-05-05 |
+| — Agent latency avg | 6645ms (range 5009-10301ms) | 2026-05-05 |
+| — Confidence | **0.92 consistent across all 10 runs** | 2026-05-05 |
+| — **Cerebras 400 fail rate** | **0%** (Stage 1 schema simplified, 0 retries needed) | 2026-05-05 |
+| — Stage 2 reasoning trace populated | 10/10 (3 hyp + 6.7 reasoning + 2.9 alts + 3.8 follow-up) | 2026-05-05 |
+| — MITRE classification | T1021 / TA0008 (correct for SID 9000001) | 2026-05-05 |
+| — Redis DB separation (DB 0 eval-flushable, DB 1 events preserved) | verified | 2026-05-05 |
+| — 9-layer safety guardrails + L1+ injection + L4b off-target + L2+ semantic entropy | PASS | 2026-05-05 |
+| Scenario compromise-web → SID 9000001 → V3 auto-block → restore | full round-trip verified | 2026-05-05 |
 
 ---
 
@@ -540,18 +550,30 @@ def ip_to_zone(src_ip: str) -> str:
 
 ---
 
-## 12. Intelligence Layer — Implementation Status (2026-05-04)
+## 12. Intelligence Layer — Implementation Status (2026-05-05, V3)
 
-All items previously listed as "open for SDNC Agent" are now complete via the Intelligence Layer service.
+All items previously listed as "open for SDNC Agent" are now complete via the Intelligence Layer service. V3 adds schema split, parallel reasoning, EventsStore, and Langfuse observability.
 
 | Item | Status | Implementation |
 |------|--------|---------------|
 | Rule push to LEAF | ✅ DONE | Intelligence Layer → `POST ids-agent:8766/rules` → SF `/api/rules` → gNMI → nos-acl-bridge → iptables |
-| Subscribe IDS SSE stream | ✅ DONE | `pipeline/consumer.py` subscribes `http://ids-agent:8766/events`, auto-reconnect |
-| Auto-block workflow (P1 alert → DROP) | ✅ DONE | LangGraph: classify → reason → validate → enforce. Confidence gate ≥0.85 |
-| Auto-unblock TTL | ✅ DONE | `ttl_seconds` field in rule (default 3600s for P1); SF enforces via nos-acl-bridge timer |
-| Block event back to dashboard | ✅ DONE | `record_decision` node: Postgres audit + Redis history + SSE `/stream`; Frontend polls `/api/intel/decisions` |
-| Audit trail / compliance log | ✅ DONE | Postgres `decisions` table: full ReAct trace, safety check results, confidence, latency |
+| Subscribe IDS SSE stream | ✅ DONE | `pipeline/consumer.py` SSE + flow poller (5s) → mirrors to EventsStore Redis DB 1 |
+| Auto-block workflow (P1 alert → DROP) | ✅ DONE | V3 8-node pipeline, Stage 1 + parallel Stage 2 reasoning. Confidence gate ≥0.85 |
+| Auto-unblock TTL | ✅ DONE | `ttl_seconds` field (3600s for P1, 1800s P2). Caller responsibility (agent maintains expire map) |
+| Block event back to dashboard | ✅ DONE | Postgres + Redis cache + SSE `/stream` + Langfuse trace; Frontend `/api/intel/decisions` + 🧠 Reasoning modal |
+| Audit trail / compliance log | ✅ DONE | Postgres `decisions` (V3: + primary_hypothesis, alternative_actions, follow_up_actions, mitre_*, reasoning_completed_at, trace_id) |
+| LLM observability | ✅ DONE (V3) | Langfuse v2 self-hosted (port 3001), trace per alert (8 spans + 3 generations), token cost, retrospective scoring |
+| Events buffer for Monitor F5 | ✅ DONE (V3) | EventsStore Redis DB 1 (sorted sets, 7-day TTL, max 100K events, hourly prune coroutine) |
+| Knowledge graph visualization | ✅ DONE (V3) | pyvis HTML at `/kg/visualize` (30 nodes, 43 edges) |
+| Cerebras 400 mitigation | ✅ DONE (V3) | Schema split — Stage 1 (9 scalar) ~0% parser fail, Stage 2 (4 arrays) fail-tolerant non-blocking |
+| Reasoning trace for HITL review | ✅ DONE (V3) | Stage 2 outputs: 3 hypotheses + reasoning_steps + alternatives + rollback + follow-up + MITRE mapping |
 | SSH/telnet connector to SONiC console | ❌ NOT needed | Route goes through SF gNMI — no direct console access required for enforcement |
 
-**Architecture:** No direct SSH/console to SONiC needed. Control path is: Intelligence Layer → ids-agent (REST) → Secure Framework (gNMI mTLS) → nos-acl-bridge → iptables FORWARD. All persistence in LEAF ConfigDB (Redis DB4) — survives restart.
+**Architecture:** No direct SSH/console to SONiC needed. Control path is: Intelligence Layer → ids-agent (REST) → Secure Framework (gNMI mTLS) → nos-acl-bridge → iptables FORWARD. All persistence in LEAF ConfigDB (Redis DB4 internal to LEAF) — survives restart.
+
+**V3 storage layout** (logical separation):
+- LEAF Redis (ConfigDB DB4): rules persist on switch, restart-survivable
+- Control-plane Redis DB 0: agent state (dedup, response cache, rate limiter) — eval-flushable
+- Control-plane Redis DB 1: EventsStore (alerts + flows buffer for frontend Monitor) — preserved across eval
+- Postgres `zerotrust`: decisions audit trail (164+ records), retrospective labels
+- Postgres `langfuse`: LLM observability traces (10+ traces per eval session)

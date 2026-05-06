@@ -1,457 +1,391 @@
-# Intelligence Layer — AI Agent Service
+# Intelligence Layer — AI Security Agent
 
 > Reactive Policy Decision Engine cho Zero Trust Microsegmentation
-> **Version**: 0.2.0 — Live enforcement
-> **Status**: ✅ Production — port 8767, `AGENT_DRY_RUN=false`, 10/10 eval PASS
-> **Last updated**: 2026-05-04
+> **Version**: 0.4.0 — V3 schema split + Langfuse observability + EventsStore
+> **Status**: ✅ Production — port 8767, `AGENT_DRY_RUN=false`, 10/10 eval PASS (2026-05-05)
+> **Last updated**: 2026-05-05
 
 ---
 
 ## 1. Tóm tắt
 
-`intelligence-layer` là service Python FastAPI đóng vai trò bộ não AI của hệ thống Zero Trust Microsegmentation. Nó subscribe alert real-time từ Suricata IDS (qua `ids-agent` SSE bridge), reasoning bằng LLM (Cerebras GLM-4.7), và push DROP rule vào dataplane qua Secure Framework — thay thế cơ chế auto-block dumb rule-based trước đây.
+`intelligence-layer` là service Python FastAPI đóng vai trò **bộ não AI** của hệ thống Zero Trust Microsegmentation. Nó subscribe alert real-time từ Suricata IDS, reasoning bằng LLM với **knowledge graph + hypothesis-driven decision**, và push DROP rule vào dataplane qua Secure Framework.
 
-**Vị trí trong stack:**
-
+**Vị trí trong stack**:
 ```
-Suricata IDS  ──SSE──▶  ids-agent (Go)  ──SSE──▶  intelligence-layer (Python)
-                              │                          │
-                              │                          ▼ POST /rules
-                              │            ┌──── ids-agent /rules ────┐
-                              │            │   (force source=agent)   │
-                              │            ▼                          │
-                              └──────▶  Secure Framework (:9090)  ────┘
-                                              │
-                                              ▼ NETCONF/gNMI
-                                       SONIC LEAF iptables
+Suricata IDS ──SSE──▶ ids-agent (Go) ──SSE──▶ intelligence-layer (Python, :8767)
+                            │                       │
+                            │                       ├──▶ Cerebras LLM (GLM-4.7 + llama3.1-8b)
+                            │                       ├──▶ Redis DB 0 (agent state)
+                            │                       ├──▶ Redis DB 1 (events buffer)
+                            │                       ├──▶ Postgres (decisions audit)
+                            │                       └──▶ Langfuse (LLM observability)
+                            │                       │
+                            │                       ▼ POST /rules (force source=agent)
+                            └──▶ Secure Framework (:9090) ──gNMI──▶ SONIC LEAF iptables
 ```
 
-**Endpoint:** `http://localhost:8767` (host) / `http://intelligence-layer:8767` (Docker network `ztnet`)
+**Endpoint**: `http://localhost:8767` (host) / `http://intelligence-layer:8767` (network `ztnet`)
 
 ---
 
-## 2. Kiến trúc
-
-### 2.1 Pipeline xử lý 1 alert
+## 2. Pipeline V3 — 8 nodes với Stage 1+2 parallel
 
 ```
-SSE event from ids-agent:8766/events
+SSE event từ ids-agent:8766/events
    ↓
-[AlertGate] severity ≥ 2 → dedup (Redis 30s) → whitelist → zone check
+[AlertGate]                  severity ≥ 2 → dedup (Redis 30s) → whitelist → zone check
    ↓ (passed)
-[load_context] inject KG snapshot (~2-4K tokens) vào system prompt
+[load_context]               build alert-scoped system prompt (~3000 tokens, V3 dynamic selection)
    ↓
-[classify_alert] LLM fast (llama3.1-8b) → benign | suspicious | threat
-   ↓ (threat)
-[gather_context] tool: get_alert_history(src_ip)  ← Redis 24h history
+[classify_alert]             LLM fast (llama3.1-8b) → benign | suspicious | threat
+   ↓ (threat/suspicious)
+[gather_context]             4 tasks parallel:
+                              • get_alert_history (Redis)
+                              • get_ip_summary (Postgres 30-day aggregate)
+                              • get_recent_alerts_for_correlation (10-min window)
+                              • prefetch_investigation_context:
+                                  - query_asset_neighbors (blast radius)
+                                  - find_similar_past_incidents (Postgres 90-day)
+                                  - simulate_block_impact (counterfactual)
+                                  - kill_chain_match
    ↓
-[reason_and_decide] LLM primary (zai-glm-4.7) — self-consistency N=3 cho P1/P2
+[cache_lookup]               Redis response cache (60s TTL) keyed by decision-shape features
+   ↓ (hit) → skip LLM, rebind src_ip → enforce
+   ↓ (miss)
+[policy_decision]            ★ V3 Stage 1 BLOCKING — LLM primary
+                              POLICY_DECISION_SCHEMA (9 scalar fields, 0 arrays)
+                              → action, src_ip, dst_ip, dst_port, protocol, priority,
+                                ttl_seconds, comment, confidence
+                              ~3s, parser fail rate ~0%, 3 retries on transient
    ↓
-[validate_decision] schema + topology + policy conflict + severity-action mapping
-   ↓ (all green)
-[enforce] check guardrails L4-L8 → POST ids-agent:8766/rules → SF push to LEAF
+[validate_decision]          9 safety layers (L1+L3+L4+L4b+L5+L6+L7+L9+L2-semantic-entropy)
+   ↓ (passed)
+   ╔═══ FORK PARALLEL ═══╗
+   ║                     ║
+   ▼                     ▼
+[enforce]            [reasoning_trace]   ★ V3 Stage 2 NON-BLOCKING — LLM primary
+SF POST /api/rules    REASONING_TRACE_SCHEMA (4 arrays + 4 scalars)
+  ↓                   → primary_hypothesis, hypotheses, reasoning_steps,
+  Rule on LEAF          alternative_actions, rollback_plan, follow_up_actions,
+                        mitre_technique, mitre_tactic
+                       ~1.5-2s, fail-tolerant — decision still enforces if this fails
+   ╚═════════════════════╝
    ↓
-[record] Postgres `decisions` table + Redis cache + SSE broadcast /stream
+[record_decision]    Postgres `decisions` (full audit trail) + Redis cache + SSE /stream
 ```
 
-### 2.2 Thành phần
-
-| Module | Vai trò |
-|---|---|
-| `src/pipeline/` | SSE consumer (auto-reconnect), filter chain (severity/dedup/whitelist/zone), gate orchestrator |
-| `src/core/` | Knowledge: NetworkX KG (4 zones, 4 hosts, 2 LEAFs), policy matrix (12 zone pairs), 9 SID→MITRE mapping, snapshot rendering |
-| `src/agent/llm/` | SOLID provider abstraction — `LLMClient` ABC, `OpenAICompatibleClient`, factory; swap provider/model chỉ qua `.env` |
-| `src/agent/safety/` | 9-layer defense-in-depth (chi tiết section 4) |
-| `src/agent/` | LangGraph-style explicit pipeline (`graph.py`), 6 nodes, prompts, 3 tools |
-| `src/enforcement/` | Backend `IDSAgentProxyBackend` — duy nhất, gọi qua ids-agent (path thống nhất với frontend) |
-| `src/storage/` | Redis (warm cache: alert history, dedup), Postgres (cold storage: full audit trail) |
-| `src/api/` | REST + SSE: `POST /alerts`, `GET /decisions`, `GET /health`, `GET /stream` |
+**Key V3 innovation**: tách 1 LLM call (15 fields, 4 arrays — Cerebras parser fail ~5-10%) thành 2 calls — Stage 1 critical path đơn giản (parser fail ~0%), Stage 2 enrichment chạy parallel với enforce.
 
 ---
 
-## 3. LLM Configuration
+## 3. Knowledge Architecture — 5 lớp
 
-**Hiện tại** (`.env` — live):
+KG render alert-scoped (chỉ phần liên quan alert hiện tại) → giảm prompt từ 5851 tokens → 2970 tokens (-49%).
 
-| Param | Primary | Fast |
-|-------|---------|------|
+| Lớp | File | Nội dung | Render |
+|-----|------|----------|--------|
+| **Datacenter system model** | `src/core/system_model.py` | 4 zones, 4 hosts, 2 LEAFs, criticality, services, blast radius | `render_for_alert(src_ip, dst_ip)` — chỉ zones/assets liên quan |
+| **Production traffic baselines** | `src/core/baselines.py` | 8 legitimate flows (web→app proxy, app→db OLTP, mgt audit/scrape/logpull) | `render_for_alert(src_ip, dst_ip)` — chỉ baselines involve các IP này |
+| **Threat playbook** | `src/core/threat_playbook.py` | 8 SID detections + 4 kill chains (presentation-tier-breach, app-tier-breach, mgt-credential-compromise, db-direct-exfil) | `render_for_alert(sid)` — full SID detail + matching kill chains |
+| **Enforcement plane contract** | `src/core/enforcement_plane.py` | SF REST API, RBAC matrix (sdnc/auto OU), 6 critical gotchas, 6 failure modes | `render_summary()` — compact gotchas + invariants |
+| **Network invariants** | `src/core/invariants.py` | NEVER_BLOCK CIDR list (8 entries), allowed actions, priority bounds, TTL bounds | always full inject (~500 tokens) |
+
+**Source of truth chính** (production language, đọc được human):
+- `intelligence-layer/knowledge/01-DATAPLANE.md`
+- `intelligence-layer/knowledge/02-SECURE-FRAMEWORK.md`
+
+→ Pydantic models trong `src/core/` mirror các .md docs này. Khi datacenter thay đổi: update .md trước, sync Pydantic data sau.
+
+---
+
+## 4. Investigation Tools (V3 — 3 tools, pre-fetched parallel)
+
+Agent CHỈ có 1 action capability = push DROP rule. Investigation tools là **read-only data fetchers** giúp LLM hiểu context trước khi quyết định. Tất cả pre-fetched trong `node_gather_context` (~30ms parallel).
+
+| Tool | Source | Output | Vai trò |
+|------|--------|--------|---------|
+| `query_asset_neighbors(ip)` | NetworkX in-mem + system_model | Asset profile, blast radius score, expected inbound/outbound flows, if_blocked impact | Trước block: biết hậu quả |
+| `find_similar_past_incidents(sid, src_zone, dst_zone, lookback=90d)` | Postgres aggregation | Match count, outcome breakdown, last 5 decisions, pattern assessment | Học từ quá khứ — recurrence pattern |
+| `simulate_block_impact(src_ip, dst_ip, dst_port)` | Pydantic cross-ref | Full-block vs targeted-block consequences, baseline match | Counterfactual — chọn rule scope tối thiểu |
+
+**Kill chain match** (in-memory, tự động): match SID đến trong các kill chain stages → output trong alert context cho LLM.
+
+---
+
+## 5. Safety Architecture — 9-Layer Defense-in-Depth
+
+| Layer | File | Check | Reject if |
+|-------|------|-------|-----------|
+| **L1 Schema** | `safety/validators.py` | Pydantic strict + forced function calling | Invalid JSON, field missing |
+| **L2 Self-consistency** | `safety/consistency.py` + `safety/semantic_uncertainty.py` | N runs vote + Shannon entropy over decision shape | Action disagreement OR entropy > 1.0 OR src_ip consensus < 67% |
+| **L3 Topology validators** | `safety/validators.py` | Zone exists, policy conflict (DROP on ALLOW path) | Unknown zone, conflict |
+| **L4 NEVER_BLOCK** | `safety/guardrails.py` | Hardcoded CIDR whitelist (mgmt, SVI, IDS, IDS, mgt-01) | src_ip in whitelist → CRITICAL halt |
+| **L4b Off-target** | `safety/validators.py` | `intent.src_ip` contains `alert.src_ip` (CIDR membership) | LLM hallucinated different IP |
+| **L5 Blast radius** | `safety/rate_limiter.py` | 5 rules/min, 50 total cap, 3/IP/5min, TTL [60-3600] | Vượt rate/scope/TTL |
+| **L6 Severity↔action** | `safety/validators.py` | P1/P2 → DROP, P3/P4 → log_only | P3/P4 với DROP → reject |
+| **L7 Confidence gate** | `safety/confidence.py` | ≥0.85 enforce, 0.70-0.85 enforce+notify, 0.50-0.70 HOLD, <0.50 reject | Confidence < 0.70 → no enforce |
+| **L8 Circuit breaker** | `safety/circuit_breaker.py` | 3-fail consecutive halt 5 min | 3 enforce errors → halt |
+| **L1+ Prompt injection** | `safety/prompt_injection.py` | Pattern detector (15 regex from PINT/JailBreakBench corpus) + suspicious unicode | Sanitize signature/category before LLM sees |
+
+**Soft tag wrapper**: alert text wrap trong `<untrusted_alert_data>...</untrusted_alert_data>` + system prompt instruct LLM treat as data. Defense-in-depth với hard pattern detector (L1+).
+
+---
+
+## 6. LLM Configuration
+
+**Provider**: Cerebras (OpenAI-compatible API). Swap provider chỉ qua `.env`:
+
+| Param | Primary (reasoning + Stage 1+2) | Fast (classify) |
+|-------|--------------------------------|-----------------|
 | Provider | `openai_compat` | `openai_compat` |
 | Base URL | `https://api.cerebras.ai/v1` | `https://api.cerebras.ai/v1` |
 | Model | `zai-glm-4.7` | `llama3.1-8b` |
-| Temperature | `0.1` | `0.0` |
-| Max tokens | `2048` | `512` |
-| Use case | Reasoning + tool calls + policy intent | Classify benign/suspicious/threat |
-| Timeout | `10s` | `10s` |
+| Temperature | 0.1 | 0.0 |
+| Max tokens | **4096** (V3: tránh JSON truncation cho Stage 2) | 512 |
+| Timeout | 10s + 3 retries | 10s |
 
-**Swap LLM** không sửa Python — chỉ sửa `.env`:
-
-| Muốn dùng | Thay env |
-|---|---|
-| Z.ai trực tiếp | `LLM_PRIMARY_BASE_URL=https://api.z.ai/api/paas/v4`, `LLM_PRIMARY_MODEL=glm-4.7` |
-| Local vLLM | `LLM_PRIMARY_BASE_URL=http://localhost:8000/v1`, `LLM_PRIMARY_MODEL=qwen2.5:32b` |
-| Groq | `LLM_PRIMARY_BASE_URL=https://api.groq.com/openai/v1`, model phù hợp |
-| OpenRouter | `LLM_PRIMARY_BASE_URL=https://openrouter.ai/api/v1` |
-
-**SOLID benefits:**
-- *Open/Closed*: thêm provider mới chỉ cần class implement `LLMClient` ABC, không sửa caller
-- *Liskov*: mọi client đều có cùng `chat()`, `chat_json()` signature
-- *Dependency Injection*: factory `get_llm_client(role)` đọc env, agent nhận client qua constructor
+**Robustness**:
+- Per-attempt retry với exponential backoff trong consistency.py
+- Fallback path: `response_format=json_object` khi `tool_choice` parser fail
+- Schema split V3: Stage 1 (9 scalar) ~0% parser fail, Stage 2 (4 arrays) acceptable fail (non-blocking)
 
 ---
 
-## 4. Safety Architecture — 9 layers
+## 7. Storage Architecture
 
-Domain: datacenter network security. Sai 1 lần = thảm họa. Mọi decision phải qua TẤT CẢ guardrails. Fail mode = **fail closed** (không enforce).
+### 7.1 Postgres (`zerotrust` DB)
 
-| Layer | Check | Reject when |
-|---|---|---|
-| **L1 Schema** | Pydantic + function calling forced output | Invalid JSON, free-text |
-| **L2 Self-consistency** | N=3 LLM runs, vote min_agree=2 (cho P1/P2) | Disagreement > 1 across runs |
-| **L3 Validators** | Topology zone exists, policy conflict (DROP on ALLOW flow), idempotency | Bất kỳ violation |
-| **L4 Hard guardrails** | NEVER_BLOCK whitelist (immutable hardcoded), ALLOWED_AGENT_ACTIONS = {DROP} | Block whitelisted IP → CRITICAL halt |
-| **L5 Blast radius** | 5 rules/min, 50 total cap, 3/IP/5min, TTL ∈ [60, 3600]s | Vượt limit |
-| **L6 Action gradation** | severity ↔ action: P1/P2 → DROP, P3/P4 → log_only | P3/P4 với action=DROP |
-| **L7 Confidence gate** | ≥0.85 enforce, 0.70-0.85 enforce+notify, 0.50-0.70 HOLD review, <0.50 reject | Confidence < 0.70 → KHÔNG enforce |
-| **L8 Reversibility** | TTL bắt buộc, `AGENT_DRY_RUN` kill switch, circuit breaker 3-fail | 3 enforce fail liên tiếp → halt 5 min |
-| **L9 Adversarial tests** | `tests/unit/test_safety.py` — 25 tests verify mọi layer | Fail = block deploy |
-
-**L4 NEVER_BLOCK whitelist** (hardcoded `src/agent/safety/guardrails.py`):
-```python
-NEVER_BLOCK = [
-    "127.0.0.0/8",       # loopback
-    "10.10.6.0/24",      # GNS3VM management plane
-    "192.168.122.0/24",  # LEAF NETCONF/gNMI control plane
-    "10.1.100.1/32",     # LEAF-1 SVI WEB gateway
-    "10.1.200.1/32",     # LEAF-1 SVI DB gateway
-    "10.2.100.1/32",     # LEAF-2 SVI APP gateway
-    "10.2.50.1/32",      # LEAF-2 SVI MGT gateway
-]
-ALLOWED_AGENT_ACTIONS = frozenset({"DROP"})  # NEVER ACCEPT/RETURN
+Table `decisions` — full audit trail per decision:
+```
+id, alert_sid, alert_src_ip, outcome, action, src_ip, dst_ip, dst_port,
+confidence, rejection_reason, safety_checks (JSONB), reasoning (JSONB list),
+hypotheses (JSONB list), rollback_plan (JSONB), rule_id, ttl_seconds, latency_ms,
+created_at, dry_run, trace_id (Langfuse link),
+primary_hypothesis, alternative_actions (JSONB), follow_up_actions (JSONB),
+mitre_technique, mitre_tactic, reasoning_completed_at,
+retrospective_outcome, retrospective_notes, labeled_at  -- Phase 4 background labeler
 ```
 
-**Pre-enforce checklist** (mỗi decision phải qua HẾT):
-```
-[1] Schema valid?              (L1)
-[2] Confidence ≥ threshold?    (L7)
-[3] Self-consistency pass?     (L2)
-[4] All validators green?      (L3)
-[5] Action match severity?     (L6)
-[6] Not in whitelist?          (L4) ⚠️ HARD FAIL
-[7] Within rate limits?        (L5)
-[8] TTL valid?                 (L5)
-[9] Idempotency check?         (L3)
-[10] AGENT_DRY_RUN=false?      (L8)
-   ↓ ALL GREEN
-ENFORCE → record audit
-```
+### 7.2 Redis (logical DB tách biệt)
+
+| DB | Purpose | Eval-flushable? | Keys |
+|----|---------|-----------------|------|
+| **DB 0** | Agent state | ✅ Yes — `redis-cli -n 0 FLUSHDB` | `dedup:*`, `alert_history:*`, `agent:resp_cache:*`, `decision_cache:*` |
+| **DB 1** | Events stream (NEW V3) | ❌ NO — preserved across eval | `events:violations`, `events:flows` (sorted sets, score=ts_ms) |
+
+**EventsStore** (Redis DB 1):
+- `src/storage/events_store.py` — sorted set buffer, 7-day TTL, max 100K events
+- Auto-prune: inline mỗi push + hourly background coroutine
+- Flow poller fallback: SSE + 5s poll `/flows` endpoint của ids-agent
+- API: `GET /events?since=<iso|ms>&limit=600&kind=all|violation|flow`
+
+### 7.3 Operational Memory + IncidentMemory
+
+- `OperationalMemory.get_ip_summary(src_ip, 30d)` — Postgres aggregate, return outcome breakdown + retrospective accuracy + trust score
+- `OperationalMemory.get_recent_alerts_for_correlation(src_ip, 10min)` — kill chain signal (single-SID / multi-stage)
+- `IncidentLabeler` background coroutine (5-min interval) — label decisions ≥30min old:
+  - true_positive: no recurrence within TTL
+  - recurrence: alerts during active TTL → rule possibly bypassed
+  - inconclusive: IDS query failed
+  - Push score 1.0/0.3/0.5 vào Langfuse trace
 
 ---
 
-## 5. Knowledge — Knowledge Graph (NetworkX in-memory)
+## 8. Langfuse Observability
 
-### 5.1 Structured lookup
+**Self-host** Langfuse v2 trong stack — port host **3001** (internal :3000), DB `langfuse` riêng trên cùng Postgres instance.
 
-**Topology** (`core/topology.py`, hardcoded):
-- 4 zones: `WEB` (10.1.100.0/24), `DB` (10.1.200.0/24), `APP` (10.2.100.0/24), `MGT` (10.2.50.0/24)
-- 4 hosts: Alpine-1/2/3/5
-- 2 LEAFs: LEAF-1 (WEB+DB), LEAF-2 (APP+MGT)
+**Wired** ([src/observability/langfuse_tracer.py](../intelligence-layer/src/observability/langfuse_tracer.py)):
+- Mỗi alert → 1 root trace `agent.process` với `session_id=src_ip` + tags `[severity:P1, sid:9000001]`
+- 8 child spans cho 7 pipeline nodes: `load_context, classify_alert, gather_context, cache_lookup, policy_decision, validate_decision, enforce, reasoning_trace`
+- 3 generations LLM events: 1 llama classify + 1 GLM Stage 1 + 1 GLM Stage 2 — full input/output + token usage + cost
+- IncidentLabeler push retrospective `score=true_positive` vào trace ID
 
-**Policy matrix** (`core/policy.py`, 12 zone-pair entries):
-```
-WEB→DB: DENY    WEB→APP: ALLOW   WEB→MGT: DENY
-DB→*:   DENY (no outbound)
-APP→DB: ALLOW   APP→WEB: DENY    APP→MGT: DENY
-MGT→*:  ALLOW (management can reach all)
-```
-
-**SID knowledge** (`core/knowledge.py`, 9 Suricata SIDs → MITRE):
-| SID | Severity | Tactic | Technique | Allowed action |
-|---|---|---|---|---|
-| 9000001/2/6 | P1 | TA0008/TA0010 | T1021/T1041 | DROP (TTL 3600s) |
-| 9000003/4/5 | P2 | TA0008/TA0004 | T1021/T1078 | DROP (TTL 1800s) |
-| 9000010/11 | P3 | TA0043 | T1018/T1046 | log_only |
-| 9000020 | P4 | TA0007 | T1082 | log_only |
-
-**Active rules**: refresh mỗi 30s từ `GET ids-agent:8766/rules?source=agent` → KG snapshot for idempotency check.
-
-**KG snapshot** được render thành text ~2-4K tokens, inject vào system prompt tại startup → agent KHÔNG cần tool call cho topology/policy/SID lookup → giữ < 2 tool calls/decision.
-
-### 5.2 Anti-hallucination
-
-KG hardcoded, không có vector store / RAG. Lý do: domain security cần **exact match** (rule idempotency, IP boundaries, SID→technique mapping) — fuzzy semantic search dễ gây hallucination ở các trường mission-critical.
-
-- ✅ Topology, policy matrix, SID→MITRE → KG hardcoded
-- ✅ Active SF rules → KG snapshot exact match (idempotency)
-- ✅ YANG schema → Pydantic models (constraint, force schema)
+**Bootstrap auto-init** (idempotent qua env vars):
+- Org: `zt-org`, Project: `zt-agent`
+- Public key: `pk-lf-zt-public-2026`, Secret: `sk-lf-zt-secret-2026`
+- Admin: `admin@zt.local` / `AkJ8uAipXssHBJaTQXJ4VjT3`
 
 ---
 
-## 6. Enforcement Path
+## 9. Response Cache (Redis DB 0)
 
-**Single source of truth** — chỉ 1 backend `IDSAgentProxyBackend`. Đã xóa mock/onap/ssh/sf_rest để tránh confusion.
+`src/agent/response_cache.py` — cache PolicyIntent template để skip LLM call cho same threat shape.
 
-```
-intelligence-layer
-   │
-   ▼  POST http://ids-agent:8766/rules
-   │  body: {rule_id, action=DROP, src_ip, dst_ip, dst_port, protocol,
-   │         priority=50, ttl_seconds, comment=<reasoning summary>}
-   │
-ids-agent (Go) — server-side force source="agent"
-   │
-   ▼  POST http://10.10.6.238:9090/api/rules
-   │
-Secure Framework (nos-sf container)
-   │
-   ▼  ip_to_leaf(src_ip) auto-routing
-   │  NETCONF/gNMI push
-   │
-SONIC LEAF (LEAF-1 or LEAF-2)
-   │
-   ▼  iptables FORWARD chain via nos-acl-bridge
-   │
-DROP packet
-```
+**Cache key**: `sha256(sid|src_zone|dst_zone|dst_port|baseline_match|correlation_signal)` — không include raw src_ip, nên 2 attackers cùng pattern (cùng zone, cùng baseline) hit same cache.
 
-**Vì sao qua ids-agent thay vì gọi SF trực tiếp:**
-1. Path thống nhất với frontend manual block (cùng codepath, cùng audit log)
-2. ids-agent enforce `source="agent"` server-side → provenance không thể giả mạo từ intelligence-layer
-3. Một interface duy nhất cho mọi automated enforcement → dễ audit, dễ revert
+**Rebind safety**: cache value chứa **template**, không phải target. Trên cache hit, `src_ip` được rebind từ alert thật → agent không thể block sai target due to stale cache.
 
-**Revoke / cleanup:** `DELETE http://ids-agent:8766/rules/{rule_id}` (dùng cho TTL expiry hoặc emergency revert qua `DELETE /decisions/{id}`).
+**TTL**: 60s. Hit rate trong burst attack typically 30-60%, cứu 4500ms latency / hit (5000ms LLM call → 50ms cache lookup).
 
 ---
 
-## 7. API Endpoints
+## 10. API Endpoints
 
-| Endpoint | Method | Mô tả |
-|---|---|---|
-| `/alerts` | POST | Submit single Suricata alert (test/replay) |
-| `/decisions?limit=N` | GET | List N decisions gần nhất từ Postgres (full record incl. safety_checks) |
-| `/decisions/{id}` | DELETE | Emergency revoke — xóa rule khỏi LEAF |
-| `/policy-history?limit=N` | GET | Filtered view: chỉ `enforced`/`dry_run` outcomes, format cho frontend Policy page |
-| `/health` | GET | Liveness + ids_agent + circuit breaker + rate limiter state |
-| `/stream` | GET (SSE) | Real-time decision feed cho monitor UI |
-| `/admin/reset` | POST | Reset in-memory rate limiter (dùng giữa eval runs) |
-
-**Health check sample (live):**
-```json
-{
-  "status": "ok",
-  "ids_agent": "connected",
-  "dry_run": false,
-  "circuit_breaker": {"consecutive_failures": 0, "is_open": false, "open_until": 0.0},
-  "rate_limiter": {"last_minute": 1, "total": 1}
-}
-```
+| Method | Path | Mô tả |
+|--------|------|-------|
+| GET | `/health` | Liveness + circuit breaker + rate limiter state |
+| GET | `/decisions?limit=N` | List recent decisions |
+| GET | `/decisions/{id}` | Full decision incl V3 reasoning trace + `reasoning_loading` flag |
+| DELETE | `/decisions/{rule_id}` | Emergency revert |
+| POST | `/alerts` | Manual inject alert |
+| GET | `/policy-history?limit=N` | Frontend list format |
+| GET | `/stream` | SSE real-time decisions |
+| **GET** | **`/events?since=&limit=&kind=`** | **EventsStore — Redis DB 1, 7-day window** |
+| GET | `/events/stats` | Buffer stats (count, oldest_ms, retention) |
+| GET | `/cache/stats` | Response cache hits/misses |
+| POST | `/cache/reset` | Reset cache counters |
+| GET | `/prompt/preview?sid=&src_ip=&dst_ip=` | Inspect alert-scoped prompt size (V3 dynamic selection) |
+| **GET** | **`/kg/visualize`** | **Interactive HTML KG (pyvis, 30 nodes, 43 edges)** |
+| GET | `/kg/stats` | KG node/edge counts by type |
+| POST | `/admin/reset` | Reset rate limiter (eval workflow) |
 
 ---
 
-## 8. Nghiệm thu — Acceptance Criteria
-
-### 8.1 Trạng thái checklist
-
-| # | Yêu cầu | Status | Bằng chứng |
-|---|---|---|---|
-| 1 | Service start không lỗi | ✅ | `docker compose ps` → `intelligence-layer Up` |
-| 2 | `/health` trả `{status: ok, ids_agent: connected}` | ✅ | section 7 |
-| 3 | ids-agent refactor: `/autoblock/enable` 404, `POST /rules` 200 | ✅ | xóa khỏi `main.go`, rebuild image |
-| 4 | `AGENT_DRY_RUN=false` → enforce thật lên LEAF | ✅ | `outcome=enforced`, rule trên LEAF-1 confirm via SF API |
-| 5 | P1/P2 → DROP rule, P3/P4 → log_only | ✅ | 10 runs thực nghiệm, tất cả P1 → DROP |
-| 6 | Adversarial tests pass | ✅ | 25/25 safety tests (L4 whitelist, L7 low conf, L6 P3 DROP reject) |
-| 7 | Latency p95 < 5s (end-to-end M1) | ✅ | M1 avg=4.75s, max=5.2s (N=1 self-consistency) |
-| 8 | Tool calls < 2 / decision | ✅ | chỉ `get_alert_history` (Redis) |
-| 9 | Postgres full audit trail | ✅ | `GET /decisions` có `action`, `src_ip`, `dst_ip`, `safety_checks`, `latency_ms` |
-| 10 | 100% enforcement correctness | ✅ | M3=10/10 — tất cả rules đúng IP `10.1.100.10/32` |
-
-### 8.2 Unit tests
-
-```
-$ uv run pytest tests/unit/ -v
-tests/unit/test_filters.py  ✓ 6 passed
-tests/unit/test_safety.py   ✓ 25 passed (L1-L8 + adversarial)
-============================== 31 passed in 1.89s ==============================
-```
-
-### 8.3 Live eval — 10 runs (2026-05-04, AGENT_DRY_RUN=false)
-
-| Metric | min | avg | max |
-|--------|-----|-----|-----|
-| M1 Alert→Decision (s) | 4.5 | **4.75** | 5.2 |
-| Agent internal latency (ms) | 2489 | **2680** | 3108 |
-| M3 Enforcement Correctness | — | **10/10 (100%)** | — |
-| Confidence score | 0.95 | **0.955** | 1.0 |
-| Pass rate | — | **10/10 (100%)** | — |
-
-Decision sample (enforced):
-```json
-{
-  "alert_sid": 9000001,
-  "outcome": "enforced",
-  "action": "DROP",
-  "src_ip": "10.1.100.10/32",
-  "dst_ip": "10.1.200.10/32",
-  "confidence": 0.95,
-  "latency_ms": 2617,
-  "dry_run": false,
-  "safety_checks": {
-    "validators": {"errors": [], "warnings": []},
-    "confidence": {"score": 0.95, "outcome": "enforce"},
-    "enforcement": {"backend": "ids_agent_proxy", "rule_id": "agent-f96cc3eb"}
-  }
-}
-```
-
-→ Chi tiết đầy đủ: [EXPERIMENT.md](EXPERIMENT.md)
-
----
-
-## 9. File inventory
+## 11. File Structure
 
 ```
 intelligence-layer/
+├── knowledge/                          # Source of truth (production-language docs)
+│   ├── 01-DATAPLANE.md
+│   └── 02-SECURE-FRAMEWORK.md
+├── pyproject.toml                      # Dependencies (no chromadb, no langgraph, no langchain)
 ├── Dockerfile
-├── pyproject.toml          (uv-managed, Python 3.12+)
-├── .env                    (Cerebras key, dry_run=true)
+├── docker-compose.yml
+├── .env                                # Live config
+│
 ├── src/
-│   ├── main.py             (FastAPI lifespan)
-│   ├── config.py           (Pydantic Settings)
-│   ├── models/             (4 modules: alert, decision, topology, enforcement)
-│   ├── core/               (4 modules: topology, policy, knowledge, snapshot)
-│   ├── pipeline/           (3 modules: filters, gate, consumer)
+│   ├── config.py                       # Pydantic Settings
+│   ├── main.py                         # FastAPI lifespan + wiring
+│   │
+│   ├── models/                         # Pydantic types
+│   │   ├── alert.py                    # SuricataAlert
+│   │   ├── decision.py                 # PolicyIntent V3 + Hypothesis + RollbackPlan
+│   │   ├── topology.py
+│   │   └── enforcement.py
+│   │
+│   ├── core/                           # Knowledge layers
+│   │   ├── system_model.py             # ASSETS, ZONES, LEAFS — render_for_alert()
+│   │   ├── baselines.py                # LEGITIMATE_FLOWS — render_for_alert()
+│   │   ├── threat_playbook.py          # SID_DETECTIONS + KILL_CHAINS — render_for_alert(sid)
+│   │   ├── enforcement_plane.py        # SF contract — render_summary()
+│   │   ├── invariants.py               # NEVER_BLOCK + bounds
+│   │   ├── topology.py                 # NetworkX + ip_to_zone/leaf
+│   │   ├── policy.py                   # POLICY_MATRIX, detect_conflict
+│   │   ├── knowledge.py                # SID_KNOWLEDGE
+│   │   ├── knowledge_loader.py         # 3-tier cache + alert-scoped render
+│   │   └── kg_visualizer.py            # pyvis HTML export
+│   │
+│   ├── pipeline/
+│   │   ├── consumer.py                 # SSE consumer + flow poller → EventsStore
+│   │   ├── filters.py                  # Severity/dedup/whitelist/zone
+│   │   └── gate.py                     # Filter chain orchestrator
+│   │
 │   ├── agent/
-│   │   ├── llm/            (3 modules: interface, openai_compat, factory)
-│   │   ├── safety/         (6 modules: guardrails, validators, rate_limiter,
-│   │   │                    consistency, confidence, circuit_breaker)
-│   │   ├── state.py
-│   │   ├── tools.py
-│   │   ├── prompts.py
-│   │   ├── nodes.py
-│   │   └── graph.py
-│   ├── enforcement/        (interface + ids_agent_proxy)
-│   ├── storage/            (redis, postgres)
-│   ├── api/                (routes, schemas)
-│   └── observability/      (logging, tracing)
+│   │   ├── state.py                    # AgentState TypedDict
+│   │   ├── graph.py                    # 8-node pipeline + asyncio.gather fork
+│   │   ├── nodes.py                    # node_decide_policy + node_collect_reasoning (V3)
+│   │   ├── prompts.py                  # build_policy_prompt + build_reasoning_prompt
+│   │   ├── tools.py                    # POLICY_DECISION_SCHEMA + REASONING_TRACE_SCHEMA + 3 investigation tools
+│   │   ├── response_cache.py           # Redis-backed PolicyIntent cache
+│   │   ├── llm/
+│   │   │   ├── interface.py
+│   │   │   ├── openai_compat.py        # chat_json + JSON-mode fallback
+│   │   │   └── factory.py
+│   │   └── safety/                     # 9-layer defense
+│   │       ├── guardrails.py           # NEVER_BLOCK
+│   │       ├── validators.py           # L1+L3+L4+L4b+L5+L6
+│   │       ├── rate_limiter.py
+│   │       ├── consistency.py          # Self-consistency vote
+│   │       ├── semantic_uncertainty.py # Shannon entropy over decision shape (L2+)
+│   │       ├── prompt_injection.py     # Pattern detector + sanitize
+│   │       ├── confidence.py
+│   │       └── circuit_breaker.py
+│   │
+│   ├── enforcement/
+│   │   ├── interface.py
+│   │   └── ids_agent_proxy.py          # Single backend
+│   │
+│   ├── storage/
+│   │   ├── redis.py                    # DB 0 — agent state
+│   │   ├── events_store.py             # DB 1 — traffic+violations buffer (V3)
+│   │   ├── postgres.py                 # decisions audit table
+│   │   ├── operational_memory.py       # 30-day aggregations
+│   │   └── incident_memory.py          # Retrospective labeler
+│   │
+│   ├── api/
+│   │   ├── routes.py                   # /health, /decisions, /events, /kg/*, /cache/*
+│   │   └── schemas.py
+│   │
+│   └── observability/
+│       ├── logging.py                  # structlog JSON
+│       └── langfuse_tracer.py          # Trace + spans + generations
+│
 ├── tests/
-│   ├── fixtures/           (alerts.json, adversarial.json, topology.json)
-│   ├── unit/               (31 tests, 100% pass)
-│   └── integration/        (stubs — cần real infra để chạy)
+│   ├── unit/                           # 31 tests (filters, validators, tools, safety)
+│   └── integration/
+│
 └── scripts/
-    ├── benchmark_agent.py  (replay fixtures, đo latency)
-    ├── init_db.py          (Postgres schema bootstrap)
-    └── load_topology.py    (KG sanity check)
+    ├── init_db.py
+    ├── load_topology.py
+    └── benchmark_agent.py
 ```
 
-**Total: 43 Python source files, 31 unit tests passing.**
+**Total: ~50 Python source files, 31 unit tests passing.**
 
 ---
 
-## 10. Operations
+## 12. Roadmap
 
-### 10.1 Start / restart
+### Đã làm
 
-```bash
-cd /home/dis/deploy/zerotrust
+#### v0.1.0 — MVP
+- ids-agent refactor (xóa `tryAutoBlock`, thêm `POST/DELETE /rules`)
+- Toàn bộ intelligence-layer Python (43 source files, 31 unit tests)
+- 9-layer safety architecture (L1-L9)
+- Phase A — Dataplane realism: services thật, scenario controllers
+- Phase B — Frontend `/policy` page + AI Agent status bar + Agent Policy History
 
-# Build + start full stack
-docker compose up -d intelligence-layer
+#### v0.2.0 — Live enforcement
+- Flip `AGENT_DRY_RUN=false`
+- 10/10 eval PASS validated
+- Postgres decisions audit + retrospective labeling
+- Idempotent rule_id (sha256 of flow tuple)
+- Off-target enforcement check (L4b)
+- Prompt injection detector (L1+ pattern + sanitize)
 
-# Sau khi sửa .env, phải force recreate (restart không re-read env_file)
-docker compose up -d intelligence-layer
+#### v0.3.0 — Knowledge + Intelligence
+- 5-layer knowledge architecture (system_model, baselines, threat_playbook, enforcement_plane, invariants)
+- 3 investigation tools pre-fetched parallel (asset neighbors, past incidents, block impact, kill chain match)
+- Hypothesis-driven decision schema
+- Operational memory (30-day Postgres aggregation)
+- IncidentMemory retrospective labeler
+- KG visualization (pyvis HTML, 30 nodes, 43 edges)
+- Dynamic knowledge selection (alert-scoped prompt, ~49% token reduction)
+- Semantic entropy L2+ (Shannon over decision-shape clusters)
+- Response cache Redis (60s TTL, ~30-60% hit rate in burst)
 
-# Sau khi sửa src/, phải rebuild
-docker compose build intelligence-layer && docker compose up -d intelligence-layer
+#### v0.4.0 — V3 Schema split + Observability + EventsStore (CURRENT)
+- **V3 schema split**: POLICY_DECISION_SCHEMA (Stage 1, 9 scalar) + REASONING_TRACE_SCHEMA (Stage 2, 4 arrays)
+- **Parallel enforce + reasoning**: `asyncio.gather(_enforce_path, _reasoning_path)` — Stage 2 fail-tolerant
+- **Cerebras 400 zero rate**: Stage 1 simple schema → 0/30 parser failures in 10-run eval
+- **Langfuse v2 self-hosted**: trace per alert (8 spans + 3 generations), token cost tracking, retrospective scoring
+- **EventsStore Redis DB 1**: traffic + violations buffer (7-day, max 100K), eval không touch DB 1
+- **Frontend reasoning button**: 🧠 modal expand mỗi decision row, auto-poll khi Stage 2 đang load, link 📊 Trace mở Langfuse
+- **Frontend theme toggle**: Dark/Light (GitHub Primer + IBM Carbon palette, severity-aware print-safe colors)
+- **Eval workflow**: per-run + final cleanup, flush DB 0 only
 
-# Logs
-docker compose logs intelligence-layer -f
-
-# Health
-curl http://localhost:8767/health
-```
-
-### 10.2 Test / verify
-
-```bash
-# Unit tests (no infra needed)
-cd intelligence-layer && uv run pytest tests/unit/ -v
-
-# Replay 5 fixture alerts
-uv run python scripts/benchmark_agent.py --url http://localhost:8767
-
-# Submit single alert
-curl -X POST http://localhost:8767/alerts \
-  -H 'Content-Type: application/json' \
-  -d '{"data": {"timestamp":"...","src_ip":"10.1.100.10","dest_ip":"10.1.200.10",
-                 "dest_port":5432,"proto":"TCP",
-                 "alert":{"signature_id":9000001,"severity":1,"signature":"WEB→DB"}}}'
-
-# Stream live decisions
-curl http://localhost:8767/stream
-```
-
-### 10.3 Bật real enforcement (sau khi verify dry_run đủ lâu)
-
-```bash
-# Sửa .env
-AGENT_DRY_RUN=false
-
-# Recreate container
-docker compose up -d intelligence-layer
-
-# Theo dõi: log "rule_enforced" thay vì "dry_run_decision"
-docker compose logs intelligence-layer -f | grep -E "enforced|dry_run|halt"
-```
-
-### 10.4 Emergency stop
-
-```bash
-# Stop agent (manual block frontend vẫn chạy)
-docker compose stop intelligence-layer
-
-# Hoặc tạm bật dry_run lại
-sed -i 's/AGENT_DRY_RUN=false/AGENT_DRY_RUN=true/' intelligence-layer/.env
-docker compose up -d intelligence-layer
-```
-
----
-
-## 11. Roadmap
-
-### Đã làm (v0.2.0)
-- ✅ Refactor ids-agent (Go) thành pure proxy — xóa `tryAutoBlock`, thêm `POST/DELETE /rules`
-- ✅ Toàn bộ intelligence-layer Python (43 source files, 31 unit tests)
-- ✅ Wire vào `docker-compose.yml` chung với redis/postgres/fe
-- ✅ 9-layer safety architecture
-- ✅ Phase A — Dataplane realism: services thật (pg-mock, sshd, busybox nc), cron traffic generators, scenario scripts (compromise/restore/status)
-- ✅ Phase B — Frontend: `/policy` page có AI Agent status bar + Agent Policy History timeline
-- ✅ Flip `AGENT_DRY_RUN=false` — live enforcement validated 10/10 runs
-- ✅ `/policy-history` + `/admin/reset` API endpoints
-- ✅ Postgres bug fixed: `action/src_ip/dst_ip` từng NULL do nested key sai
-
-### Sắp tới (v0.3.0)
-- ⏳ Mở rộng eval sang P2 scenarios (SID 9000003, 9000004, 9000005)
-- ⏳ Adversarial eval (block whitelist IP, rate limit exhaustion, low confidence)
-- ⏳ Prompt-injection defense: untrusted-data tag wrapping cho `alert.signature`/`alert.category`
-- ⏳ Off-target enforcement check: validator assert `intent.src_ip ≈ alert.src_ip`
-- ⏳ Per-source LLM call quota (DoS / cost control trước AlertGate)
-- ⏳ Idempotent `rule_id` deterministic: `agent-{sha256(src+dst+port+proto)[:8]}`
-- ⏳ HITL endpoints cho HELD decisions: `POST /decisions/{id}/approve|reject` + auto-expire
-- ⏳ Post-enforce health check + auto-revoke nếu connectivity degrade
+### Backlog (v0.5.0+)
+- **HITL endpoints** cho HELD decisions (confidence 0.50-0.70): `POST /decisions/{id}/approve|reject` + auto-expire
+- **Per-source LLM call quota** (DoS / cost control trước AlertGate)
+- **Post-enforce health check + auto-revoke** nếu connectivity probe degrade
+- **Adversarial eval suite** (50+ prompt-injection corpus, hallucination IP corpus)
+- **Drift canary**: golden set 50 alerts chạy daily, fail nếu output thay đổi (LLM provider model update)
+- **OpenTelemetry vendor-neutral tracing** (besides Langfuse)
+- **Multi-provider failover**: Z.ai trực tiếp khi Cerebras 400 (currently fully mitigated by V3, optional)
 
 ### Tech debt (out of scope MVP)
-- SF REST RBAC theo cert OU (hiện tại bất kỳ ai POST với `source=agent` đều pass — đã control bằng cách enforce qua ids-agent layer)
-- SF webhook khi rule push/delete để intelligence-layer không phải poll mỗi 30s
-- ids-agent `/autoblock/transfer` atomic endpoint
-- Vendor-neutral OpenTelemetry tracing (per-decision span, token cost, LLM p50/p95)
+- SF REST RBAC theo cert OU
+- SF webhook khi rule push/delete
 - Integration tests E2E
-
----
-
-## 12. Tham chiếu
-
-- **Plan gốc**: `/home/dis/.claude/plans/reactive-mixing-floyd.md`
-- **Dataplane spec**: [DATAPLANE.md](DATAPLANE.md)
-- **Secure Framework spec**: [Secure-Framework.md](Secure-Framework.md)
-- **Source code**: `/home/dis/deploy/zerotrust/intelligence-layer/`
-- **Compose stack**: `/home/dis/deploy/zerotrust/docker-compose.yml`
-- **Live URL**: `http://localhost:8767` (dev) / `http://intelligence-layer:8767` (Docker network)

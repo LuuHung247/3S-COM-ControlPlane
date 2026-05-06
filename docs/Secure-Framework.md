@@ -1,7 +1,7 @@
 # Secure Framework — Pipeline Architecture
 
-> Mô tả chi tiết kiến trúc và luồng đẩy policy từ Control Plane → Dataplane  
-> Last updated: 2026-05-04
+> Mô tả chi tiết kiến trúc và luồng đẩy policy từ Control Plane → Dataplane
+> Last updated: 2026-05-05 (V3 schema split, Langfuse, EventsStore)
 
 ---
 
@@ -249,7 +249,7 @@ Suricata phát hiện violation (e.g., WEB→DB lateral move)
         │
         └─ SSE stream → Intelligence Layer  :8767  (subscriber)
 
-  Intelligence Layer  (FastAPI + LangGraph)
+  Intelligence Layer V3  (FastAPI + 8-node async pipeline)
         │
         ├─ [pipeline/gate.py]  Filter chain:
         │     SeverityFilter   → skip P3/P4 (severity > 2)
@@ -257,17 +257,31 @@ Suricata phát hiện violation (e.g., WEB→DB lateral move)
         │     RateLimiter      → tối đa 30 alerts/phút
         │     WhitelistFilter  → skip nếu src_ip trong NEVER_BLOCK list
         │
-        ├─ [agent/graph.py]  LangGraph pipeline:
-        │     classify_alert   → fast LLM (llama3.1-8b): benign/suspicious/threat
-        │     gather_context   → get_alert_history(src_ip) từ Redis
-        │     reason_and_decide→ primary LLM (zai-glm-4.7) + KG snapshot
-        │     validate_decision→ schema + policy conflict + confidence gate
-        │     enforce_policy   → POST http://ids-agent:8766/rules
-        │     record_decision  → Postgres + Redis + SSE /stream
+        ├─ [pipeline/consumer.py]  Mirror sang EventsStore (Redis DB 1)
+        │     events:violations / events:flows (sorted set, 7-day TTL)
+        │
+        ├─ [agent/graph.py]  V3 pipeline (8 spans, Langfuse-traced):
+        │     load_context      → alert-scoped KG render (~3000 tokens)
+        │     classify_alert    → llama3.1-8b (benign/suspicious/threat)
+        │     gather_context    → 4 parallel: history + summary + correlation +
+        │                         investigation tools (asset_neighbors, past_incidents,
+        │                         block_impact, kill_chain_match)
+        │     cache_lookup      → Redis response cache (60s TTL)
+        │     ★ policy_decision → Stage 1 BLOCKING — GLM-4.7
+        │                         POLICY_DECISION_SCHEMA (9 scalar fields, 0% parser fail)
+        │     validate_decision → 9 safety layers + L1+ prompt injection + L4b off-target
+        │     ★ asyncio.gather:
+        │         enforce_path:        POST ids-agent → SF → gNMI → LEAF
+        │         reasoning_trace:     Stage 2 GLM-4.7 (REASONING_TRACE_SCHEMA, 4 arrays)
+        │                              fail-tolerant — decision still enforces
+        │     record_decision   → Postgres + Redis cache + SSE /stream + Langfuse spans
         │
         │  POST http://ids-agent:8766/rules
-        │  {rule_id: "agent-...", action: "DROP", src_ip: "...", priority: 50,
-        │   dst_ip: "...", dst_port: 5432, ttl_seconds: 3600}
+        │  {rule_id: "agent-{sha256[:10]}",   ← deterministic, idempotent
+        │   action: "DROP", src_ip: "10.1.100.10/32", dst_ip: "10.1.200.10/32",
+        │   dst_port: 5432, protocol: "tcp",
+        │   priority: 50, ttl_seconds: 3600,
+        │   comment: "agent:..."}
         ▼
   IDS Agent  /rules  POST handler
         │  force source="agent" server-side
@@ -277,19 +291,28 @@ Suricata phát hiện violation (e.g., WEB→DB lateral move)
   Bridge enforce: source="agent" → action phải DROP ✓
 ```
 
-**Safety guardrails (9 layers) trước khi enforce:**
+**Safety guardrails (9 layers + L1+ + L2+ + L4b) trước khi enforce:**
 
 | Layer | Check | Reject nếu |
 |-------|-------|-----------|
 | L1 Schema | Pydantic strict + forced function calling | Output tự do, field sai |
-| L2 Consistency | Self-consistency N=3 vote (P1/P2) | Disagreement > 1 |
+| L1+ Prompt injection | Pattern detector (PINT/JailBreakBench corpus) + sanitize | Suspicious patterns in alert.signature/category |
+| L2 Consistency | Self-consistency vote (N=1 stable với V3) | Action disagreement (N>=2) |
+| L2+ Semantic entropy | Shannon over decision shape clusters | Entropy > 1.0 OR src_ip consensus < 67% |
 | L3 Validators | Schema, topology, policy conflict, idempotency | Bất kỳ violation |
-| L4 Whitelist | NEVER_BLOCK hardcoded (management IPs, SVIs) | Block IP trong whitelist |
+| L4 Whitelist | NEVER_BLOCK hardcoded (management IPs, SVIs, mgt-01, IDS) | Block IP trong whitelist |
+| L4b Off-target | `intent.src_ip` contains `alert.src_ip` (CIDR membership) | LLM hallucinated wrong IP |
 | L5 Blast radius | 5 rules/min, 50 total, 3/IP/5min, TTL 60–3600s | Vượt giới hạn |
 | L6 Severity↔action | P1/P2→DROP, P3/P4→log_only | P3/P4 với DROP |
 | L7 Confidence gate | ≥0.85 enforce, 0.70–0.85 enforce+notify, <0.70 hold | Confidence < 0.70 |
 | L8 Reversibility | TTL mandatory, `AGENT_DRY_RUN` kill switch, circuit breaker | 3 fail liên tiếp → halt |
-| L9 Tests | adversarial unit tests | Fail = block deploy |
+| L9 Tests | adversarial unit tests + pattern injection corpus | Fail = block deploy |
+
+**V3 verified results (10/10 PASS, 2026-05-05)**:
+- M1 Alert→Decision avg 8.5s (V2 was 4.75s but had Cerebras 400 outliers 17-26s)
+- Cerebras 400 rate: **0%** in 30 LLM calls (vs ~5-10% in V2)
+- Confidence: **0.92** consistent across all 10 runs
+- M3 Enforcement Correctness: **100%** (correct IP blocked every time)
 
 **Priority ordering trên LEAF:**
 
@@ -458,7 +481,13 @@ services:
     env_file: ./intelligence-layer/.env
     environment:
       IDS_AGENT_URL: http://ids-agent:8766
-    depends_on: [ids-agent, redis, postgres]
+      REDIS_URL: redis://redis:6379/0          # DB 0 — agent state
+      REDIS_EVENTS_URL: redis://redis:6379/1   # DB 1 — events buffer
+      POSTGRES_URL: postgresql+asyncpg://ztuser:ztpass@postgres:5432/zerotrust
+      LANGFUSE_HOST: http://langfuse:3000
+      LANGFUSE_PUBLIC_KEY: pk-lf-zt-public-2026
+      LANGFUSE_SECRET_KEY: sk-lf-zt-secret-2026
+    depends_on: [ids-agent, redis, postgres, langfuse]
     networks: [ztnet]
 
   fe:
@@ -471,8 +500,30 @@ services:
     depends_on: [ids-agent, intelligence-layer]
     networks: [ztnet]
 
+  langfuse:
+    image: langfuse/langfuse:2
+    ports: ["3001:3000"]                       # UI port 3001, internal 3000
+    environment:
+      DATABASE_URL: postgresql://ztuser:ztpass@postgres:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3001
+      NEXTAUTH_SECRET: <secret>
+      SALT: <salt>
+      ENCRYPTION_KEY: <hex>
+      # Bootstrap auto-create org/project/keys at first start
+      LANGFUSE_INIT_ORG_ID: zt-org
+      LANGFUSE_INIT_PROJECT_ID: zt-agent
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-zt-public-2026
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-zt-secret-2026
+      LANGFUSE_INIT_USER_EMAIL: admin@zt.local
+      LANGFUSE_INIT_USER_PASSWORD: <password>
+    depends_on: [postgres]
+    networks: [ztnet]
+
   redis:
     image: redis:7-alpine
+    # 16 logical DBs available (0-15)
+    # DB 0 used by intelligence-layer agent state — eval-flushable
+    # DB 1 used by EventsStore — preserved across eval (7-day TTL, max 100K)
     networks: [ztnet]
 
   postgres:
@@ -481,6 +532,9 @@ services:
       POSTGRES_DB: zerotrust
       POSTGRES_USER: ztuser
       POSTGRES_PASSWORD: ztpass
+    volumes:
+      # Init script tạo `langfuse` database trên cùng instance
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     networks: [ztnet]
 
 networks:
@@ -549,18 +603,29 @@ docker compose up -d <service>
         ✓  Rule active trên LEAF-1 iptables FORWARD
 ```
 
-**B. Automated enforcement (Intelligence Layer)**
+**B. Automated enforcement (Intelligence Layer V3 — schema split)**
 ```
 [Suricata IDS]
         │ EVE JSON alert → Suricata REST :8765
         │
-[IDS Agent]  SSE broadcast
+[IDS Agent]  SSE broadcast (also flow events)
         │
 [Intelligence Layer]  subscribe SSE :8766/events
-        │ LangGraph pipeline: classify → reason → validate → enforce
-        │ 9-layer safety guardrails: whitelist, confidence ≥0.85, blast radius, TTL
+        │ Mirror to EventsStore (Redis DB 1, sorted set, 7-day TTL)
+        │ V3 Pipeline:
+        │   classify_alert (llama3.1-8b)
+        │   gather_context (parallel: history + summary + correlation + investigation tools)
+        │   cache_lookup (Redis DB 0, 60s TTL)
+        │   policy_decision (Stage 1, GLM-4.7, 9 scalar fields, 0% Cerebras 400)
+        │   validate_decision (9 safety layers + L1+ injection + L4b off-target)
+        │   ★ asyncio.gather:
+        │     enforce_path: POST → SF → gNMI → LEAF
+        │     reasoning_trace: Stage 2 GLM-4.7 (4 arrays, fail-tolerant)
+        │   record (Postgres + Redis + SSE + Langfuse trace)
+        │
         │ POST http://ids-agent:8766/rules
-        │   {rule_id:"agent-...", action:"DROP", src_ip:"10.1.100.10/32",
+        │   {rule_id:"agent-{sha256[:10]}",   ← deterministic, idempotent
+        │    action:"DROP", src_ip:"10.1.100.10/32",
         │    dst_ip:"10.1.200.10/32", dst_port:5432, ttl_seconds:3600}
         │
 [IDS Agent]  force source="agent" server-side
@@ -568,18 +633,21 @@ docker compose up -d <service>
         │
 [SF role_api.py]
   ip_to_leaf(src_ip) → 192.168.122.20
-        │ gNMI Set (mTLS OU=sdnc → ADMIN)
+        │ gNMI Set (mTLS OU=auto → AGENT role, action=DROP enforced)
         │
 [nos-acl-bridge LEAF-1]
   validate_rule() → OK  |  enforce_rbac(source=agent, action=DROP) → OK
   Redis DB4: NOS_IPTABLES_RULE|agent-... = {...}
-  iptables -I FORWARD -s 10.1.100.10/32 -d 10.1.200.10/32 --dport 5432 -j DROP
+  iptables -I FORWARD 1 -s 10.1.100.10/32 -d 10.1.200.10/32 --dport 5432 -j DROP
         │
-        ✓  Rule active, TTL countdown → auto-revoke sau 3600s
-        ✓  Decision logged: Postgres audit + Redis history + SSE /stream
+        ✓  Rule active priority=50 (top of chain — before nos:zt-default-drop)
+        ✓  TTL countdown 3600s → caller (agent) auto-revoke via DELETE
+        ✓  Decision logged: Postgres audit + Redis cache + SSE /stream + Langfuse trace
 ```
 
-**Latency kết quả thực nghiệm (10 runs, 2026-05-04):**
-- M1 Alert→Decision: avg 4.75s (p95 < 10s)  
-- M3 Enforcement Correctness: 10/10 (100%)  
-- Confidence avg: 0.955
+**Latency kết quả thực nghiệm (10 runs, 2026-05-05, V3 schema split):**
+- **M1 Alert→Decision: avg 8.5s** (range 6.5-12.0s, V2 was 4.75s but had Cerebras 400 outliers 17-26s)
+- **Cerebras 400 rate: 0%** (V3 split eliminates parser fail on critical path)
+- **M3 Enforcement Correctness: 10/10 (100%)**
+- **Confidence: 0.92** consistent across all 10 runs
+- **Reasoning quality**: 3 hypotheses + 6.7 reasoning steps + 2.9 alternatives + 3.8 follow-up actions per decision (Stage 2 audit metadata)
