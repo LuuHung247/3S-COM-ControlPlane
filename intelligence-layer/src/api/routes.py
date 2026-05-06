@@ -5,7 +5,7 @@ from collections import deque
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, Response
 
 from ..models.alert import SuricataAlert
 from .schemas import AlertIngest, DecisionResponse, HealthResponse, RevokeResponse
@@ -250,6 +250,86 @@ async def knowledge_graph_stats() -> dict:
         "total_edges": G.number_of_edges(),
         "by_type": type_counts,
     }
+
+
+@router.get("/kg/json")
+async def knowledge_graph_json() -> dict:
+    """KG in Cytoscape.js elements format: {nodes: [...], edges: [...]}.
+
+    Each node carries `data: {id, type, label, title, ...}` and each edge
+    `data: {id, source, target, label, kind}` for client-side styling.
+    """
+    from ..core.kg_visualizer import build_knowledge_graph
+    G = build_knowledge_graph()
+
+    nodes = []
+    for nid, attrs in G.nodes(data=True):
+        nodes.append({
+            "data": {
+                "id": str(nid),
+                "type": attrs.get("type", "unknown"),
+                "label": attrs.get("label", str(nid)),
+                "title": attrs.get("title", ""),
+                "shape": attrs.get("shape", "ellipse"),
+            }
+        })
+
+    edges = []
+    seen_eids: set[str] = set()
+    for u, v, k, attrs in G.edges(keys=True, data=True):
+        label = attrs.get("label", "")
+        eid = f"{u}->{v}#{k}"
+        if eid in seen_eids:
+            continue
+        seen_eids.add(eid)
+        kind = "policy" if label in ("ALLOW", "DENY") else (
+            "membership" if label in ("member_of", "enforces") else (
+                "stage" if str(label).startswith("stage") else (
+                    "flow" if label in ("originates",) or str(label).startswith(":") else "other"
+                )
+            )
+        )
+        edges.append({
+            "data": {
+                "id": eid,
+                "source": str(u),
+                "target": str(v),
+                "label": str(label),
+                "kind": kind,
+                "color": attrs.get("color", ""),
+                "dashes": bool(attrs.get("dashes", False)),
+            }
+        })
+
+    return {"nodes": nodes, "edges": edges}
+
+
+@router.get("/kg/export/graphml")
+async def knowledge_graph_export_graphml() -> Response:
+    """Export KG as GraphML — open in yEd / Gephi / Cytoscape Desktop for figures."""
+    import io
+    import networkx as nx
+    from ..core.kg_visualizer import build_knowledge_graph
+    G = build_knowledge_graph()
+
+    # GraphML doesn't support multi-edges with same key cleanly; convert to DiGraph
+    H = nx.DiGraph()
+    for n, attrs in G.nodes(data=True):
+        H.add_node(n, **{k: str(v) for k, v in attrs.items()})
+    for u, v, attrs in G.edges(data=True):
+        if H.has_edge(u, v):
+            existing = H[u][v].get("label", "")
+            H[u][v]["label"] = f"{existing}|{attrs.get('label', '')}".strip("|")
+        else:
+            H.add_edge(u, v, **{k: str(v_) for k, v_ in attrs.items() if k != "dashes"})
+
+    buf = io.BytesIO()
+    nx.write_graphml(H, buf)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/xml",
+        headers={"Content-Disposition": "attachment; filename=zerotrust-kg.graphml"},
+    )
 
 
 @router.get("/stream")
