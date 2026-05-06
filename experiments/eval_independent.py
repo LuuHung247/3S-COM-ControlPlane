@@ -591,7 +591,8 @@ PAUSE_BETWEEN_RUNS_SECONDS = 10           # cool-down between iterations
 DRY_CHECK_ONLY = False                    # True = preflight only, no attack
 
 def _default_output() -> str:
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+    # Filename: <test_title>_<YYYYMMDD>_<HHMMSS>.xlsx  (date + time of run)
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     os.makedirs(RESULTS_DIR, exist_ok=True)
     return os.path.join(RESULTS_DIR, f"eval_independent_{ts}.xlsx")
 

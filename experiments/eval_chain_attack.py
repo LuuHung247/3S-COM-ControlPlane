@@ -310,10 +310,11 @@ RUN_INITIAL_CLEANUP = True                # False to resume on existing state
 
 
 def _default_output() -> str:
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+    # Filename: <test_title>_<YYYYMMDD>_<HHMMSS>.md  (date + time of run)
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
     os.makedirs(results_dir, exist_ok=True)
-    return os.path.join(results_dir, f"chain_attack_{ts}.md")
+    return os.path.join(results_dir, f"eval_chain_attack_{ts}.md")
 
 
 def main() -> int:

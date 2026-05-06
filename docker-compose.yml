@@ -81,6 +81,8 @@ services:
     container_name: zt-redis
     restart: unless-stopped
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"                     # exposed to LAN — RedisInsight / redis-cli from laptop
     networks:
       - ztnet
     logging:
@@ -97,6 +99,8 @@ services:
       - POSTGRES_USER=ztuser
       - POSTGRES_PASSWORD=ztpass
       - POSTGRES_DB=zerotrust
+    ports:
+      - "5432:5432"                     # exposed to LAN — DBeaver / psql from laptop
     volumes:
       - zt_pgdata:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro

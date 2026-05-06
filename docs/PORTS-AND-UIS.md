@@ -1,6 +1,6 @@
 # Ports & UIs — Map Toàn Hệ Thống
 
-> Last verified: 2026-05-05 (V3 schema split, Langfuse, EventsStore)
+> Last verified: 2026-05-06 (V3 + Asset Reputation + pgvector multi-strategy + decisions_history dual-write)
 
 Ghi nhanh tất cả services, ports, URLs để tra cứu khi cần. Stack chạy bằng
 `docker compose` từ `/home/dis/deploy/zerotrust/`.
@@ -19,6 +19,8 @@ Ghi nhanh tất cả services, ports, URLs để tra cứu khi cần. Stack ch�
 | **http://localhost:8767/kg/visualize** | intelligence-layer | Knowledge Graph interactive HTML — 30 nodes (zones, assets, leafs, SIDs, kill chains, baselines), 43 edges | none |
 | http://localhost:8767/docs | intelligence-layer | FastAPI auto-generated Swagger UI | none |
 | http://localhost:8767/redoc | intelligence-layer | FastAPI ReDoc | none |
+| **http://localhost:8080** | **Adminer** (standalone) | Postgres web UI — browse `decisions_history`, run SQL, debug pgvector | login (ztuser/ztpass) |
+| **http://localhost:5540** | **RedisInsight** (standalone) | Redis web UI — DB 0 (workspace) + DB 1 (events buffer) | none |
 
 **Langfuse credentials**:
 - Email: `admin@zt.local`
@@ -38,8 +40,8 @@ Ghi nhanh tất cả services, ports, URLs để tra cứu khi cần. Stack ch�
 | `intelligence-layer` | intelligence-layer:latest | **8767** | 8767 | AI agent FastAPI (V3 pipeline) |
 | `ids-agent` | ids-agent:latest | **8766** | 8766 | Go SSE bridge + SF proxy |
 | `zt-langfuse` | langfuse/langfuse:2 | **3001** | 3000 | Langfuse v2 web UI + API |
-| `zt-postgres` | postgres:16-alpine | (internal only) | 5432 | DB `zerotrust` (decisions) + DB `langfuse` |
-| `zt-redis` | redis:7-alpine | (internal only) | 6379 | DB 0 = agent state, DB 1 = events buffer |
+| `zt-postgres` | pgvector/pgvector:pg16 | **5432** (LAN-exposed) | 5432 | DB `zerotrust` (decisions + decisions_history with pgvector embeddings) + DB `langfuse` |
+| `zt-redis` | redis:7-alpine | **6379** (LAN-exposed) | 6379 | DB 0 = agent state, DB 1 = events buffer |
 
 Network: `ztnet` bridge. Inter-container DNS qua container name.
 
@@ -122,7 +124,182 @@ Network: `ztnet` bridge. Inter-container DNS qua container name.
 
 ---
 
-## 6. Quick health check (verify toàn stack)
+## 6. Direct DB / Cache access — Web UIs (debug & inspection)
+
+**Web UI ngay trên server** — chỉ cần mở browser, không cài client local, không SSH tunnel. 2 service standalone (KHÔNG nằm trong `docker-compose.yml`, chạy riêng để khỏi nặng stack chính):
+
+| URL | UI | DB nó connect tới |
+|-----|----|--------------------|
+| **http://10.10.6.231:8080** | Adminer (PostgreSQL) | `postgres:5432` (qua docker network) |
+| **http://10.10.6.231:5540** | RedisInsight | `redis:6379` (qua docker network) |
+
+> Public truy cập: dùng VS Code port forward 8080 + 5540, hoặc SSH tunnel cổng 2231 nếu cần.
+
+### Adminer (Postgres) — http://10.10.6.231:8080
+
+Form login (đã pre-fill server):
+
+| Field | Value |
+|-------|-------|
+| System | PostgreSQL |
+| Server | `postgres` (đã pre-fill) |
+| Username | `ztuser` |
+| Password | `ztpass` |
+| Database | `zerotrust` (hoặc `langfuse` để xem internal Langfuse data) |
+
+→ Click **Login**. Browse tables → click `decisions_history` → "Select data" → xem rows ngay. Có thể chạy SQL custom ở tab "SQL command".
+
+### RedisInsight — http://10.10.6.231:5540
+
+Lần đầu mở:
+1. Click **Add Redis database**
+2. Form:
+   - Host: `redis`
+   - Port: `6379`
+   - Database alias: `Zero Trust Agent`
+   - (no username/password)
+3. Click **Add Redis Database**
+
+Sau khi add → Browser tab → cây keys hiển thị trực quan. Switch DB 0 ↔ 1 ở dropdown trên cùng để chuyển workspace ↔ events buffer.
+
+### Lifecycle — start/stop khi cần
+
+```bash
+# Start (1 lần là đủ, restart unless-stopped tự dậy theo server)
+docker run -d --name zt-adminer --restart unless-stopped \
+  --network zerotrust_ztnet -p 8080:8080 \
+  -e ADMINER_DEFAULT_SERVER=postgres -e ADMINER_DESIGN=dracula \
+  adminer:latest
+
+docker run -d --name zt-redisinsight --restart unless-stopped \
+  --network zerotrust_ztnet -p 5540:5540 \
+  -v zt_redisinsight:/data \
+  redis/redisinsight:latest
+
+# Stop khi không debug nữa
+docker stop zt-adminer zt-redisinsight
+
+# Xóa hẳn (data cấu hình RedisInsight ở volume zt_redisinsight)
+docker rm -f zt-adminer zt-redisinsight
+```
+
+---
+
+### Postgres connection details (cho người không dùng web UI)
+
+| Field | Value |
+|-------|-------|
+| Host (LAN) | `10.10.6.231` |
+| Host (qua VS Code/SSH forward) | `127.0.0.1` |
+| Port | `5432` |
+| Database | `zerotrust` (chính) hoặc `langfuse` (Langfuse internal) |
+| User | `ztuser` |
+| Password | `ztpass` |
+| Extensions | `vector` (pgvector) |
+
+**Tables quan trọng**:
+| Table | Workspace? | Vai trò |
+|-------|-----------|---------|
+| `decisions` | ✅ Workspace — eval truncates | Agent reads (reputation, past-incident, ops memory). Wiped per eval run. |
+| `decisions_history` | ❌ Audit — never truncated | FE Policy History reads from here. Preserves full audit forever. |
+
+**Cột chính trong `decisions`/`decisions_history`** (1:1 schema):
+- `id` (UUID), `created_at`, `alert_sid`, `alert_src_ip`
+- `outcome` (`enforced`/`dry_run`/`rejected`/`held`), `action`, `confidence`, `latency_ms`
+- `reasoning` (JSON list), `primary_hypothesis`, `hypotheses` (JSON), `mitre_technique`
+- `retrospective_outcome` (`true_positive`/`false_positive`/`recurrence`/`inconclusive`) — set bởi IncidentLabeler
+- `embedding` (`vector(384)`) — pgvector, set bởi embed-on-write background task
+- `trace_id` — link tới Langfuse trace
+
+**Useful queries cho debug**:
+```sql
+-- Recent decisions tổng quan
+SELECT id, alert_sid, alert_src_ip, outcome, confidence, latency_ms,
+       reasoning_completed_at, retrospective_outcome
+FROM decisions_history
+ORDER BY created_at DESC LIMIT 20;
+
+-- Workspace size vs history (xem eval truncate ảnh hưởng đúng không)
+SELECT 'decisions' AS tbl, COUNT(*) AS rows, COUNT(embedding) AS with_emb
+FROM decisions
+UNION ALL
+SELECT 'decisions_history', COUNT(*), COUNT(embedding)
+FROM decisions_history;
+
+-- Per-IP retrospective label breakdown (asset reputation source)
+SELECT alert_src_ip, retrospective_outcome, COUNT(*) AS n
+FROM decisions
+WHERE created_at >= NOW() - INTERVAL '1 hour'
+  AND retrospective_outcome IS NOT NULL
+GROUP BY alert_src_ip, retrospective_outcome
+ORDER BY alert_src_ip, retrospective_outcome;
+
+-- Test pgvector cosine search (cần vector literal)
+SELECT id, alert_sid, primary_hypothesis,
+       1 - (embedding <=> (SELECT embedding FROM decisions WHERE id = '<some-id>')) AS similarity
+FROM decisions
+WHERE embedding IS NOT NULL
+ORDER BY embedding <=> (SELECT embedding FROM decisions WHERE id = '<some-id>') ASC
+LIMIT 5;
+
+-- Reasoning trace cho 1 decision (FE Reasoning modal source)
+SELECT primary_hypothesis, reasoning, hypotheses, mitre_technique, mitre_tactic,
+       follow_up_actions, alternative_actions
+FROM decisions_history
+WHERE id = '<decision-id>';
+
+-- Langfuse internal DB — link decisions với trace_id
+SELECT d.id, d.alert_src_ip, d.trace_id
+FROM decisions_history d
+WHERE d.trace_id IS NOT NULL
+ORDER BY d.created_at DESC LIMIT 10;
+```
+
+### Redis connection details (cho người không dùng web UI)
+
+| Field | Value |
+|-------|-------|
+| Host (LAN) | `10.10.6.231` |
+| Host (qua VS Code/SSH forward) | `127.0.0.1` |
+| Port | `6379` |
+| Auth | **none** (lab only — KHÔNG dùng cấu hình này cho production) |
+| Databases | DB 0 (agent state, eval-flushable) · DB 1 (EventsStore, preserved 7d) |
+
+**Useful keys cho debug**:
+```bash
+# DB 0 — agent state (workspace, eval flushes)
+redis-cli -n 0 KEYS "alert_history:*"          # per-IP recent alert ring buffer
+redis-cli -n 0 KEYS "agent:resp_cache:*"       # response cache (V3 cache hits)
+redis-cli -n 0 KEYS "dedup:*"                  # de-dup keys (30s TTL)
+redis-cli -n 0 GET "agent:rate:per_ip:10.1.100.10"   # rate limiter counter
+
+# DB 1 — EventsStore (preserved 7 days, eval KHÔNG flush mặc định cho FE)
+redis-cli -n 1 ZCARD events:violations         # số sự kiện violation
+redis-cli -n 1 ZCARD events:flows              # số flow events
+redis-cli -n 1 ZRANGE events:violations -5 -1 WITHSCORES   # 5 events mới nhất
+redis-cli -n 1 ZREVRANGEBYSCORE events:violations +inf -inf LIMIT 0 10
+```
+
+### Langfuse Postgres (cùng container, DB khác)
+
+Langfuse v2 share `zt-postgres` container nhưng dùng database `langfuse` riêng. Mở Adminer login với Database = `langfuse` thay vì `zerotrust`.
+
+Các bảng lớn: `traces`, `observations`, `scores`. Thường ít cần query trực tiếp — dùng UI ở port 3001 thoải mái hơn.
+
+### Khi nào dùng cái nào
+
+| Nhu cầu | Tool |
+|---------|------|
+| Xem decision history, reasoning trace, retrospective label | Adminer → table `decisions_history` |
+| Test pgvector semantic search / chạy SQL ad-hoc | Adminer → SQL command tab |
+| Xem rate-limit counter, response cache hit rate | RedisInsight → DB 0 |
+| Inspect EventsStore size, oldest event | RedisInsight → DB 1 |
+| LLM trace per alert, prompts, costs | Langfuse UI (`http://localhost:3001`) |
+| Decision-level audit (FE-friendly) | `/policy` page → 💡 Reasoning modal |
+
+---
+
+## 7. Quick health check (verify toàn stack)
 
 ```bash
 # Frontend
@@ -153,7 +330,7 @@ curl -s http://localhost:8767/events/stats
 
 ---
 
-## 7. Các UI chính cần biết khi vận hành
+## 8. Các UI chính cần biết khi vận hành
 
 ### Frontend (`fe`) — http://localhost:3000
 
@@ -216,7 +393,7 @@ Example: `http://localhost:8767/prompt/preview?sid=9000001&src_ip=10.1.100.10&ds
 
 ---
 
-## 8. Nếu service không reach được
+## 9. Nếu service không reach được
 
 | Triệu chứng | Kiểm tra |
 |-------------|----------|
@@ -229,4 +406,8 @@ Example: `http://localhost:8767/prompt/preview?sid=9000001&src_ip=10.1.100.10&ds
 | `10.10.6.238:9090` refused | SF container `nos-sf` trên gns3vm — `ssh dis@10.10.6.238 docker restart nos-sf` |
 | Frontend Monitor F5 thấy "Loading" lâu | Check `/api/intel/events` — Redis DB 1 events buffer; fallback Suricata transient API |
 | Reasoning modal "loading reasoning..." không kết thúc | Stage 2 LLM call timeout — check `docker logs intelligence-layer | grep reasoning_trace_failed` |
-| Eval bỏ FLUSHDB tất cả Redis | Đảm bảo eval.py dùng `redis-cli -n 0 FLUSHDB` (chỉ DB 0). Verify `cat experiment/eval.py | grep FLUSHDB` |
+| Eval bỏ FLUSHDB tất cả Redis | Đảm bảo eval scripts truncate **chỉ** `decisions` (workspace), KHÔNG đụng `decisions_history`. Verify `grep TRUNCATE experiments/eval_*.py` |
+| DBeaver `connection refused` 5432 | `docker compose ps postgres` — verify `Up`. Sau đó `docker compose down && docker compose up -d` để apply port mapping mới (nếu mới expose) |
+| RedisInsight `connection refused` 6379 | Cùng cách — verify `docker compose ps redis`, restart nếu cần |
+| FE Policy History trống sau eval | Kiểm tra dual-write: `psql ... "SELECT COUNT(*) FROM decisions_history"` — nếu 0 thì save_decision không ghi history. Check intel-layer logs cho exception trong `save_decision` |
+| Decision có trong `decisions_history` nhưng KHÔNG có embedding | Embed-on-write fail. Check `docker logs intelligence-layer | grep embed_failed`. Verify pgvector extension: `psql ... "SELECT extname FROM pg_extension WHERE extname='vector'"` |
