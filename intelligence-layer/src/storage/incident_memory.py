@@ -15,7 +15,7 @@ import structlog
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from .postgres import DecisionRecord, PostgresStore
+from .postgres import DecisionRecord, DecisionHistoryRecord, PostgresStore
 from ..observability.langfuse_tracer import get_global_tracer
 
 log = structlog.get_logger()
@@ -101,14 +101,18 @@ class IncidentLabeler:
             tracer = get_global_tracer()
             for d in decisions:
                 label, notes = await self._label_one(d)
+                label_values = dict(
+                    retrospective_outcome=label,
+                    retrospective_notes=notes,
+                    labeled_at=datetime.now(timezone.utc),
+                )
+                # Dual-write: update both `decisions` (workspace) and `decisions_history`
+                # so FE Policy History shows the retrospective label too
                 await sess.execute(
-                    update(DecisionRecord)
-                    .where(DecisionRecord.id == d.id)
-                    .values(
-                        retrospective_outcome=label,
-                        retrospective_notes=notes,
-                        labeled_at=datetime.now(timezone.utc),
-                    )
+                    update(DecisionRecord).where(DecisionRecord.id == d.id).values(**label_values)
+                )
+                await sess.execute(
+                    update(DecisionHistoryRecord).where(DecisionHistoryRecord.id == d.id).values(**label_values)
                 )
                 # Push score to Langfuse trace if linked — enables quality dashboards
                 if tracer is not None and tracer.enabled and d.trace_id:

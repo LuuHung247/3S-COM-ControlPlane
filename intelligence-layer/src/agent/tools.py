@@ -258,81 +258,144 @@ async def find_similar_past_incidents(
     dst_zone: str | None,
     lookback_days: int = 90,
     limit: int = 5,
+    semantic_query_text: str = "",
+    mitre_technique: str | None = None,
 ) -> dict:
-    """Tool 2: Past experience lookup. How did agent decide for similar (sid, src_zone, dst_zone)
-    in the past? Outcomes? Recurrence patterns?
+    """Tool 2: Past experience lookup with **multi-strategy retrieval**.
 
-    Postgres aggregation. ~30ms.
+    Three retrieval paths run in parallel and merge:
+      1. Exact SID match (recall pattern of identical signature)
+      2. Semantic vector search over decision embeddings (catches same MITRE
+         technique with different SID, or same kill-chain stage from different src)
+      3. MITRE technique exact-match filter (catches T1021 across SID variants)
+
+    Postgres aggregation + pgvector cosine search. ~50-150ms total.
     """
     if postgres._engine is None:
         return {"match_count": 0, "note": "Postgres unavailable"}
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
     from sqlalchemy.ext.asyncio import async_sessionmaker
+    import asyncio as _asyncio
 
-    async with async_sessionmaker(postgres._engine, expire_on_commit=False)() as sess:
-        # Count + outcome breakdown (zone filter optional — apply only if both known)
-        base_filters = [DecisionRecord.alert_sid == sid, DecisionRecord.created_at >= cutoff]
-
-        count_q = await sess.execute(
-            select(func.count()).where(*base_filters)
-        )
-        match_count = count_q.scalar() or 0
-
-        if match_count == 0:
-            return {
-                "sid": sid,
-                "src_zone": src_zone,
-                "dst_zone": dst_zone,
-                "lookback_days": lookback_days,
-                "match_count": 0,
-                "note": "No similar past incidents — first time agent sees this pattern in window.",
-            }
-
-        outcome_q = await sess.execute(
-            select(DecisionRecord.outcome, func.count())
-            .where(*base_filters)
-            .group_by(DecisionRecord.outcome)
-        )
-        outcome_breakdown = {row[0]: row[1] for row in outcome_q.all()}
-
-        # Last N decisions full record
-        last_q = await sess.execute(
-            select(
-                DecisionRecord.id,
-                DecisionRecord.created_at,
-                DecisionRecord.outcome,
-                DecisionRecord.action,
-                DecisionRecord.confidence,
+    # ── Path 1: exact SID match (existing behavior) ─────────────────────────
+    async def _exact_sid_match() -> dict:
+        async with async_sessionmaker(postgres._engine, expire_on_commit=False)() as sess:
+            base_filters = [DecisionRecord.alert_sid == sid, DecisionRecord.created_at >= cutoff]
+            count_q = await sess.execute(select(func.count()).where(*base_filters))
+            match_count = count_q.scalar() or 0
+            if match_count == 0:
+                return {"match_count": 0, "outcome_breakdown": {}, "last_decisions": []}
+            outcome_q = await sess.execute(
+                select(DecisionRecord.outcome, func.count())
+                .where(*base_filters)
+                .group_by(DecisionRecord.outcome)
             )
-            .where(*base_filters)
-            .order_by(DecisionRecord.created_at.desc())
-            .limit(limit)
-        )
-        last_decisions = [
-            {
-                "id": r[0],
-                "date": r[1].isoformat(),
-                "outcome": r[2],
-                "action": r[3],
-                "confidence": r[4],
+            outcome_breakdown = {row[0]: row[1] for row in outcome_q.all()}
+            last_q = await sess.execute(
+                select(
+                    DecisionRecord.id, DecisionRecord.created_at, DecisionRecord.outcome,
+                    DecisionRecord.action, DecisionRecord.confidence,
+                ).where(*base_filters).order_by(DecisionRecord.created_at.desc()).limit(limit)
+            )
+            return {
+                "match_count": match_count,
+                "outcome_breakdown": outcome_breakdown,
+                "last_decisions": [
+                    {"id": r[0], "date": r[1].isoformat(), "outcome": r[2],
+                     "action": r[3], "confidence": r[4]}
+                    for r in last_q.all()
+                ],
             }
-            for r in last_q.all()
-        ]
 
-    enforced_count = outcome_breakdown.get("enforced", 0)
+    # ── Path 2: semantic vector search ──────────────────────────────────────
+    async def _semantic_match() -> list[dict]:
+        if not semantic_query_text:
+            return []
+        from ..storage.embedder import embed_text
+        vec = await embed_text(semantic_query_text)
+        if vec is None:
+            return []
+        return await postgres.search_similar_by_embedding(
+            embedding=vec,
+            lookback_days=lookback_days,
+            limit=limit,
+            min_similarity=0.30,
+        )
+
+    # ── Path 3: MITRE technique exact match (different SID, same technique) ─
+    async def _mitre_match() -> list[dict]:
+        if not mitre_technique:
+            return []
+        async with async_sessionmaker(postgres._engine, expire_on_commit=False)() as sess:
+            q = await sess.execute(
+                select(
+                    DecisionRecord.id, DecisionRecord.alert_sid,
+                    DecisionRecord.created_at, DecisionRecord.outcome,
+                    DecisionRecord.action, DecisionRecord.confidence,
+                    DecisionRecord.primary_hypothesis,
+                ).where(
+                    DecisionRecord.mitre_technique == mitre_technique,
+                    DecisionRecord.alert_sid != sid,           # exclude exact-SID overlap
+                    DecisionRecord.created_at >= cutoff,
+                ).order_by(DecisionRecord.created_at.desc()).limit(limit)
+            )
+            return [
+                {"id": r[0], "alert_sid": r[1], "date": r[2].isoformat(),
+                 "outcome": r[3], "action": r[4], "confidence": r[5],
+                 "primary_hypothesis": r[6]}
+                for r in q.all()
+            ]
+
+    exact, semantic, mitre = await _asyncio.gather(
+        _exact_sid_match(), _semantic_match(), _mitre_match(),
+        return_exceptions=True,
+    )
+    if isinstance(exact, Exception):
+        exact = {"match_count": 0, "outcome_breakdown": {}, "last_decisions": []}
+    if isinstance(semantic, Exception):
+        semantic = []
+    if isinstance(mitre, Exception):
+        mitre = []
+
+    exact_match_count = exact.get("match_count", 0)
+    semantic_count = len(semantic)
+    mitre_count = len(mitre)
+    total_signals = exact_match_count + semantic_count + mitre_count
+
+    if total_signals == 0:
+        return {
+            "sid": sid,
+            "src_zone": src_zone,
+            "dst_zone": dst_zone,
+            "lookback_days": lookback_days,
+            "match_count": 0,
+            "semantic_match_count": 0,
+            "mitre_match_count": 0,
+            "note": "No similar past incidents — first time agent sees this pattern in window.",
+        }
+
+    enforced_count = exact.get("outcome_breakdown", {}).get("enforced", 0)
     accuracy_signal = "no signal"
     if enforced_count > 0:
-        accuracy_signal = f"agent enforced {enforced_count}/{match_count} times — pattern is recurring threat"
+        accuracy_signal = f"agent enforced {enforced_count}/{exact_match_count} times — pattern is recurring threat"
+    if semantic_count > 0:
+        accuracy_signal += f"; +{semantic_count} semantically-similar prior incident(s)"
+    if mitre_count > 0:
+        accuracy_signal += f"; +{mitre_count} MITRE {mitre_technique} match(es)"
 
     return {
         "sid": sid,
         "src_zone": src_zone,
         "dst_zone": dst_zone,
         "lookback_days": lookback_days,
-        "match_count": match_count,
-        "outcome_breakdown": outcome_breakdown,
-        "last_decisions": last_decisions,
+        "match_count": exact_match_count,
+        "semantic_match_count": semantic_count,
+        "mitre_match_count": mitre_count,
+        "outcome_breakdown": exact.get("outcome_breakdown", {}),
+        "last_decisions": exact.get("last_decisions", []),
+        "semantic_matches": semantic[:limit],
+        "mitre_matches": mitre[:limit],
         "pattern_assessment": accuracy_signal,
     }
 
@@ -401,16 +464,40 @@ async def prefetch_investigation_context(
     dst_ip: str,
     dst_port: int,
     sid: int,
+    signature: str = "",
 ) -> dict:
-    """Run all 3 investigation tools in parallel. ~30ms total (limited by Postgres query)."""
+    """Run all 3 investigation tools in parallel. ~30-150ms total (limited by Postgres + pgvector)."""
     import asyncio
 
     src_zone = topology.ip_to_zone(src_ip)
     dst_zone = topology.ip_to_zone(dst_ip) if dst_ip else None
 
+    # Compose semantic query for past-incident multi-strategy retrieval (P2)
+    sid_info = None
+    try:
+        from ..core.threat_playbook import get_sid_detection
+        sid_info = get_sid_detection(sid)
+    except Exception:
+        pass
+    semantic_text = ""
+    mitre_t = None
+    if sid_info is not None:
+        mitre_t = sid_info.mitre_technique.split()[0] if sid_info.mitre_technique else None
+        semantic_text = (
+            f"SID {sid} {sid_info.signature_msg} "
+            f"flow {src_zone or '?'} to {dst_zone or '?'} "
+            f"MITRE {sid_info.mitre_technique} {sid_info.mitre_tactic}"
+        ).strip()
+    elif signature:
+        semantic_text = f"SID {sid} {signature} flow {src_zone or '?'} to {dst_zone or '?'}"
+
     neighbors, past, impact = await asyncio.gather(
         query_asset_neighbors(src_ip),
-        find_similar_past_incidents(postgres, sid, src_zone, dst_zone),
+        find_similar_past_incidents(
+            postgres, sid, src_zone, dst_zone,
+            semantic_query_text=semantic_text,
+            mitre_technique=mitre_t,
+        ),
         simulate_block_impact(src_ip, dst_ip, dst_port),
         return_exceptions=True,
     )

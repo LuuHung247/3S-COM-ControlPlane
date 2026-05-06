@@ -10,6 +10,7 @@ from ..models.decision import (
 )
 from ..core.topology import ip_to_zone
 from ..core.knowledge_loader import KnowledgeLoader
+from ..core.asset_reputation import fetch_reputation, AssetReputation
 from ..storage.redis import RedisStore
 from ..storage.operational_memory import OperationalMemory
 from .llm.interface import LLMClient
@@ -119,7 +120,7 @@ async def node_gather_context(
     alert: SuricataAlert = state["alert"]
     await redis.push_alert_history(alert.src_ip, alert.raw)
 
-    # Run all data fetches in parallel — operational memory + investigation tools
+    # Run all data fetches in parallel — operational memory + investigation tools + reputation
     history_task = execute_get_alert_history(redis, alert.src_ip, limit=10)
     summary_task = memory.get_ip_summary(alert.src_ip, window_days=30)
     correlation_task = memory.get_recent_alerts_for_correlation(alert.src_ip, window_minutes=10)
@@ -129,10 +130,12 @@ async def node_gather_context(
         dst_ip=alert.dest_ip,
         dst_port=alert.dest_port,
         sid=alert.sid,
+        signature=alert.signature or "",
     )
+    reputation_task = fetch_reputation(postgres, alert.src_ip, window_hours=1)
 
-    history, ip_summary, correlation, investigation = await asyncio.gather(
-        history_task, summary_task, correlation_task, investigation_task,
+    history, ip_summary, correlation, investigation, reputation = await asyncio.gather(
+        history_task, summary_task, correlation_task, investigation_task, reputation_task,
         return_exceptions=True,
     )
 
@@ -149,8 +152,11 @@ async def node_gather_context(
     if isinstance(investigation, Exception):
         log.warning("investigation_failed", error=str(investigation))
         investigation = None
+    if isinstance(reputation, Exception):
+        log.warning("reputation_fetch_failed", error=str(reputation))
+        reputation = None
 
-    # Tier 3 alert-specific context (now includes investigation findings)
+    # Tier 3 alert-specific context (now includes investigation + reputation)
     alert_context = knowledge.render_alert_context(
         src_ip=alert.src_ip,
         dst_ip=alert.dest_ip,
@@ -158,6 +164,7 @@ async def node_gather_context(
         proto=alert.proto.lower() if alert.proto else "tcp",
         alert_history_summary=ip_summary,
         investigation=investigation,
+        reputation=reputation,
     )
 
     return {
@@ -165,6 +172,7 @@ async def node_gather_context(
         "ip_summary": ip_summary,
         "correlation": correlation,
         "alert_context": alert_context,
+        "reputation": reputation.to_dict() if isinstance(reputation, AssetReputation) else None,
     }
 
 

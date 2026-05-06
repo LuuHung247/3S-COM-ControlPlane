@@ -62,20 +62,36 @@ async def ingest_alert(body: AlertIngest, request: Request) -> DecisionResponse:
         )
 
     decision = await agent.process(alert)
+    intent = decision.intent
+    from datetime import datetime as _dt, timezone as _tz
+    reasoning_done = bool(intent and intent.reasoning_steps)
 
     decision_dict = {
         "id": decision.id,
         "alert_sid": decision.alert_sid,
         "alert_src_ip": decision.alert_src_ip,
         "outcome": decision.outcome.value,
-        "action": decision.intent.action.value if decision.intent else None,
-        "src_ip": decision.intent.src_ip if decision.intent else None,
-        "dst_ip": decision.intent.dst_ip if decision.intent else None,
-        "confidence": decision.intent.confidence if decision.intent else None,
+        "action": intent.action.value if intent else None,
+        "src_ip": intent.src_ip if intent else None,
+        "dst_ip": intent.dst_ip if intent else None,
+        "dst_port": intent.dst_port if intent else None,
+        "confidence": intent.confidence if intent else None,
         "rejection_reason": decision.rejection_reason,
         "safety_checks": decision.safety_checks,
+        "reasoning": intent.reasoning_steps if intent else [],
+        "hypotheses": [h.model_dump() for h in intent.hypotheses] if intent else [],
+        "rollback_plan": intent.rollback_plan.model_dump() if intent else {},
+        "rule_id": intent.rule_id if intent else None,
+        "ttl_seconds": intent.ttl_seconds if intent else None,
         "latency_ms": decision.latency_ms,
         "dry_run": agent._dry_run,
+        "trace_id": getattr(decision, "trace_id", "") or "",
+        "primary_hypothesis": intent.primary_hypothesis if intent else None,
+        "alternative_actions": [a.model_dump() for a in intent.alternative_actions] if intent else [],
+        "follow_up_actions": intent.follow_up_actions if intent else [],
+        "mitre_technique": intent.mitre_technique if intent else None,
+        "mitre_tactic": intent.mitre_tactic if intent else None,
+        "reasoning_completed_at": _dt.now(_tz.utc) if reasoning_done else None,
     }
 
     # Persist
@@ -83,22 +99,70 @@ async def ingest_alert(body: AlertIngest, request: Request) -> DecisionResponse:
     await redis.cache_decision(decision.id, decision_dict)
     _push_decision(decision_dict)
 
+    # P2: embed-on-write background task (semantic indexing for past-decision retrieval)
+    if decision.intent is not None:
+        from ..core.topology import ip_to_zone
+        from ..storage.embedder import embed_text, build_decision_text
+        intent = decision.intent
+        doc = build_decision_text(
+            sid=decision.alert_sid,
+            src_zone=ip_to_zone(decision.alert_src_ip),
+            dst_zone=ip_to_zone(intent.dst_ip) if intent.dst_ip else None,
+            primary_hypothesis=intent.primary_hypothesis or "",
+            reasoning_first_step=(intent.reasoning_steps[0] if intent.reasoning_steps else "")[:200],
+            mitre_technique=intent.mitre_technique or "",
+        )
+
+        async def _embed_in_bg(doc_text: str, did: str) -> None:
+            try:
+                vec = await embed_text(doc_text)
+                if vec is None:
+                    import structlog
+                    structlog.get_logger().warning("embed_skipped_null_vec", decision_id=did)
+                    return
+                ok = await postgres.write_embedding(did, vec)
+                import structlog
+                structlog.get_logger().info(
+                    "embed_written", decision_id=did, dim=len(vec), ok=ok,
+                )
+            except Exception as exc:
+                import structlog
+                structlog.get_logger().warning(
+                    "embed_failed", decision_id=did, error=str(exc),
+                )
+
+        # Hold task reference in app state to prevent GC of pending tasks
+        bg_set = getattr(request.app.state, "_bg_embed_tasks", None)
+        if bg_set is None:
+            bg_set = set()
+            request.app.state._bg_embed_tasks = bg_set
+        task = asyncio.create_task(_embed_in_bg(doc, decision.id))
+        bg_set.add(task)
+        task.add_done_callback(bg_set.discard)
+
     return DecisionResponse(**{k: v for k, v in decision_dict.items() if k != "safety_checks"})
 
 
 @router.get("/decisions")
 async def list_decisions(request: Request, limit: int = 50) -> list[dict]:
+    """List recent decisions for FE display. Reads from `decisions_history`
+    so eval-run truncates of the workspace table don't erase audit visibility."""
     postgres = request.app.state.postgres
-    return await postgres.list_decisions(limit=limit)
+    return await postgres.list_decisions_history(limit=limit)
 
 
 @router.get("/decisions/{decision_id}")
 async def get_decision(decision_id: str, request: Request) -> dict:
     """Full decision detail incl V3 reasoning trace fields. Used by frontend
-    'Reasoning' modal. If reasoning_loading=true, frontend should poll until
-    reasoning_completed_at is set (or give up after timeout)."""
+    'Reasoning' modal. Reads from `decisions_history` so decisions made during
+    prior eval runs remain inspectable."""
     postgres = request.app.state.postgres
-    record = await postgres.get_decision(decision_id)
+    record = await postgres.get_decision_history(decision_id)
+    if record is None:
+        # Fallback to workspace table for very-fresh decisions where history
+        # write may still be in flight (extremely unlikely with sync dual-write,
+        # but defensive against any edge case)
+        record = await postgres.get_decision(decision_id)
     if record is None:
         raise HTTPException(status_code=404, detail="decision not found")
     return record
@@ -120,7 +184,7 @@ async def policy_history(request: Request, limit: int = 100) -> list[dict]:
     Use this to audit what the agent decided and why.
     """
     postgres = request.app.state.postgres
-    all_decisions = await postgres.list_decisions(limit=limit)
+    all_decisions = await postgres.list_decisions_history(limit=limit)
     history = []
     for d in all_decisions:
         if d.get("outcome") not in ("enforced", "dry_run"):

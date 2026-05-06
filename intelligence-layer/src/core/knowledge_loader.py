@@ -147,6 +147,7 @@ class KnowledgeLoader:
         proto: str = "tcp",
         alert_history_summary: dict | None = None,
         investigation: dict | None = None,
+        reputation: Any = None,
     ) -> str:
         """Per-alert micro-context — only what's relevant for this specific alert.
 
@@ -204,6 +205,12 @@ class KnowledgeLoader:
                 f"- Past decisions: {alert_history_summary.get('decision_summary', '(none)')}"
             )
 
+        # Runtime asset reputation — short-window behavioral score (closes learning loop)
+        if reputation is not None:
+            from .asset_reputation import render_for_prompt as _render_rep, AssetReputation
+            if isinstance(reputation, AssetReputation):
+                parts.append("\n" + _render_rep(reputation))
+
         # Investigation tool outputs (NEW — Phase 1)
         if investigation:
             parts.append("\n## INVESTIGATION FINDINGS (pre-fetched, structured)\n")
@@ -224,23 +231,42 @@ class KnowledgeLoader:
                 if neighbors.get("if_blocked"):
                     parts.append(f"- If blocked: {neighbors.get('if_blocked')}")
 
-            # Tool 2: past incidents
+            # Tool 2: past incidents — multi-strategy (P2)
             past = investigation.get("past_incidents", {})
             if past and not past.get("error"):
-                parts.append("\n### Past similar incidents (90-day lookback)")
-                if past.get("match_count", 0) == 0:
+                parts.append("\n### Past similar incidents — multi-strategy retrieval (90-day lookback)")
+                exact_n = past.get("match_count", 0)
+                semantic_n = past.get("semantic_match_count", 0)
+                mitre_n = past.get("mitre_match_count", 0)
+                if exact_n + semantic_n + mitre_n == 0:
                     parts.append(f"- {past.get('note', 'No history')}")
                 else:
-                    parts.append(f"- Match count: {past['match_count']}")
-                    parts.append(f"- Outcome breakdown: {past.get('outcome_breakdown')}")
+                    parts.append(
+                        f"- Strategy hits — exact_SID: {exact_n}, semantic: {semantic_n}, "
+                        f"mitre_technique: {mitre_n}"
+                    )
                     parts.append(f"- Pattern: {past.get('pattern_assessment')}")
-                    last = past.get("last_decisions", [])[:3]
-                    if last:
-                        last_str = "; ".join(
-                            f"[{d['date'][:10]}] {d['outcome']} action={d['action']} conf={d['confidence']}"
-                            for d in last
+                    if exact_n > 0:
+                        parts.append(f"- Outcome breakdown (exact-SID): {past.get('outcome_breakdown')}")
+                        last = past.get("last_decisions", [])[:3]
+                        if last:
+                            last_str = "; ".join(
+                                f"[{d['date'][:10]}] {d['outcome']} action={d['action']} conf={d['confidence']}"
+                                for d in last
+                            )
+                            parts.append(f"- Recent exact-SID decisions: {last_str}")
+                    if semantic_n > 0:
+                        sem_str = "; ".join(
+                            f"SID {m['alert_sid']} sim={m['similarity']:.2f} {m['outcome']}"
+                            for m in past.get("semantic_matches", [])[:3]
                         )
-                        parts.append(f"- Last decisions: {last_str}")
+                        parts.append(f"- Semantic-similar (vector cosine): {sem_str}")
+                    if mitre_n > 0:
+                        mt_str = "; ".join(
+                            f"SID {m['alert_sid']} {m['outcome']} action={m['action']}"
+                            for m in past.get("mitre_matches", [])[:3]
+                        )
+                        parts.append(f"- Same MITRE technique, different SID: {mt_str}")
 
             # Tool 3: block impact simulation
             impact = investigation.get("block_impact", {})

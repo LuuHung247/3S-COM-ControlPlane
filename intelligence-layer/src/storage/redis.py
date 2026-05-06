@@ -43,7 +43,8 @@ class RedisStore:
 
     async def cache_decision(self, decision_id: str, data: dict[str, Any]) -> None:
         key = f"decision:{decision_id}"
-        await self.client.set(key, json.dumps(data), ex=3600)
+        # default=str → handles datetime, UUID, Enum, etc. without crashing the cache write
+        await self.client.set(key, json.dumps(data, default=str), ex=3600)
 
     async def ping(self) -> bool:
         try:

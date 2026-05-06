@@ -344,8 +344,16 @@ export default function KnowledgeGraphPage() {
     <main className="min-h-screen bg-tc-darker text-tc-text pt-16">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         <header className="mb-4">
-          <h1 className="text-2xl font-bold text-tc-green font-mono">
-            🧠 Agent Knowledge Graph
+          <h1 className="text-2xl font-bold text-tc-green font-mono inline-flex items-center gap-2">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="5" r="2"/>
+              <circle cx="5" cy="19" r="2"/>
+              <circle cx="19" cy="19" r="2"/>
+              <path d="M12 7v3"/>
+              <path d="M10.5 11.5 6 17"/>
+              <path d="M13.5 11.5 18 17"/>
+            </svg>
+            Agent Knowledge Graph
           </h1>
           <p className="text-sm text-tc-text-dim mt-1">
             Heterogeneous KG agent đang dùng để reason: zones, assets, LEAFs, SIDs,

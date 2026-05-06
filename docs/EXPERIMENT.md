@@ -164,7 +164,7 @@ EVENTS_RETENTION_DAYS=7
 - Excel auto-name: `results/report_YYYYMMDD_HHMM.xlsx`
 
 ```bash
-cd /home/dis/deploy/zerotrust/experiment
+cd /home/dis/deploy/zerotrust/experiments
 uv run python eval.py --runs 10        # Output: results/report_*.xlsx
 uv run python eval.py --runs 1         # Single smoke test
 uv run python eval.py --dry-check      # Health check only
@@ -395,7 +395,7 @@ curl http://10.10.6.238:9090/health  # {"status":"ok","mode":"multi-client"}
 ### Eval
 
 ```bash
-cd /home/dis/deploy/zerotrust/experiment
+cd /home/dis/deploy/zerotrust/experiments
 
 uv run python eval.py --dry-check          # Health check only
 uv run python eval.py --runs 1             # Smoke test

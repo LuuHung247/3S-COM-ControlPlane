@@ -139,6 +139,7 @@ async def lifespan(app: FastAPI):
     app.state.events_store = events_store
 
     # SSE consumer — subscribe to ids-agent events
+    import asyncio as _asyncio
     async def on_alert(alert):
         should, reason = await gate.should_process(alert)
         if not should:
@@ -182,6 +183,40 @@ async def lifespan(app: FastAPI):
         await redis.cache_decision(decision.id, decision_dict)
         _push_decision(decision_dict)
 
+        # P2: embed-on-write — semantic indexing for past-decision retrieval.
+        # Background task so we don't block the SSE pipeline. Idempotent.
+        if intent is not None:
+            from .core.topology import ip_to_zone
+            from .storage.embedder import embed_text, build_decision_text
+            doc = build_decision_text(
+                sid=decision.alert_sid,
+                src_zone=ip_to_zone(decision.alert_src_ip),
+                dst_zone=ip_to_zone(intent.dst_ip) if intent.dst_ip else None,
+                signature="",
+                primary_hypothesis=intent.primary_hypothesis or "",
+                reasoning_first_step=(intent.reasoning_steps[0] if intent.reasoning_steps else "")[:200],
+                mitre_technique=intent.mitre_technique or "",
+            )
+
+            async def _embed_in_bg(doc_text: str, did: str) -> None:
+                try:
+                    vec = await embed_text(doc_text)
+                    if vec is None:
+                        log.warning("embed_skipped_null_vec", decision_id=did)
+                        return
+                    ok = await postgres.write_embedding(did, vec)
+                    log.info("embed_written", decision_id=did, dim=len(vec), ok=ok)
+                except Exception as exc:
+                    log.warning("embed_failed", decision_id=did, error=str(exc))
+
+            bg_set = getattr(app.state, "_bg_embed_tasks", None)
+            if bg_set is None:
+                bg_set = set()
+                app.state._bg_embed_tasks = bg_set
+            task = _asyncio.create_task(_embed_in_bg(doc, decision.id))
+            bg_set.add(task)
+            task.add_done_callback(bg_set.discard)
+
     consumer = SSEConsumer(
         ids_agent_url=settings.ids_agent_url,
         on_alert=on_alert,
@@ -190,7 +225,6 @@ async def lifespan(app: FastAPI):
     await consumer.start()
 
     # Background prune coroutine — every hour, drop events older than retention
-    import asyncio as _asyncio
     async def _prune_events_loop():
         while True:
             try:

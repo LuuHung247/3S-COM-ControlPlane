@@ -11,7 +11,6 @@ Usage:
 
 Requires: pip3 install openpyxl httpx
 """
-import argparse
 import datetime
 import json
 import os
@@ -221,17 +220,29 @@ def reset(run_num: int) -> float:
     print(f"  [reset] Deleting agent-pushed rules...")
     cleanup_agent_rules(prefix="    ")
 
-    print(f"  [reset] Flushing Redis DB 0 (agent state only — events DB 1 preserved)...")
+    print(f"  [reset] Flushing Redis DB 0 + DB 1 (events buffer) for independence...")
     try:
-        # FLUSHDB on default DB (0) — leaves DB 1 (events buffer for frontend) intact
-        subprocess.run(
-            ["docker", "compose", "-f", "/home/dis/deploy/zerotrust/docker-compose.yml",
-             "exec", "-T", "redis", "redis-cli", "-n", "0", "FLUSHDB"],
-            capture_output=True, timeout=10
-        )
-        print("    ✓ Redis DB 0 flushed (DB 1 events stream preserved)")
+        for db in ("0", "1"):
+            subprocess.run(
+                ["docker", "compose", "-f", "/home/dis/deploy/zerotrust/docker-compose.yml",
+                 "exec", "-T", "redis", "redis-cli", "-n", db, "FLUSHDB"],
+                capture_output=True, timeout=10
+            )
+        print("    ✓ Redis DB 0 + DB 1 flushed (Eval A independence)")
     except Exception as e:
         print(f"    ✗ Redis flush failed: {e}")
+
+    print(f"  [reset] Truncating workspace decisions table (decisions_history preserved)...")
+    try:
+        subprocess.run(
+            ["docker", "compose", "-f", "/home/dis/deploy/zerotrust/docker-compose.yml",
+             "exec", "-T", "postgres", "psql", "-U", "ztuser", "-d", "zerotrust",
+             "-c", "TRUNCATE TABLE decisions;"],
+            capture_output=True, timeout=10
+        )
+        print("    ✓ decisions truncated — decisions_history kept for FE display")
+    except Exception as e:
+        print(f"    ✗ Postgres truncate failed: {e}")
 
     print(f"  [reset] Resetting intelligence layer state...")
     try:
@@ -573,42 +584,46 @@ def preflight() -> bool:
 
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
 
+# ── Configuration (edit here, no CLI args) ──────────────────────────────────
+RUNS = 10                                 # number of i.i.d. trials
+DURATION_SECONDS = 120                    # per-run timeout in seconds
+PAUSE_BETWEEN_RUNS_SECONDS = 10           # cool-down between iterations
+DRY_CHECK_ONLY = False                    # True = preflight only, no attack
+
 def _default_output() -> str:
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    return os.path.join(RESULTS_DIR, f"report_{ts}.xlsx")
+    return os.path.join(RESULTS_DIR, f"eval_independent_{ts}.xlsx")
 
 def main():
-    parser = argparse.ArgumentParser(description="Zero Trust Agent Evaluation")
-    parser.add_argument("--runs",      type=int, default=1,   help="Number of iterations (default: 1)")
-    parser.add_argument("--duration",  type=int, default=120, help="Max wait per run in seconds (default: 120)")
-    parser.add_argument("--output",    default=None,          help="Excel output path (default: results/report_YYYYMMDD_HHMM.xlsx)")
-    parser.add_argument("--dry-check", action="store_true",   help="Only run health checks, no attack")
-    args = parser.parse_args()
-    if args.output is None:
-        args.output = _default_output()
+    output_path = _default_output()
 
-    print("\n══════════════════════════════════════════════")
-    print("  Zero Trust Intelligence Layer — Eval Runner")
-    print("══════════════════════════════════════════════\n")
+    print("\n══════════════════════════════════════════════════════════════")
+    print("  Eval A — Independent Runs (Statistical Baseline)")
+    print("  Zero Trust Intelligence Layer")
+    print("══════════════════════════════════════════════════════════════\n")
+    print(f"  RUNS                       = {RUNS}")
+    print(f"  DURATION_SECONDS           = {DURATION_SECONDS}")
+    print(f"  PAUSE_BETWEEN_RUNS_SECONDS = {PAUSE_BETWEEN_RUNS_SECONDS}")
+    print(f"  ATTACKER_IP                = {ATTACKER_IP}")
+    print(f"  TARGET_SID                 = {TARGET_SID}")
+    print(f"  OUTPUT                     = {output_path}\n")
 
     print("[Preflight]")
     if not preflight():
         print("\n✗ Preflight failed — fix issues above before running\n")
         sys.exit(1)
 
-    if args.dry_check:
-        print("\n✓ --dry-check passed. Systems ready.\n")
+    if DRY_CHECK_ONLY:
+        print("\n✓ DRY_CHECK_ONLY=True — systems ready, no attack run.\n")
         return
-
-    print(f"\n[Config] runs={args.runs} duration={args.duration}s output={args.output}\n")
 
     results: List[RunResult] = []
 
-    for i in range(1, args.runs + 1):
-        print(f"══ Run {i}/{args.runs} ══════════════════════════════")
+    for i in range(1, RUNS + 1):
+        print(f"══ Run {i}/{RUNS} ════════════════════════════════════════════")
         anchor_ts = reset(i)
-        result = run_scenario(i, args.duration, anchor_ts=anchor_ts)
+        result = run_scenario(i, DURATION_SECONDS, anchor_ts=anchor_ts)
         results.append(result)
 
         status = "PASS ✓" if result.passed else "FAIL ✗"
@@ -616,26 +631,22 @@ def main():
               f"latency={result.enforce_latency_ms}ms confidence={result.confidence} "
               f"checks={result.checks_pass}/{result.checks_total}")
 
-        # Per-run post-cleanup: delete every agent rule pushed during this run so
-        # subsequent runs (or eval termination) leave the LEAFs clean.
         print(f"  [post-run] cleaning agent rules pushed in this run...")
         cleanup_agent_rules(prefix="    ")
 
-        if i < args.runs:
-            print(f"  [pause] 10s before next run...\n")
-            time.sleep(10)
+        if i < RUNS:
+            print(f"  [pause] {PAUSE_BETWEEN_RUNS_SECONDS}s before next run...\n")
+            time.sleep(PAUSE_BETWEEN_RUNS_SECONDS)
 
-    print("\n══ Results ══════════════════════════════════")
+    print("\n══ Results ══════════════════════════════════════════════════════")
     passed = sum(1 for r in results if r.passed)
     print(f"  {passed}/{len(results)} runs PASSED\n")
 
-    # Final safety net: even if eval crashed mid-run or rule push happened after
-    # post-run cleanup, ensure no agent rules are left on the LEAFs.
     print("[Final cleanup]")
     cleanup_agent_rules(prefix="  ")
     print()
 
-    export_excel(results, args.output)
+    export_excel(results, output_path)
 
 if __name__ == "__main__":
     main()

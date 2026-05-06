@@ -15,6 +15,7 @@ class AgentState(TypedDict, total=False):
     alert_history: list[dict]      # From Redis (raw events)
     ip_summary: dict | None        # Operational memory aggregated summary (30d window)
     correlation: dict | None       # Short-window kill-chain correlation (10min)
+    reputation: dict | None        # Runtime behavioral reputation (1h window from retrospective labels)
     alert_context: str             # Tier 3 alert-specific knowledge render
 
     # Cache (Phase B — response cache)

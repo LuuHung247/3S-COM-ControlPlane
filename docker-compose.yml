@@ -90,7 +90,7 @@ services:
         max-file: "2"
 
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: zt-postgres
     restart: unless-stopped
     environment:
