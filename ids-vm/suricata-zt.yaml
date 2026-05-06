@@ -1,0 +1,69 @@
+%YAML 1.1
+---
+vars:
+  address-groups:
+    HOME_NET: "[10.1.0.0/16,10.2.0.0/16]"
+    EXTERNAL_NET: "!$HOME_NET"
+  port-groups:
+    HTTP_PORTS: "80"
+    SHELLCODE_PORTS: "!80"
+    ORACLE_PORTS: 1521
+    SSH_PORTS: 22
+    DNP3_PORTS: 20000
+    MODBUS_PORTS: 502
+    FILE_DATA_PORTS: "[$HTTP_PORTS,110,143]"
+    FTP_PORTS: 21
+    GENEVE_PORTS: 6081
+    VXLAN_PORTS: 4789
+    TEREDO_PORTS: 3544
+af-packet:
+  - interface: eth1
+    cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+  - interface: eth0
+    cluster-id: 98
+    cluster-type: cluster_flow
+    defrag: yes
+default-log-dir: /var/log/suricata/
+outputs:
+  - fast:
+      enabled: yes
+      filename: fast.log
+      append: yes
+      rotate-interval: 86400
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      append: yes
+      rotate-interval: 86400
+      types:
+        - alert
+        - flow
+logging:
+  default-log-level: notice
+  outputs:
+    - console:
+        enabled: no
+    - file:
+        enabled: yes
+        level: info
+        filename: /var/log/suricata/suricata.log
+default-rule-path: /etc/suricata/rules
+rule-files:
+  - zt-lab.rules
+classification-file: /etc/suricata/classification.config
+reference-config-file: /etc/suricata/reference.config
+app-layer:
+  protocols:
+    tls:
+      enabled: yes
+    dns:
+      enabled: yes
+    http:
+      enabled: yes
+detect:
+  profile: low
+host-mode: auto
+max-pending-packets: 512

@@ -85,9 +85,11 @@ class EventsStore:
             keys.append(KEY_FLOWS)
         try:
             for key in keys:
-                # ZRANGEBYSCORE returns oldest-first; we want newest-first → reverse later
-                raw = await self.client.zrangebyscore(
-                    key, since_ms, "+inf", withscores=False, start=0, num=limit
+                # ZREVRANGEBYSCORE: walk from +inf down to since_ms, take first `limit` items.
+                # This gives NEWEST `limit` events in [since_ms, +inf]. Using zrangebyscore
+                # would return the OLDEST `limit` instead — wrong slice when buffer >> limit.
+                raw = await self.client.zrevrangebyscore(
+                    key, "+inf", since_ms, withscores=False, start=0, num=limit
                 )
                 kind_label = "violation" if key == KEY_VIOLATIONS else "flow"
                 for item in raw:

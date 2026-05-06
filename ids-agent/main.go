@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -386,27 +388,51 @@ func unblockHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- SSE bridge từ Suricata → hub ---
+//
+// Design:
+//   - Always attempt SSE; never fall back to polling permanently (the previous
+//     poller hid SSE silently-stale bugs and missed events when Suricata's
+//     ring count reset on restart).
+//   - Per-connection watchdog cancels the request context if no upstream
+//     activity (data or heartbeat) is observed within sseStallTimeout.
+//     Suricata sends `: hb` every 15s — 30s = 2 missed heartbeats.
+//   - Exponential backoff between reconnect attempts, capped at 30s.
+
+const (
+	sseStallTimeout  = 30 * time.Second
+	sseMaxBackoff    = 30 * time.Second
+	sseInitialBackoff = time.Second
+)
 
 func runBridge() {
-	sseFails := 0
+	backoff := sseInitialBackoff
 	for {
-		if err := consumeSSE(); err != nil {
-			sseFails++
-			log.Printf("SSE [%d]: %v — retry 3s", sseFails, err)
-			if sseFails >= 5 {
-				log.Println("Switching to polling mode")
-				runPoller()
-				return
-			}
+		err := consumeSSE()
+		if err != nil {
+			log.Printf("SSE: %v — retry in %s", err, backoff)
 		} else {
-			sseFails = 0
+			log.Println("SSE upstream closed cleanly — reconnecting")
+			backoff = sseInitialBackoff
 		}
-		time.Sleep(3 * time.Second)
+		time.Sleep(backoff)
+		if backoff < sseMaxBackoff {
+			backoff *= 2
+			if backoff > sseMaxBackoff {
+				backoff = sseMaxBackoff
+			}
+		}
 	}
 }
 
 func consumeSSE() error {
-	resp, err := (&http.Client{}).Get(idsURL + "/stream")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", idsURL+"/stream", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := (&http.Client{}).Do(req) // no client.Timeout — streaming
 	if err != nil {
 		return err
 	}
@@ -415,9 +441,39 @@ func consumeSSE() error {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	log.Printf("SSE upstream connected: %s/stream", idsURL)
+
+	// Watchdog: if no line received in sseStallTimeout, cancel the request.
+	// Cancelling closes resp.Body which makes scanner.Scan() return false.
+	var lastSignalNs atomic.Int64
+	lastSignalNs.Store(time.Now().UnixNano())
+
+	go func() {
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if time.Since(time.Unix(0, lastSignalNs.Load())) > sseStallTimeout {
+					log.Printf("SSE upstream silent > %s — forcing reconnect", sseStallTimeout)
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+
 	scanner := bufio.NewScanner(resp.Body)
+	// Larger buffer for occasional big alert events (default 64K is fine for
+	// most, but bump to 256K to be safe).
+	scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
+		// ANY line received resets the stall timer — including SSE comment
+		// heartbeats `: hb` which carry no data but prove the upstream is alive.
+		lastSignalNs.Store(time.Now().UnixNano())
+
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
@@ -428,34 +484,6 @@ func consumeSSE() error {
 		hub.broadcast([]byte(data))
 	}
 	return scanner.Err()
-}
-
-func runPoller() {
-	log.Println("Polling mode — 2s interval")
-	var lastCount int
-	client := &http.Client{Timeout: 5 * time.Second}
-	for range time.NewTicker(2 * time.Second).C {
-		resp, err := client.Get(fmt.Sprintf("%s/alerts?last=100", idsURL))
-		if err != nil {
-			continue
-		}
-		var data map[string]interface{}
-		json.NewDecoder(resp.Body).Decode(&data)
-		resp.Body.Close()
-		count := int(data["count"].(float64))
-		alerts, _ := data["alerts"].([]interface{})
-		if count > lastCount && lastCount > 0 {
-			newN := count - lastCount
-			if newN > len(alerts) {
-				newN = len(alerts)
-			}
-			for _, a := range alerts[len(alerts)-newN:] {
-				msg, _ := json.Marshal(a)
-				hub.broadcast(msg)
-			}
-		}
-		lastCount = count
-	}
 }
 
 func cors(next http.Handler) http.Handler {

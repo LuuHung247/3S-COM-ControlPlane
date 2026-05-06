@@ -1,28 +1,32 @@
 #!/usr/bin/env python3
 """
-eval_chain_attack.py — Sequential kill-chain attack case study (Eval B)
+eval_killchain.py — Sequential Kill-Chain Attack Case Study
 
-Submits 3 alerts in a 5-minute window from the SAME src_ip, simulating a
-multi-stage attack: ICMP recon → WEB→DB lateral → DB outbound exfil. Captures
-the agent's reasoning at each step so we can verify whether the cumulative
-context (alert history, asset reputation, multi-strategy past-incident
-retrieval, kill-chain correlation) actually changes behavior across stages.
+Submits 3 alerts trong 1 cửa sổ vài phút từ CÙNG src_ip, mô phỏng multi-stage:
+  Stage 1: ICMP recon
+  Stage 2: WEB→DB lateral movement
+  Stage 3: DB outbound exfiltration
 
-Unlike eval.py (Eval A — i.i.d. independent runs with full state reset
-between every iteration), this script:
-  - Does NOT reset state between alerts (state-dependence is the point)
-  - Reports a narrative timeline + reasoning trace per alert
-  - Outputs a single Markdown case study, not statistical aggregates
+Mục đích: quan sát agent reasoning từng stage để verify cumulative context
+(alert history, asset reputation, kill-chain correlation) có thay đổi
+behavior across stages hay không.
+
+Khác với eval_iid.py (i.i.d. resets mỗi run), script này:
+  - KHÔNG reset state giữa các alerts trong 1 chain (state-dependence là point)
+  - Report narrative timeline + reasoning trace per alert
+  - Xuất Markdown case study, không phải statistical aggregates
 
 Usage:
-    python3 eval_chain_attack.py
-    python3 eval_chain_attack.py --src-ip 10.1.100.10 --output case_study.md
+    python3 eval_killchain.py        # constants ở đầu file (RUNS chains)
+
+Requires: rich
 """
 from __future__ import annotations
 
 import datetime
 import json
 import os
+import statistics
 import subprocess
 import sys
 import time
@@ -30,6 +34,18 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
+
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
+    from rich.align import Align
+    from rich.rule import Rule
+except ImportError:
+    sys.exit("Missing: pip3 install rich")
+
+console = Console()
 
 
 INTEL = os.getenv("INTEL_URL", "http://localhost:8767")
@@ -91,14 +107,14 @@ def initial_cleanup() -> None:
             deleted += 1
     print(f"    ✓ deleted {deleted} prior agent rules")
 
-    # Flush Redis DB 0 (state) + DB 1 (events) for clean baseline
-    for db in ("0", "1"):
-        subprocess.run(
-            ["docker", "compose", "-f", "/home/dis/deploy/zerotrust/docker-compose.yml",
-             "exec", "-T", "redis", "redis-cli", "-n", db, "FLUSHDB"],
-            capture_output=True, timeout=10,
-        )
-    print("    ✓ Redis DB 0 + DB 1 flushed")
+    # Flush Redis DB 0 (agent state) only. DB 1 EventsStore is persistent
+    # 7-day FE Monitor buffer — flushing it would erase live UI display.
+    subprocess.run(
+        ["docker", "compose", "-f", "/home/dis/deploy/zerotrust/docker-compose.yml",
+         "exec", "-T", "redis", "redis-cli", "-n", "0", "FLUSHDB"],
+        capture_output=True, timeout=10,
+    )
+    print("    ✓ Redis DB 0 flushed — DB 1 EventsStore intact")
 
     # Truncate workspace `decisions` only — decisions_history is preserved
     # so FE Policy History keeps every prior decision visible.
@@ -195,17 +211,18 @@ class StageResult:
 
 def submit_stage(stage_idx: int, alert: dict, gap_seconds: int) -> StageResult:
     sid = alert["alert"]["signature_id"]
-    print(f"\n  [stage {stage_idx + 1}] T+{gap_seconds:>3}s — sending SID {sid} "
-          f"({alert['alert']['signature']})...")
+    sig = alert["alert"]["signature"]
+    console.print(f"  [bold cyan]stage {stage_idx + 1}[/]  [dim]T+{gap_seconds:>3}s[/]  "
+                  f"SID [bold]{sid}[/]  [dim]{sig}[/]")
     sent_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     resp = http_post(f"{INTEL}/alerts", {"data": alert})
     if not resp:
-        print("    ✗ request failed entirely")
+        console.print("    [red]✗ request failed entirely[/]")
         return StageResult(stage=stage_idx + 1, sid=sid, sent_at=sent_at,
                            outcome="error", rejection_reason="HTTP failure")
     if resp.get("error"):
-        print(f"    ✗ {resp['error']}")
+        console.print(f"    [red]✗ {resp['error']}[/]")
         return StageResult(stage=stage_idx + 1, sid=sid, sent_at=sent_at,
                            outcome="error", rejection_reason=str(resp))
 
@@ -219,8 +236,10 @@ def submit_stage(stage_idx: int, alert: dict, gap_seconds: int) -> StageResult:
         latency_ms=resp.get("latency_ms"),
         raw=resp,
     )
-    print(f"    → outcome={res.outcome} action={res.action} "
-          f"confidence={res.confidence} latency={res.latency_ms}ms")
+    outcome_color = {"enforced": "green", "dry_run": "yellow", "rejected": "red", "error": "red"}.get(res.outcome, "dim")
+    cf = f"{res.confidence:.2f}" if res.confidence is not None else "—"
+    console.print(f"    [{outcome_color}]→ outcome={res.outcome}[/]  action={res.action or '—'}  "
+                  f"confidence={cf}  latency={res.latency_ms}ms")
 
     # Wait for V3 Stage 2 reasoning trace to populate, then enrich
     if res.decision_id and res.decision_id != "filtered":
@@ -303,10 +322,11 @@ def render_markdown(stages: list[StageResult], src_ip: str, dst_ip: str) -> str:
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 # ── Configuration (edit here, no CLI args) ──────────────────────────────────
+RUNS = 10                                 # number of independent chain trials (each = 3 alerts)
 ATTACKER_IP = "10.1.100.10"               # web-01 (presentation tier)
 TARGET_IP = "10.1.200.10"                 # db-01 (used for stages 1-2)
-GAP_SECONDS = 30                          # interval between alerts in the chain
-RUN_INITIAL_CLEANUP = True                # False to resume on existing state
+GAP_SECONDS = 30                          # interval between alerts WITHIN a chain
+PAUSE_BETWEEN_CHAINS_SECONDS = 5          # cool-down between chains (cleanup gives clean baseline)
 
 
 def _default_output() -> str:
@@ -314,62 +334,130 @@ def _default_output() -> str:
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     results_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
     os.makedirs(results_dir, exist_ok=True)
-    return os.path.join(results_dir, f"eval_chain_attack_{ts}.md")
+    return os.path.join(results_dir, f"eval_killchain_{ts}.md")
 
 
-def main() -> int:
+# ── Rich UI helpers ──────────────────────────────────────────────────────────
+
+def _render_header() -> None:
+    title = Text()
+    title.append("ZT-EVAL · KILLCHAIN", style="bold magenta")
+    title.append("  ", style="")
+    title.append("Sequential Multi-Stage Case Study", style="dim")
+    console.print()
+    console.print(Panel(
+        Align.center(title),
+        border_style="magenta",
+        padding=(0, 2),
+    ))
+
+    cfg = Table.grid(padding=(0, 2))
+    cfg.add_column(style="dim")
+    cfg.add_column(style="bold")
+    cfg.add_row("scenario",      "ICMP recon → WEB→DB lateral → DB outbound exfil")
+    cfg.add_row("attacker IP",   ATTACKER_IP)
+    cfg.add_row("target IP",     TARGET_IP)
+    cfg.add_row("chains",        str(RUNS))
+    cfg.add_row("stages/chain",  "3")
+    cfg.add_row("intra-stage gap", f"{GAP_SECONDS}s")
+    cfg.add_row("inter-chain pause", f"{PAUSE_BETWEEN_CHAINS_SECONDS}s")
+    cfg.add_row("est. duration", f"~{(3 * GAP_SECONDS + PAUSE_BETWEEN_CHAINS_SECONDS) * RUNS // 60} min")
+    console.print(Panel(cfg, title="[bold]config[/]", border_style="dim", padding=(1, 2)))
+    console.print()
+
+
+def _render_summary(all_runs: list[list[StageResult]]) -> None:
+    """Per-stage aggregate table: confidence + latency mean ± stdev."""
+    if not all_runs:
+        return
+
+    tbl = Table(
+        title=f"summary — {len(all_runs)} chains × 3 stages",
+        title_style="bold",
+        header_style="bold magenta",
+        border_style="dim",
+    )
+    tbl.add_column("stage",       width=6)
+    tbl.add_column("SID",         justify="right", width=8)
+    tbl.add_column("conf  μ ± σ", justify="right", width=15)
+    tbl.add_column("latency (ms) μ ± σ", justify="right", width=22)
+    tbl.add_column("n",           justify="right", style="dim")
+
+    for stage_idx in range(3):
+        confs = [r[stage_idx].confidence for r in all_runs
+                 if len(r) > stage_idx and r[stage_idx].confidence is not None]
+        lats = [r[stage_idx].latency_ms for r in all_runs
+                if len(r) > stage_idx and r[stage_idx].latency_ms is not None]
+        if not confs and not lats:
+            tbl.add_row(str(stage_idx + 1), "?", "—", "—", "0")
+            continue
+        cmean = statistics.mean(confs) if confs else float("nan")
+        cstd = statistics.stdev(confs) if len(confs) > 1 else 0.0
+        lmean = statistics.mean(lats) if lats else float("nan")
+        lstd = statistics.stdev(lats) if len(lats) > 1 else 0.0
+        sid = all_runs[0][stage_idx].sid if all_runs and len(all_runs[0]) > stage_idx else "?"
+        tbl.add_row(
+            str(stage_idx + 1),
+            str(sid),
+            f"{cmean:.3f} ± {cstd:.3f}",
+            f"{lmean:.0f} ± {lstd:.0f}",
+            str(len(confs)),
+        )
+    console.print(tbl)
+    console.print()
+
+
+def _run_one_chain(run_idx: int) -> list[StageResult]:
+    """Execute one chain (3 alerts) and write per-chain markdown + json."""
     output_path = _default_output()
 
-    print("=" * 70)
-    print(" Eval B — Chain Attack Case Study (sequential, state-dependent)")
-    print(" Zero Trust Intelligence Layer")
-    print("=" * 70)
-    print(f"  ATTACKER_IP          = {ATTACKER_IP}")
-    print(f"  TARGET_IP            = {TARGET_IP}")
-    print(f"  GAP_SECONDS          = {GAP_SECONDS}")
-    print(f"  RUN_INITIAL_CLEANUP  = {RUN_INITIAL_CLEANUP}")
-    print(f"  OUTPUT               = {output_path}")
+    console.print(Rule(f"chain {run_idx}/{RUNS}", style="magenta", characters="─"))
+    console.print(f"  [dim]output → {output_path}[/]\n")
 
-    h = http_get(f"{INTEL}/health")
-    if not h or h.get("status") != "ok":
-        print(f"\n[FATAL] intel-layer not healthy: {h}")
-        return 2
-    print(f"  intel-layer          = ok (dry_run={h.get('dry_run')})")
-
-    if RUN_INITIAL_CLEANUP:
-        initial_cleanup()
-    else:
-        print("\n  [setup] RUN_INITIAL_CLEANUP=False — using current state")
+    initial_cleanup()
 
     alerts = chain_alerts(ATTACKER_IP, TARGET_IP)
     stages: list[StageResult] = []
-
-    print(f"\n  [chain] sending {len(alerts)} alerts with {GAP_SECONDS}s gaps...")
     chain_start = time.time()
     for i, alert in enumerate(alerts):
         gap = int(time.time() - chain_start)
         res = submit_stage(i, alert, gap)
         stages.append(res)
         if i < len(alerts) - 1:
-            print(f"\n  [wait] {GAP_SECONDS}s before next stage...")
+            console.print(f"  [dim]wait {GAP_SECONDS}s before next stage…[/]\n")
             time.sleep(GAP_SECONDS)
 
     md = render_markdown(stages, ATTACKER_IP, TARGET_IP)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(md)
-
     json_path = output_path.replace(".md", ".json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump([s.__dict__ for s in stages], f, indent=2, default=str)
+    console.print()
+    console.print(f"  [bold green]✓[/] Markdown → [cyan]{output_path}[/]")
+    console.print(f"  [bold green]✓[/] JSON     → [cyan]{json_path}[/]\n")
+    return stages
 
-    print("\n" + "=" * 70)
-    print(f" Report:    {output_path}")
-    print(f" Raw JSON:  {json_path}")
-    print("=" * 70)
 
-    # Final cleanup: experiment is over. Wipe workspace `decisions` so the next
-    # experiment starts fresh. `decisions_history` is preserved for FE display.
-    print("\n  [final cleanup] truncating workspace decisions table...")
+def main() -> int:
+    _render_header()
+
+    console.print(Rule("preflight", style="dim"))
+    h = http_get(f"{INTEL}/health")
+    if not h or h.get("status") != "ok":
+        console.print(f"  [bold red]✗ intel-layer not healthy:[/] {h}")
+        return 2
+    console.print(f"  [green]✓[/] intel-layer ok  [dim](dry_run={h.get('dry_run')})[/]\n")
+
+    all_runs: list[list[StageResult]] = []
+    for run_idx in range(1, RUNS + 1):
+        stages = _run_one_chain(run_idx)
+        all_runs.append(stages)
+        if run_idx < RUNS:
+            console.print(f"  [dim]pause {PAUSE_BETWEEN_CHAINS_SECONDS}s before next chain…[/]\n")
+            time.sleep(PAUSE_BETWEEN_CHAINS_SECONDS)
+
+    console.print(Rule("cleanup", style="dim"))
     try:
         subprocess.run(
             ["docker", "compose", "-f", "/home/dis/deploy/zerotrust/docker-compose.yml",
@@ -377,14 +465,13 @@ def main() -> int:
              "-c", "TRUNCATE TABLE decisions;"],
             capture_output=True, timeout=10,
         )
-        print("    ✓ decisions truncated (decisions_history preserved)")
+        console.print("  [green]✓[/] decisions truncated [dim](decisions_history preserved)[/]\n")
     except Exception as e:
-        print(f"    ✗ truncate failed: {e}")
+        console.print(f"  [red]✗ truncate failed:[/] {e}\n")
 
-    print()
-    for s in stages:
-        cf = f"{s.confidence:.2f}" if s.confidence is not None else "—"
-        print(f"  stage{s.stage} SID{s.sid}: {s.outcome:8s} conf={cf} action={s.action or '—'}")
+    console.print(Rule("results", style="bold magenta"))
+    console.print()
+    _render_summary(all_runs)
     return 0
 
 

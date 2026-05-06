@@ -376,22 +376,163 @@ Scenario controllers ở `/root/scenario/` trên Alpine-5 (MGT). Mỗi scenario 
 
 ---
 
+## 7A. IDS-Suricata VM — Deploy & Architecture
+
+> Bundle source: `zerotrust/ids-vm/` — sync xuống VM khi reboot/redeploy.
+> Deploy confirmed 2026-05-06 — memory leak fix live (RSS 33MB constant, vs ~1.65GB OOM ~3h trước fix).
+
+### 7A.1 Bundle layout
+
+```
+zerotrust/ids-vm/
+├── ids-api.py             # REST + SSE server (232 LOC, stdlib only)
+├── ids-api.openrc         # OpenRC service (supervise-daemon, respawn 3s)
+├── suricata-zt.yaml       # Suricata config (af-packet eth0+eth1, eve.json types: alert+flow)
+└── rules/
+    └── zt-lab.rules       # 8 ZT detection rules (SID 9000001-9000020) — xem §7.2
+```
+
+### 7A.2 Deploy commands (chạy trên IDS VM sau reboot)
+
+```bash
+# Telnet console: 112.137.129.232:5018  | login: root (no password)
+cp ids-api.py /usr/local/bin/ && chmod 755 /usr/local/bin/ids-api.py
+cp ids-api.openrc /etc/init.d/ids-api && chmod 755 /etc/init.d/ids-api
+cp suricata-zt.yaml /etc/suricata/suricata-zt.yaml
+cp rules/zt-lab.rules /etc/suricata/rules/zt-lab.rules
+
+# Start ids-api as supervised service (auto-respawn 3s if crash)
+rc-update add ids-api default && rc-service ids-api start
+
+# Start Suricata (manual — KHÔNG auto-respawn; cân nhắc tạo openrc service riêng)
+suricata -c /etc/suricata/suricata-zt.yaml --af-packet -D --pidfile /var/run/suricata.pid
+```
+
+Verify sau khi deploy:
+```bash
+curl -s http://10.10.6.238:8765/health    # {status:ok, suricata:true, ring_alerts, ring_flows, sse_clients, uptime_sec}
+curl -s http://10.10.6.238:8765/service-health    # 4/4 services up
+ps -p $(pgrep -f ids-api.py) -o rss,vsz,etime    # RSS phải ổn định ~33MB
+```
+
+### 7A.3 ids-api.py — Architecture (memory-bounded, real-time)
+
+Single Python process, `ThreadingHTTPServer`. 1 background tail thread + N HTTP handler threads.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ids-api.py (port :8765)                                     │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ tail_loop (daemon thread)                            │  │
+│  │   - readline() từ /var/log/suricata/eve.json         │  │
+│  │   - manual byte-offset (pos += len(line))            │  │
+│  │   - parse JSON, filter event_type ∈ {alert, flow}    │  │
+│  │   - alert: append ring + broadcast tới SSE subs      │  │
+│  │   - flow:  append ring (KHÔNG broadcast)             │  │
+│  │   - watch st_ino → reopen + reset pos khi rotate     │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                       │                                     │
+│                       ▼                                     │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ Ring buffers (lock-protected)                        │  │
+│  │   _alerts:      deque(maxlen=2000)  ~1 MB           │  │
+│  │   _flows :      deque(maxlen=2000)  ~1 MB           │  │
+│  │   _sse_clients: list[Queue(maxsize=256)] cap 8      │  │
+│  └──────────────────────────────────────────────────────┘  │
+│        ▲                  ▲                ▲                │
+│  ┌─────┴──┐         ┌─────┴───┐      ┌────┴──────────┐    │
+│  │ /alerts│         │ /flows  │      │ /stream SSE   │    │
+│  │ /health│         │ /service│      │ try/finally   │    │
+│  │ slice  │         │ -health │      │ remove client │    │
+│  │ ring   │         │ infer   │      │               │    │
+│  └────────┘         └─────────┘      └───────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Memory ceiling: ~33MB RSS constant** — không phụ thuộc eve.json size, request rate, hay SSE client count.
+
+**Real-time latency:** alert ghi vào eve.json → SSE push tới subscriber **< 500ms worst case** (TAIL_POLL_SEC=0.5s sleep window), trung bình ~250ms.
+
+### 7A.4 Suricata config (suricata-zt.yaml — key fields)
+
+| Field | Value | Note |
+|-------|-------|------|
+| Capture interfaces | `af-packet eth1` (cluster-id 99) + `eth0` (cluster-id 98) | Mirror traffic từ LEAF qua tc mirred (§6) |
+| `HOME_NET` | `[10.1.0.0/16, 10.2.0.0/16]` | Toàn bộ lab subnet |
+| eve.json output | `types: [alert, flow]` | Flow logging bật cho dashboard / `/service-health` |
+| Profile | `low`, `max-pending-packets: 512` | VM resource-constrained |
+| Rules path | `/etc/suricata/rules/zt-lab.rules` | Reload không cần restart: `kill -USR2 $(cat /var/run/suricata.pid)` |
+
+### 7A.5 OpenRC service (ids-api.openrc)
+
+```
+supervisor       = supervise-daemon
+command          = /usr/bin/python3 /usr/local/bin/ids-api.py
+pidfile          = /run/ids-api.pid
+respawn_delay    = 3
+respawn_max      = 0       # vô hạn
+respawn_period   = 60
+output_log       = /var/log/ids-api.log
+error_log        = /var/log/ids-api.log
+```
+
+### 7A.6 Operational notes & TODO
+
+| Topic | Hiện tại | TODO |
+|-------|----------|------|
+| ids-api auto-respawn | OpenRC supervise-daemon, 3s delay | ✓ stable |
+| **Suricata auto-respawn** | **Không có — chạy thủ công sau reboot** | **MEDIUM: tạo `suricata.openrc` service tương tự ids-api** |
+| eve.json rotate | Không có — phình ~100MB/ngày | LOW: thêm `outputs.eve-log.rotate-interval: daily` vào yaml |
+| Logrotate copytruncate | Chỉ detect inode change ([ids-api.py:49](../ids-vm/ids-api.py#L49)) | LOW: thêm `or st.st_size < pos` để handle truncate-in-place |
+| SSE slow client | Queue full → kick client | ✓ by design — server không bị slow client kéo xuống; ids-agent auto-reconnect |
+| SSE client cap | 8 clients max → 503 nếu vượt | Đủ cho ids-agent + 2-3 dev tab |
+
+### 7A.7 Memory leak fix history (2026-05-06)
+
+**Symptom trước fix:** RSS phình từ ~50MB → 1.65GB sau ~3h, OOM kill, supervise-daemon respawn loop. ids-agent SSE rớt → fallback polling 2s permanent.
+
+**Root cause:** `read_alerts()` cũ mở `eve.json` (102MB / 172k dòng) và load TOÀN BỘ vào list mỗi request:
+```python
+for line in f: alerts.append(json.loads(line))   # 100MB/request
+return alerts[-last:]
+```
+ThreadingHTTPServer × N concurrent → N × 100MB allocated cùng lúc → OOM.
+
+**Fix (deploy 2026-05-06, md5 4cbee83b):**
+- Background tail thread: `readline()` line-by-line, append vào `deque(maxlen=2000)` mỗi loại
+- HTTP handlers slice từ ring (O(N), không I/O)
+- SSE: per-client `Queue(maxsize=256)`, cap 8 clients, `try/finally` cleanup
+- Logrotate: watch `st.st_ino`, auto-reopen
+- BrokenPipe: `_safe_write` / `_safe_flush` bao quanh mọi `wfile` ops
+
+**Bug edge case bắt được lúc deploy:** Python text-mode `for line in f` cấm gọi `f.tell()` mid-iteration (`OSError: telling position disabled by next() call`). Đổi sang `readline()` + manual offset (`pos += len(line)`).
+
+**Acceptance test pass:**
+- Bootstrap 177.5k dòng eve.json → ring đầy 2000 trong 9s
+- 20 concurrent `/alerts?last=100`: tất cả 200, latency ≤ 230ms
+- 4/4 services báo up qua `/service-health`
+- SID 9000020 alert real-time qua SSE confirmed
+- RSS 33MB constant under wrk stress
+
+---
+
 ## 8. North-bound API — for ONAP SDNC Integration
 
 ### 8.1 IDS Alert API (Suricata side)
 
 Base URL: `http://10.10.6.238:8765` (LAN) / `http://112.137.129.232:8765` (public NAT)
-**Source:** `/usr/local/bin/ids-api.py` **inside** IDS-Suricata VM (Python stdlib `BaseHTTPRequestHandler` + `ThreadingHTTPServer`, ~147 LOC). Process autostart, restart bằng `pkill -f ids-api.py; nohup python3 /usr/local/bin/ids-api.py >/tmp/api.log 2>&1 &`.
+**Source:** `/usr/local/bin/ids-api.py` trong IDS-Suricata VM (xem §7A cho deploy + architecture).
 **Exposure:** libvirt `virbr0` NAT bridge → DNAT từ host `:8765` → VM `192.168.122.205:8765`.
 
 | Method | Path | Response |
 |--------|------|----------|
-| GET | `/health` | `{status, suricata: bool, ts}` |
-| GET | `/alerts?last=N&since=ts` | `{count, summary{sid:n}, alerts[]}` |
+| GET | `/health` | `{status, suricata: bool, ring_alerts, ring_flows, sse_clients, uptime_sec, ts}` |
+| GET | `/alerts?last=N&since=ts` | `{count, summary{sid:n}, alerts[]}` — slice từ ring (cap 2000) |
 | GET | `/alerts/clear` | `{cleared_at: ts}` — client dùng làm anchor cho `?since=` để skip pre-F5 alerts |
-| GET | `/flows?last=N&since=ts` | `[flow event objects]` — đọc reverse từ eve.json, max 500 |
-| GET | `/stream` | SSE — gồm cả alert events + flow events (rate-limit 10 flow/cycle/s) |
-| GET | `/service-health` | Passive flow-inference: `{services:[{name,ip,port,zone,status:up\|unknown}], method:"flow-inference"}` — quét eve.json 180s gần nhất |
+| GET | `/flows?last=N&since=ts` | `[flow event objects]` — slice từ ring, cap 500 mỗi request |
+| GET | `/stream` | SSE — alert events only (flow KHÔNG broadcast); heartbeat `: hb` mỗi 15s; cap 8 clients (503 nếu vượt) |
+| GET | `/service-health` | Passive flow-inference từ ring 180s gần nhất: `{services:[{name,ip,port,zone,status:up\|unknown}], method:"flow-inference-ring"}` |
 
 ### 8.2 Go IDS Agent (real-time bridge + enforcement proxy)
 

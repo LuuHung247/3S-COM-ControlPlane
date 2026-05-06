@@ -1,10 +1,10 @@
-# Eval B — Chain attack case study
+# Eval Killchain — Sequential multi-stage attack case study
 
 ## Question
 
 When the agent sees a multi-stage kill chain (recon → lateral movement → exfiltration) from the same source IP within minutes, **does cumulative context (past-incident retrieval, asset reputation, alert history) actually change its behavior across stages?**
 
-This is the experiment that exercises the agent's institutional knowledge — the part Eval A deliberately suppresses with i.i.d. resets.
+This is the experiment that exercises the agent's institutional knowledge — the part `eval_iid.py` deliberately suppresses with i.i.d. resets.
 
 ## Scenario
 
@@ -20,7 +20,7 @@ The kill chain matches the `presentation-tier-breach-to-data-exfiltration` playb
 
 ## Design
 
-Unlike Eval A, this experiment is **state-dependent**:
+Unlike `eval_iid.py`, this experiment is **state-dependent**:
 
 - One initial cleanup at start (clear workspace + Redis + agent rules) so the chain begins from a known clean baseline.
 - **No reset between stages** — alert N+1 sees the agent's memory built up by alerts 1..N.
@@ -56,7 +56,7 @@ The Markdown file contains:
 
 ## Configuration
 
-Edit constants at the top of `eval_chain_attack.py`:
+Edit constants at the top of `eval_killchain.py`:
 
 ```python
 ATTACKER_IP = "10.1.100.10"        # web-01
@@ -68,14 +68,14 @@ OUTPUT_PATH = "results/chain_attack_<timestamp>.md"
 
 No CLI flags. To compare different cadences, edit `GAP_SECONDS` and re-run.
 
-## How this complements Eval A
+## How this complements `eval_iid.py`
 
-| Aspect | Eval A | Eval B |
-|--------|--------|--------|
+| Aspect | `eval_iid.py` | `eval_killchain.py` |
+|--------|---------------|---------------------|
 | Question | Reliability under repetition | Memory + correlation across stages |
-| Output | Statistics | Narrative |
-| State between trials | Reset (i.i.d.) | Preserved (state-dependent) |
-| Run count | N (default 10) | 1 chain |
+| Output | Statistics (avg/min/max/p95) | Narrative + per-stage μ ± σ |
+| State between trials | Reset (i.i.d.) | Preserved within chain (state-dependent) |
+| Run count | N independent runs (default 10) | N chains × 3 stages |
 | For thesis | Tables, charts | Case-study figure, reasoning excerpts |
 
-Use both. Eval A says "the baseline pipeline works"; Eval B says "the memory architecture pays off".
+Use both. `eval_iid.py` says "the baseline pipeline works"; `eval_killchain.py` says "the memory architecture pays off".

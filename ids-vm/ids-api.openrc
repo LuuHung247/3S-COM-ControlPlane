@@ -1,0 +1,15 @@
+#!/sbin/openrc-run
+name="ids-api"
+description="IDS REST API server"
+
+supervisor=supervise-daemon
+command="/usr/bin/python3"
+command_args="/usr/local/bin/ids-api.py"
+pidfile="/run/ids-api.pid"
+
+respawn_delay=3
+respawn_max=0
+respawn_period=60
+
+output_log="/var/log/ids-api.log"
+error_log="/var/log/ids-api.log"

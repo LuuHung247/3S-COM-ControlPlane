@@ -1,0 +1,21 @@
+# Zero Trust Lab — Suricata Detection Rules
+# Zones: WEB=10.1.100.0/24  DB=10.1.200.0/24  APP=10.2.100.0/24  MGT=10.2.50.0/24
+
+# ─── CATEGORY 1: Policy Violations (Critical) ──────────────────────────────────
+# tc mirred capture is asymmetric (one direction only) → flow:to_server unreliable.
+# Use flags:S (SYN-only) to fire on connection initiation; src_port=any, dst_port=service.
+alert tcp 10.1.100.0/24 any -> 10.1.200.0/24 [5432,3306,1433,27017] (msg:"[ZT-VIOLATION] WEB direct to DB - microsegmentation bypass"; flags:S; classtype:policy-violation; priority:1; sid:9000001; rev:3;)
+alert tcp 10.1.200.0/24 any -> ![10.1.100.0/24,10.1.200.0/24,10.2.100.0/24,10.2.50.0/24] any (msg:"[ZT-VIOLATION] DB initiating outbound connection"; flags:S; classtype:policy-violation; priority:1; sid:9000002; rev:4;)
+
+# ─── CATEGORY 2: Lateral Movement ──────────────────────────────────────────────
+# flags:S → only on SYN initiation; suppresses return-traffic FPs from shopper/scrape.
+alert tcp 10.2.100.0/24 any -> 10.1.100.0/24 [80,443,22] (msg:"[ZT-ALERT] APP reverse call to WEB - lateral movement"; flags:S; classtype:policy-violation; priority:2; sid:9000003; rev:3;)
+alert tcp 10.1.100.0/24 any -> 10.2.50.0/24 [22,3389] (msg:"[ZT-ALERT] WEB to MGT - unauthorized access"; flags:S; classtype:policy-violation; priority:2; sid:9000004; rev:3;)
+alert tcp 10.2.100.0/24 any -> 10.2.50.0/24 [22,3389] (msg:"[ZT-ALERT] APP to MGT - unauthorized access"; flags:S; classtype:policy-violation; priority:2; sid:9000005; rev:3;)
+
+# ─── CATEGORY 3: Reconnaissance ────────────────────────────────────────────────
+alert icmp any any -> any any (msg:"[ZT-INFO] ICMP ping sweep detected"; itype:8; threshold:type both,track by_src,count 3,seconds 10; classtype:network-scan; priority:3; sid:9000010; rev:1;)
+alert tcp any any -> any any (msg:"[ZT-INFO] Possible port scan"; flags:S; threshold:type both,track by_src,count 10,seconds 5; classtype:network-scan; priority:3; sid:9000011; rev:1;)
+
+# ─── CATEGORY 4: Audit Logging ─────────────────────────────────────────────────
+alert ip 10.2.50.0/24 any -> any any (msg:"[ZT-AUDIT] Management zone access"; threshold:type limit,track by_src,count 1,seconds 60; classtype:policy-violation; priority:4; sid:9000020; rev:1;)

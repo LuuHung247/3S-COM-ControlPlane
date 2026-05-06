@@ -1,0 +1,15 @@
+#!/sbin/openrc-run
+name="suricata-zt"
+description="Suricata IDS - Zero Trust Lab"
+
+supervisor=supervise-daemon
+command="/usr/bin/suricata"
+command_args="-c /etc/suricata/suricata-zt.yaml --af-packet"
+pidfile="/run/suricata-zt.pid"
+
+respawn_delay=5
+respawn_max=0
+respawn_period=60
+
+output_log="/var/log/suricata-zt.log"
+error_log="/var/log/suricata-zt.log"

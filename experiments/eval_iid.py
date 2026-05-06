@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
 """
-eval.py — Zero Trust Intelligence Layer Evaluation
-Chạy N lần demo scenario compromise-web, collect metrics, xuất Excel.
+eval_iid.py — Zero Trust Intelligence Layer · I.I.D. Statistical Baseline
+
+Chạy N runs độc lập của 1 attack scenario (WEB→DB microsegmentation bypass),
+reset workspace giữa các runs, đo:
+  - MTTD (alert ghi → decision created)
+  - Decision→Enforcement latency (created → SF rule active)
+  - Outcome correctness (enforced / dry_run / rejected)
+  - Confidence score
+Xuất Excel + JSON. Dùng cho stat baseline (mean ± stdev across N runs).
 
 Usage:
-    python3 eval.py                        # 1 run, 120s, report.xlsx
-    python3 eval.py --runs 10              # 10 lần
-    python3 eval.py --runs 5 --duration 90 --output results.xlsx
-    python3 eval.py --dry-check            # chỉ check health, không chạy attack
+    python3 eval_iid.py        # constants ở đầu file (RUNS=10)
 
-Requires: pip3 install openpyxl httpx
+Requires: openpyxl, rich
 """
 import datetime
 import json
+import math
 import os
 import socket
+import statistics
 import subprocess
 import sys
 import time
@@ -30,6 +36,20 @@ try:
 except ImportError:
     sys.exit("Missing: pip3 install openpyxl")
 
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+    from rich.live import Live
+    from rich.text import Text
+    from rich.align import Align
+    from rich.rule import Rule
+except ImportError:
+    sys.exit("Missing: pip3 install rich")
+
+console = Console()
+
 # ── Config ──────────────────────────────────────────────────────────────────
 IDS_API   = os.getenv("IDS_API_URL",   "http://10.10.6.238:8765")
 IDS_AGENT = os.getenv("IDS_AGENT_URL", "http://localhost:8766")
@@ -39,7 +59,7 @@ MGT_CONSOLE_HOST = os.getenv("MGT_CONSOLE_HOST", "10.10.6.238")
 MGT_CONSOLE_PORT = int(os.getenv("MGT_CONSOLE_PORT", "5016"))
 ATTACKER_IP  = "10.1.100.10"
 TARGET_SID   = 9000001
-POLL_INTERVAL = 2   # seconds
+POLL_INTERVAL = 10   # seconds — keep Suricata IDS API load low (re-reads 100MB eve.json per request)
 
 # ── HTTP helpers ─────────────────────────────────────────────────────────────
 
@@ -220,15 +240,17 @@ def reset(run_num: int) -> float:
     print(f"  [reset] Deleting agent-pushed rules...")
     cleanup_agent_rules(prefix="    ")
 
-    print(f"  [reset] Flushing Redis DB 0 + DB 1 (events buffer) for independence...")
+    print(f"  [reset] Flushing Redis DB 0 only (DB 1 EventsStore preserved for FE Monitor)...")
     try:
-        for db in ("0", "1"):
-            subprocess.run(
-                ["docker", "compose", "-f", "/home/dis/deploy/zerotrust/docker-compose.yml",
-                 "exec", "-T", "redis", "redis-cli", "-n", db, "FLUSHDB"],
-                capture_output=True, timeout=10
-            )
-        print("    ✓ Redis DB 0 + DB 1 flushed (Eval A independence)")
+        # Agent reads memory/reputation from Postgres `decisions` (already truncated
+        # below) and Redis DB 0 cache. DB 1 is persistent FE Monitor buffer —
+        # flushing it would erase the live monitor display while eval runs.
+        subprocess.run(
+            ["docker", "compose", "-f", "/home/dis/deploy/zerotrust/docker-compose.yml",
+             "exec", "-T", "redis", "redis-cli", "-n", "0", "FLUSHDB"],
+            capture_output=True, timeout=10
+        )
+        print("    ✓ Redis DB 0 flushed — DB 1 EventsStore intact")
     except Exception as e:
         print(f"    ✗ Redis flush failed: {e}")
 
@@ -316,25 +338,16 @@ def run_scenario(run_num: int, duration: int, anchor_ts: float = 0.0) -> RunResu
     decision = None
     deadline = t_attack + duration
 
-    print(f"  [poll] Waiting up to {duration}s for Agent decision...")
+    print(f"  [poll] Waiting up to {duration}s for Agent decision (poll every {POLL_INTERVAL}s)...")
     while time.time() < deadline:
         elapsed = time.time() - t_attack
 
-        # Check alerts
-        if t_first_alert is None:
-            alerts = get_alerts_since(since_ts)
-            p1 = first_p1_alert(alerts)
-            if p1:
-                t_first_alert = _alert_ts(p1) or time.time()
-                result.mttd_s = round(t_first_alert - t_attack, 1)
-                result.alert_count_p1 = sum(
-                    1 for a in alerts
-                    if (a.get("alert", {}).get("signature_id") or a.get("signature_id")) == TARGET_SID
-                )
-                print(f"    ✓ SID {TARGET_SID} alert at T+{result.mttd_s}s ({result.alert_count_p1} alerts)")
-
-        # Check decisions
-        if decision is None and t_first_alert:
+        # Decision-first polling — DO NOT call Suricata /alerts directly.
+        # Reason: Suricata IDS API has a memory leak — every /alerts request
+        # parses the full eve.json (~100MB) into RAM. Heavy polling triggers
+        # OOM on the dataplane VM. We rely on intel-layer SSE which already
+        # streams alerts internally; if a decision exists, an alert fired.
+        if decision is None:
             decisions = get_decisions_since(t_attack - 2)
             if decisions:
                 decision = decisions[0]
@@ -345,12 +358,19 @@ def run_scenario(run_num: int, duration: int, anchor_ts: float = 0.0) -> RunResu
                 result.dry_run = decision.get("dry_run", True)
                 print(f"    ✓ Decision: outcome={result.outcome} latency={result.enforce_latency_ms}ms confidence={result.confidence}")
 
-                # ── Metric 1: Detection-to-Decision wall clock ───────────────
+                # ── Metric 1: Alert detected → Decision created ──────────────
+                # MTTD ≈ time from attack arming to decision created_at minus the
+                # decision's pipeline latency (= when the alert hit intel-layer).
                 t_decision_created = None
                 try:
                     t_decision_created = datetime.datetime.fromisoformat(
                         decision["created_at"].replace("Z", "+00:00")
                     ).timestamp()
+                    pipeline_latency_s = (decision.get("latency_ms") or 0.0) / 1000.0
+                    t_first_alert = t_decision_created - pipeline_latency_s
+                    result.mttd_s = round(max(0.0, t_first_alert - t_attack), 1)
+                    result.alert_count_p1 = 1   # at least 1 (decision implies alert)
+                    print(f"    ✓ SID {TARGET_SID} alert at T+{result.mttd_s}s (inferred from decision)")
                     result.t_alert_to_decision_s = round(t_decision_created - t_first_alert, 2)
                     print(f"    ✓ [M1] Alert→Decision: {result.t_alert_to_decision_s}s")
                 except Exception:
@@ -594,60 +614,215 @@ def _default_output() -> str:
     # Filename: <test_title>_<YYYYMMDD>_<HHMMSS>.xlsx  (date + time of run)
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    return os.path.join(RESULTS_DIR, f"eval_independent_{ts}.xlsx")
+    return os.path.join(RESULTS_DIR, f"eval_iid_{ts}.xlsx")
+
+# ── Rich UI helpers ──────────────────────────────────────────────────────────
+
+def _render_header(output_path: str) -> None:
+    """Top banner + config panel — printed once at start."""
+    title = Text()
+    title.append("ZT-EVAL · IID", style="bold cyan")
+    title.append("  ", style="")
+    title.append("Statistical Baseline", style="dim")
+    console.print()
+    console.print(Panel(
+        Align.center(title),
+        border_style="cyan",
+        padding=(0, 2),
+    ))
+
+    cfg = Table.grid(padding=(0, 2))
+    cfg.add_column(style="dim")
+    cfg.add_column(style="bold")
+    cfg.add_row("scenario",       "WEB → DB direct (microsegmentation bypass)")
+    cfg.add_row("target SID",     str(TARGET_SID))
+    cfg.add_row("attacker IP",    ATTACKER_IP)
+    cfg.add_row("runs",           str(RUNS))
+    cfg.add_row("run timeout",    f"{DURATION_SECONDS}s")
+    cfg.add_row("pause between",  f"{PAUSE_BETWEEN_RUNS_SECONDS}s")
+    cfg.add_row("est. duration",  f"~{(DURATION_SECONDS + PAUSE_BETWEEN_RUNS_SECONDS) * RUNS // 60} min")
+    cfg.add_row("output",         output_path)
+    console.print(Panel(cfg, title="[bold]config[/]", border_style="dim", padding=(1, 2)))
+    console.print()
+
+
+def _summarize(values: list) -> dict:
+    """Return avg/min/max/p95 for a list of numbers (None values skipped)."""
+    nums = [v for v in values if v is not None]
+    if not nums:
+        return {"avg": None, "min": None, "max": None, "p95": None, "n": 0}
+    nums_sorted = sorted(nums)
+    p95_idx = max(0, math.ceil(len(nums_sorted) * 0.95) - 1)
+    return {
+        "avg": statistics.mean(nums),
+        "min": min(nums),
+        "max": max(nums),
+        "p95": nums_sorted[p95_idx],
+        "n": len(nums),
+    }
+
+
+def _fmt(v, suffix: str = "") -> str:
+    if v is None:
+        return "[dim]—[/]"
+    if isinstance(v, float):
+        return f"{v:.2f}{suffix}"
+    return f"{v}{suffix}"
+
+
+def _render_summary(results: List[RunResult]) -> None:
+    """Final summary panel + metrics table."""
+    n = len(results)
+    if n == 0:
+        return
+
+    passed = sum(1 for r in results if r.passed)
+    pass_rate = passed / n * 100
+
+    # ── Per-run table ──
+    runs_tbl = Table(
+        title="per-run results",
+        title_style="bold",
+        show_lines=False,
+        header_style="bold cyan",
+        border_style="dim",
+    )
+    runs_tbl.add_column("#",          justify="right", width=3)
+    runs_tbl.add_column("status",     width=8)
+    runs_tbl.add_column("outcome",    width=10)
+    runs_tbl.add_column("MTTD",       justify="right", width=8)
+    runs_tbl.add_column("M1 A→D",     justify="right", width=8)
+    runs_tbl.add_column("M2 D→LEAF",  justify="right", width=10)
+    runs_tbl.add_column("conf",       justify="right", width=6)
+    runs_tbl.add_column("checks",     justify="right", width=7)
+    runs_tbl.add_column("correct IP", justify="center", width=10)
+
+    for r in results:
+        status = "[bold green]PASS[/]" if r.passed else "[bold red]FAIL[/]"
+        outcome_color = {"enforced": "green", "dry_run": "yellow", "rejected": "red"}.get(r.outcome, "dim")
+        ip_ok = "[green]✓[/]" if r.enforcement_correct else ("[red]✗[/]" if r.enforcement_correct is False else "[dim]—[/]")
+        runs_tbl.add_row(
+            str(r.run_num),
+            status,
+            f"[{outcome_color}]{r.outcome}[/]",
+            _fmt(r.mttd_s, "s"),
+            _fmt(r.t_alert_to_decision_s, "s"),
+            _fmt(r.t_decision_to_enforce_ms, "ms"),
+            _fmt(r.confidence),
+            f"{r.checks_pass}/{r.checks_total}",
+            ip_ok,
+        )
+    console.print(runs_tbl)
+    console.print()
+
+    # ── Aggregate metrics ──
+    metrics = {
+        "MTTD (s)":                [r.mttd_s for r in results],
+        "M1 Alert→Decision (s)":   [r.t_alert_to_decision_s for r in results],
+        "M2 Decision→LEAF (ms)":   [r.t_decision_to_enforce_ms for r in results],
+        "Agent latency (ms)":      [r.enforce_latency_ms for r in results],
+        "Total E2E (s)":           [r.total_latency_s for r in results],
+        "Confidence":              [r.confidence for r in results],
+    }
+    metr_tbl = Table(
+        title="aggregate metrics",
+        title_style="bold",
+        header_style="bold cyan",
+        border_style="dim",
+    )
+    metr_tbl.add_column("metric",  style="bold")
+    metr_tbl.add_column("avg",     justify="right")
+    metr_tbl.add_column("min",     justify="right")
+    metr_tbl.add_column("max",     justify="right")
+    metr_tbl.add_column("p95",     justify="right")
+    metr_tbl.add_column("n",       justify="right", style="dim")
+
+    for name, vals in metrics.items():
+        s = _summarize(vals)
+        metr_tbl.add_row(
+            name,
+            _fmt(s["avg"]),
+            _fmt(s["min"]),
+            _fmt(s["max"]),
+            _fmt(s["p95"]),
+            str(s["n"]),
+        )
+    console.print(metr_tbl)
+    console.print()
+
+    # ── Headline summary panel ──
+    pass_color = "green" if pass_rate == 100 else ("yellow" if pass_rate >= 70 else "red")
+    correct_ip = sum(1 for r in results if r.enforcement_correct)
+    enforced_or_dry = sum(1 for r in results if r.outcome in ("enforced", "dry_run"))
+
+    summary = Table.grid(padding=(0, 2))
+    summary.add_column(style="dim")
+    summary.add_column(style="bold")
+    summary.add_row("pass rate",        f"[{pass_color}]{passed}/{n} ({pass_rate:.0f}%)[/]")
+    summary.add_row("outcome OK",       f"{enforced_or_dry}/{n}  (enforced or dry_run)")
+    summary.add_row("src_ip correct",   f"{correct_ip}/{n}")
+    console.print(Panel(summary, title="[bold]summary[/]", border_style=pass_color, padding=(1, 2)))
+
 
 def main():
     output_path = _default_output()
+    _render_header(output_path)
 
-    print("\n══════════════════════════════════════════════════════════════")
-    print("  Eval A — Independent Runs (Statistical Baseline)")
-    print("  Zero Trust Intelligence Layer")
-    print("══════════════════════════════════════════════════════════════\n")
-    print(f"  RUNS                       = {RUNS}")
-    print(f"  DURATION_SECONDS           = {DURATION_SECONDS}")
-    print(f"  PAUSE_BETWEEN_RUNS_SECONDS = {PAUSE_BETWEEN_RUNS_SECONDS}")
-    print(f"  ATTACKER_IP                = {ATTACKER_IP}")
-    print(f"  TARGET_SID                 = {TARGET_SID}")
-    print(f"  OUTPUT                     = {output_path}\n")
-
-    print("[Preflight]")
+    console.print(Rule("preflight", style="dim"))
     if not preflight():
-        print("\n✗ Preflight failed — fix issues above before running\n")
+        console.print("[bold red]✗ Preflight failed — fix issues above before running[/]")
         sys.exit(1)
+    console.print()
 
     if DRY_CHECK_ONLY:
-        print("\n✓ DRY_CHECK_ONLY=True — systems ready, no attack run.\n")
+        console.print("[bold green]✓ DRY_CHECK_ONLY=True — systems ready, no attack run.[/]\n")
         return
 
     results: List[RunResult] = []
 
     for i in range(1, RUNS + 1):
-        print(f"══ Run {i}/{RUNS} ════════════════════════════════════════════")
+        console.print(Rule(f"run {i}/{RUNS}", style="cyan", characters="─"))
         anchor_ts = reset(i)
         result = run_scenario(i, DURATION_SECONDS, anchor_ts=anchor_ts)
         results.append(result)
 
-        status = "PASS ✓" if result.passed else "FAIL ✗"
-        print(f"  [{status}] outcome={result.outcome} MTTD={result.mttd_s}s "
-              f"latency={result.enforce_latency_ms}ms confidence={result.confidence} "
-              f"checks={result.checks_pass}/{result.checks_total}")
+        if result.passed:
+            badge = "[bold green]PASS ✓[/]"
+        else:
+            badge = "[bold red]FAIL ✗[/]"
+        outcome_color = {"enforced": "green", "dry_run": "yellow", "rejected": "red"}.get(result.outcome, "dim")
+        console.print(
+            f"  {badge}  outcome=[{outcome_color}]{result.outcome}[/]  "
+            f"MTTD=[bold]{_fmt(result.mttd_s, 's')}[/]  "
+            f"latency=[bold]{_fmt(result.enforce_latency_ms, 'ms')}[/]  "
+            f"conf=[bold]{_fmt(result.confidence)}[/]  "
+            f"checks=[bold]{result.checks_pass}/{result.checks_total}[/]"
+        )
 
-        print(f"  [post-run] cleaning agent rules pushed in this run...")
-        cleanup_agent_rules(prefix="    ")
+        cleanup_agent_rules(prefix="    [post-run] ")
 
         if i < RUNS:
-            print(f"  [pause] {PAUSE_BETWEEN_RUNS_SECONDS}s before next run...\n")
+            console.print(f"  [dim]pause {PAUSE_BETWEEN_RUNS_SECONDS}s before next run…[/]\n")
             time.sleep(PAUSE_BETWEEN_RUNS_SECONDS)
 
-    print("\n══ Results ══════════════════════════════════════════════════════")
-    passed = sum(1 for r in results if r.passed)
-    print(f"  {passed}/{len(results)} runs PASSED\n")
+    console.print()
+    console.print(Rule("results", style="bold cyan"))
+    console.print()
+    _render_summary(results)
 
-    print("[Final cleanup]")
+    console.print(Rule("cleanup", style="dim"))
     cleanup_agent_rules(prefix="  ")
-    print()
+    console.print()
 
     export_excel(results, output_path)
+    console.print(f"  [bold green]✓[/] Excel saved → [cyan]{output_path}[/]")
+
+    json_path = output_path.replace(".xlsx", ".json")
+    with open(json_path, "w") as f:
+        json.dump([r.__dict__ for r in results], f, indent=2, default=str)
+    console.print(f"  [bold green]✓[/] JSON  saved → [cyan]{json_path}[/]")
+    console.print()
+
 
 if __name__ == "__main__":
     main()

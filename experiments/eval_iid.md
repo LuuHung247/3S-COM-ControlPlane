@@ -1,4 +1,4 @@
-# Eval A — Independent runs (statistical baseline)
+# Eval IID — Independent runs (statistical baseline)
 
 ## Question
 
@@ -10,7 +10,8 @@ When the agent sees the same canonical attack repeated under identical condition
 - Each trial: trigger an attack from the dataplane, wait for an alert, observe the agent's decision, measure latency, verify the SF rule got pushed correctly.
 - Between trials, full state reset:
   - `decisions` workspace truncated (drops past-incident memory + asset reputation labels + embeddings)
-  - Redis DB 0 (agent state) + DB 1 (events buffer) flushed
+  - Redis DB 0 (agent state cache) flushed
+  - Redis DB 1 (EventsStore, FE Monitor buffer) **NOT** flushed — preserved so the Monitor page keeps showing live activity during eval
   - SF rules pushed by the agent removed
   - Rate limiter + circuit breaker reset
 - `decisions_history` table is **never** touched, so every trial stays in the FE Policy History.
@@ -48,19 +49,19 @@ The Excel report aggregates these across runs (mean ± stdev, P50/P95).
 
 ## Configuration
 
-Edit constants at the top of `eval_independent.py`:
+Edit constants at the top of `eval_iid.py`:
 
 ```python
 RUNS = 10                              # number of i.i.d. trials
 DURATION_SECONDS = 120                 # per-run timeout
 ATTACKER_IP = "10.1.100.10"            # web-01 (presentation tier)
 TARGET_SID = 9000001                   # WEB→DB lateral movement
-OUTPUT_PATH = "results/eval_independent_<timestamp>.xlsx"
+OUTPUT_PATH = "results/eval_iid_<timestamp>.xlsx"
 ```
 
 No CLI flags — re-run with different parameters by editing the file.
 
 ## What this experiment does NOT show
 
-- Whether the agent's memory (past-incident retrieval, asset reputation) helps at all — i.i.d. resets ensure each run sees empty memory. This is intentional; `eval_chain_attack.py` is the experiment that exercises memory.
+- Whether the agent's memory (past-incident retrieval, asset reputation) helps at all — i.i.d. resets ensure each run sees empty memory. This is intentional; `eval_killchain.py` is the experiment that exercises memory.
 - How the agent handles novel attacks — every trial is the same canonical scenario. To test generalization, vary `ATTACKER_IP` / `TARGET_SID` and run multiple campaigns.
