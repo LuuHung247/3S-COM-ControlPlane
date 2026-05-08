@@ -157,17 +157,26 @@ EVENTS_RETENTION_DAYS=7
 7. [Final]   After loop: cleanup_agent_rules() (safety net — 0 accumulation guarantee)
 ```
 
-### 5.3 Eval script behavior (V3 update)
+### 5.3 Eval scripts (2026-05-06: rename + split into 2 modes)
 
-- `cleanup_agent_rules()` extracted as standalone helper, called both per-run AND final
-- `redis-cli -n 0 FLUSHDB` thay vì `FLUSHDB` toàn bộ → DB 1 events stream preserved
-- Excel auto-name: `results/report_YYYYMMDD_HHMM.xlsx`
+Original `eval.py` đã refactor + rename thành 2 file (cùng template, khác duy nhất `reset()`):
+
+| File | Memory mode | Mục đích |
+|------|-------------|----------|
+| `eval_iid.py` | OFF — TRUNCATE `decisions` mỗi run | i.i.d. statistical baseline |
+| `eval_memory.py` | ON — preserve `decisions` qua các runs | đo memory effect (variance, tail latency shielding) |
+
+Common behavior:
+- `cleanup_agent_rules()` standalone helper, gọi cả per-run lẫn cuối
+- `redis-cli -n 0 FLUSHDB` thay vì FLUSHDB toàn bộ → DB 1 EventsStore preserved cho FE Monitor
+- Output: `results/eval_{iid,memory}_<YYYYMMDD>_<HHMMSS>.xlsx`
+- Constants ở đầu file (RUNS, DURATION_SECONDS, ATTACKER_IP, TARGET_SID), không có CLI flags
+- Rich UI k6-style: header panel, per-run colored status, summary table avg/min/max/p95
 
 ```bash
 cd /home/dis/deploy/zerotrust/experiments
-uv run python eval.py --runs 10        # Output: results/report_*.xlsx
-uv run python eval.py --runs 1         # Single smoke test
-uv run python eval.py --dry-check      # Health check only
+python3 eval_iid.py        # 10 i.i.d. runs (~22 phút)
+python3 eval_memory.py     # 10 stateful runs (~22 phút)
 ```
 
 ---

@@ -97,6 +97,8 @@ Network: `ztnet` bridge. Inter-container DNS qua container name.
 |--------|------|----------|
 | **GET** | **`/kg/visualize`** | **Interactive HTML — KG graph (pyvis, 30 nodes, 43 edges)** |
 | GET | `/kg/stats` | KG node/edge counts by type |
+| GET | `/kg/json` | KG nodes + edges as JSON (machine-readable) |
+| GET | `/kg/export/graphml` | KG GraphML export (Gephi / Cytoscape compatible) |
 | GET | `/prompt/preview?sid=&src_ip=&dst_ip=` | So sánh full vs alert-scoped prompt size (V3 dynamic selection) |
 | GET | `/cache/stats` | Response cache hits/misses/hit_rate |
 | POST | `/cache/reset` | Reset cache counters (entries auto-expire by TTL) |

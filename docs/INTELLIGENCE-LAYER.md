@@ -174,10 +174,10 @@ Agent CHỈ có 1 action capability = push DROP rule. Investigation tools là **
 
 ```
 id, alert_sid, alert_src_ip, outcome, action, src_ip, dst_ip, dst_port,
-confidence, rejection_reason, safety_checks (JSONB), reasoning (JSONB list),
-hypotheses (JSONB list), rollback_plan (JSONB), rule_id, ttl_seconds, latency_ms,
+confidence, rejection_reason, safety_checks (TEXT, JSON-encoded), reasoning (TEXT, JSON list),
+hypotheses (TEXT, JSON list), rollback_plan (TEXT, JSON), rule_id, ttl_seconds, latency_ms,
 created_at, dry_run, trace_id (Langfuse link),
-primary_hypothesis, alternative_actions (JSONB), follow_up_actions (JSONB),
+primary_hypothesis, alternative_actions (TEXT, JSON), follow_up_actions (TEXT, JSON),
 mitre_technique, mitre_tactic, reasoning_completed_at,
 retrospective_outcome, retrospective_notes, labeled_at,  -- Phase 4 background labeler
 embedding vector(384)                                    -- pgvector for semantic search

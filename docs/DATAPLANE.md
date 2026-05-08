@@ -349,11 +349,11 @@ Scenario controllers ở `/root/scenario/` trên Alpine-5 (MGT). Mỗi scenario 
 
 ## 7. Detection Rules — Suricata 8.0
 
-**Source:** `/3s-com/zma/suricata/rules/zt-lab.rules` (host) — mount-bind vào `/etc/suricata/rules/zt-lab.rules` trong IDS VM
-**Config:** `/3s-com/zma/suricata/suricata-zt.yaml` → mount vào `/etc/suricata/suricata-zt.yaml`
+**Source bundle (current):** `zma/suricata/ids-vm/rules/zt-lab.rules` + `zma/suricata/ids-vm/suricata-zt.yaml` — `cp` vào IDS VM `/etc/suricata/...` (xem §7A.2 deploy steps).
+**Path inside VM:** `/etc/suricata/rules/zt-lab.rules` + `/etc/suricata/suricata-zt.yaml`.
 **Capture:** `af-packet` cluster_flow trên `eth0` (mirror từ LEAF-1) + `eth1` (mirror từ LEAF-2)
 **eve.json types:** `alert`, `flow` (flow logging bật để dashboard show normal traffic)
-**Reload:** `kill -USR2 $(cat /var/run/suricata.pid)` — không cần restart
+**Reload:** `kill -USR2 $(cat /run/suricata-zt.pid)` — không cần restart
 
 ### 7.1 Asymmetric capture workaround
 
@@ -378,16 +378,18 @@ Scenario controllers ở `/root/scenario/` trên Alpine-5 (MGT). Mỗi scenario 
 
 ## 7A. IDS-Suricata VM — Deploy & Architecture
 
-> Bundle source: `zerotrust/ids-vm/` — sync xuống VM khi reboot/redeploy.
-> Deploy confirmed 2026-05-06 — memory leak fix live (RSS 33MB constant, vs ~1.65GB OOM ~3h trước fix).
+> Bundle source: `zma/suricata/ids-vm/` — sync xuống VM khi reboot/redeploy. Alpine ISO boot tmpfs ⇒ KHÔNG persistence, mọi reboot phải redeploy từ bundle.
+> Deploy confirmed 2026-05-08 — memory leak fix live (RSS ~33MB constant, vs ~1.65GB OOM ~3h trước fix); cả `ids-api` và `suricata-zt` đều supervised qua OpenRC.
 
 ### 7A.1 Bundle layout
 
 ```
-zerotrust/ids-vm/
-├── ids-api.py             # REST + SSE server (232 LOC, stdlib only)
+zma/suricata/ids-vm/
+├── ids-api.py             # REST + SSE server (232 LOC, stdlib only) — md5 b7fc60a2
 ├── ids-api.openrc         # OpenRC service (supervise-daemon, respawn 3s)
-├── suricata-zt.yaml       # Suricata config (af-packet eth0+eth1, eve.json types: alert+flow)
+├── suricata.openrc        # OpenRC service cho suricata-zt (supervise-daemon, respawn 5s)
+├── suricata-zt.yaml       # Suricata config (af-packet eth0+eth1, eve.json types: alert+flow, rotate 86400s)
+├── redeploy.sh            # One-shot post-reboot installer (apk add python3 + install + rc-update + start)
 └── rules/
     └── zt-lab.rules       # 8 ZT detection rules (SID 9000001-9000020) — xem §7.2
 ```
@@ -396,16 +398,24 @@ zerotrust/ids-vm/
 
 ```bash
 # Telnet console: 112.137.129.232:5018  | login: root (no password)
-cp ids-api.py /usr/local/bin/ && chmod 755 /usr/local/bin/ids-api.py
-cp ids-api.openrc /etc/init.d/ids-api && chmod 755 /etc/init.d/ids-api
-cp suricata-zt.yaml /etc/suricata/suricata-zt.yaml
-cp rules/zt-lab.rules /etc/suricata/rules/zt-lab.rules
+# scp bundle vào VM (vd qua libvirt 192.168.122.205) rồi:
+cd /path/to/ids-vm/
+sh ./redeploy.sh
+```
 
-# Start ids-api as supervised service (auto-respawn 3s if crash)
-rc-update add ids-api default && rc-service ids-api start
+`redeploy.sh` lo trọn gói: `apk add python3` (Alpine ISO không có sẵn) → `install` files → `rc-update add` cả hai service → `rc-service start` Suricata trước rồi ids-api → verify port 8765 listening.
 
-# Start Suricata (manual — KHÔNG auto-respawn; cân nhắc tạo openrc service riêng)
-suricata -c /etc/suricata/suricata-zt.yaml --af-packet -D --pidfile /var/run/suricata.pid
+Manual deploy (nếu cần kiểm soát từng bước):
+```bash
+apk add --no-cache python3
+install -m 755 ids-api.py            /usr/local/bin/ids-api.py
+install -m 755 ids-api.openrc        /etc/init.d/ids-api
+install -m 755 suricata.openrc       /etc/init.d/suricata-zt
+install -m 644 suricata-zt.yaml      /etc/suricata/suricata-zt.yaml
+install -m 644 rules/zt-lab.rules    /etc/suricata/rules/zt-lab.rules
+mkdir -p /var/log/suricata
+rc-update add suricata-zt default && rc-service suricata-zt start
+rc-update add ids-api     default && rc-service ids-api     start
 ```
 
 Verify sau khi deploy:
@@ -462,29 +472,40 @@ Single Python process, `ThreadingHTTPServer`. 1 background tail thread + N HTTP 
 | `HOME_NET` | `[10.1.0.0/16, 10.2.0.0/16]` | Toàn bộ lab subnet |
 | eve.json output | `types: [alert, flow]` | Flow logging bật cho dashboard / `/service-health` |
 | Profile | `low`, `max-pending-packets: 512` | VM resource-constrained |
-| Rules path | `/etc/suricata/rules/zt-lab.rules` | Reload không cần restart: `kill -USR2 $(cat /var/run/suricata.pid)` |
+| Rules path | `/etc/suricata/rules/zt-lab.rules` | Reload không cần restart: `kill -USR2 $(cat /run/suricata-zt.pid)` |
+| eve.json rotate | `rotate-interval: 86400` (cả `eve-log` và `fast`) | Suricata 8 yêu cầu integer giây — KHÔNG nhận string `daily` |
 
-### 7A.5 OpenRC service (ids-api.openrc)
+### 7A.5 OpenRC services
 
+**ids-api.openrc** (`/etc/init.d/ids-api` — pidfile `/run/ids-api.pid`):
 ```
 supervisor       = supervise-daemon
 command          = /usr/bin/python3 /usr/local/bin/ids-api.py
-pidfile          = /run/ids-api.pid
 respawn_delay    = 3
 respawn_max      = 0       # vô hạn
 respawn_period   = 60
 output_log       = /var/log/ids-api.log
-error_log        = /var/log/ids-api.log
 ```
 
-### 7A.6 Operational notes & TODO
+**suricata.openrc** (`/etc/init.d/suricata-zt` — pidfile `/run/suricata-zt.pid`):
+```
+supervisor       = supervise-daemon
+command          = /usr/bin/suricata
+command_args     = -c /etc/suricata/suricata-zt.yaml --af-packet
+respawn_delay    = 5
+respawn_max      = 0       # vô hạn
+respawn_period   = 60
+```
 
-| Topic | Hiện tại | TODO |
-|-------|----------|------|
+### 7A.6 Operational notes
+
+| Topic | Hiện tại | Status |
+|-------|----------|--------|
 | ids-api auto-respawn | OpenRC supervise-daemon, 3s delay | ✓ stable |
-| **Suricata auto-respawn** | **Không có — chạy thủ công sau reboot** | **MEDIUM: tạo `suricata.openrc` service tương tự ids-api** |
-| eve.json rotate | Không có — phình ~100MB/ngày | LOW: thêm `outputs.eve-log.rotate-interval: daily` vào yaml |
-| Logrotate copytruncate | Chỉ detect inode change ([ids-api.py:49](../ids-vm/ids-api.py#L49)) | LOW: thêm `or st.st_size < pos` để handle truncate-in-place |
+| Suricata auto-respawn | OpenRC supervise-daemon (`suricata.openrc`), 5s delay, foreground af-packet | ✓ live 2026-05-08 |
+| eve.json rotate | `rotate-interval: 86400` (eve-log + fast) — daily roll | ✓ live 2026-05-08 |
+| Logrotate copytruncate | Inode change OR `st.st_size < pos` (truncate-in-place) | ✓ live ([ids-api.py](../zma/suricata/ids-vm/ids-api.py#L49)) |
+| Post-reboot recovery | `redeploy.sh` one-shot installer (Alpine tmpfs ⇒ phải redeploy mỗi reboot) | ✓ bundle |
 | SSE slow client | Queue full → kick client | ✓ by design — server không bị slow client kéo xuống; ids-agent auto-reconnect |
 | SSE client cap | 8 clients max → 503 nếu vượt | Đủ cho ids-agent + 2-3 dev tab |
 
@@ -499,7 +520,7 @@ return alerts[-last:]
 ```
 ThreadingHTTPServer × N concurrent → N × 100MB allocated cùng lúc → OOM.
 
-**Fix (deploy 2026-05-06, md5 4cbee83b):**
+**Fix (deploy 2026-05-06, current md5 b7fc60a2 — bao gồm copytruncate fix 2026-05-08):**
 - Background tail thread: `readline()` line-by-line, append vào `deque(maxlen=2000)` mỗi loại
 - HTTP handlers slice từ ring (O(N), không I/O)
 - SSE: per-client `Queue(maxsize=256)`, cap 8 clients, `try/finally` cleanup
@@ -550,9 +571,9 @@ Base URL: `http://10.10.6.238:8766` (LAN runs trên control-plane host); contain
 |--------|------|-----|
 | GET | `/health` | Proxy → Suricata `/health` |
 | GET | `/alerts` | Proxy → Suricata `/alerts` |
+| GET | `/flows` | Proxy → Suricata `/flows` (FE Monitor flow poller) |
 | GET | `/events` | SSE — alerts + heartbeat (15s) + `{type:"connected"}` event |
 | GET | `/ws` | WebSocket — same payload as `/events` |
-| GET | `/stats` | Alert counters |
 | GET | `/rules` | Proxy → SF `GET /api/rules` (gNMI format: `{leaves:{leaf-N:{rules:{notification:[{update:[{path,val}]}]}}}}`) |
 | **POST** | **`/rules`** | **Push rule to SF; force `source=agent` server-side — Intelligence Layer primary path** |
 | **DELETE** | **`/rules/{rule_id}`** | **Revoke rule from SF + LEAF — Intelligence Layer TTL cleanup** |
@@ -686,9 +707,9 @@ def ip_to_zone(src_ip: str) -> str:
 | `/3s-com/zma/dc-fabric-setup/07-iptables-leaf2.sh` | Raw iptables rules LEAF-2 |
 | `/3s-com/zma/dc-fabric-setup/08-verify-policy.py` | 12-flow policy verification |
 | `/3s-com/zma/dc-fabric-setup/14-ids-webapi.py` | IDS REST API restore (legacy) |
-| `/usr/local/bin/ids-api.py` (inside IDS VM) | Active REST API server (147 LOC, stdlib only) |
-| `/3s-com/zma/suricata/suricata-zt.yaml` | Suricata config (af-packet eth0+eth1, eve-log alert+flow) |
-| `/3s-com/zma/suricata/rules/zt-lab.rules` | 8 active detection rules (host-side, mounted into VM) |
+| `/usr/local/bin/ids-api.py` (inside IDS VM) | Active REST API server (232 LOC, stdlib only) — source: `zma/suricata/ids-vm/ids-api.py` |
+| `/etc/suricata/suricata-zt.yaml` (inside IDS VM) | Suricata config — source: `zma/suricata/ids-vm/suricata-zt.yaml` |
+| `/etc/suricata/rules/zt-lab.rules` (inside IDS VM) | 8 active detection rules — source: `zma/suricata/ids-vm/rules/zt-lab.rules` |
 | `/3s-com/dataplane/bootstrap/web-host.sh` | WEB zone provisioning (banner :80 + sshd + shopper cron) |
 | `/3s-com/dataplane/bootstrap/db-host.sh`  | DB zone provisioning (pg-mock :5432 SQL-aware + sshd) |
 | `/3s-com/dataplane/bootstrap/app-host.sh` | APP zone provisioning (banner :8080 + sshd + noise→DB cron) |
