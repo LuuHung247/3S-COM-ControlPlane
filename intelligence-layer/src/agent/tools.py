@@ -448,7 +448,6 @@ async def simulate_block_impact(src_ip: str, dst_ip: str = "", dst_port: int = 0
     bare_dst = dst_ip.split("/")[0] if dst_ip else ""
 
     src_asset = system_model.get_asset(bare_src)
-    dst_asset = system_model.get_asset(bare_dst) if bare_dst else None
 
     # Full source block — what breaks if we DROP all from src?
     affected_outbound = [b for b in baselines.ALL_BASELINES if b.src_ip == bare_src]

@@ -48,7 +48,6 @@ async def ingest_alert(body: AlertIngest, request: Request) -> DecisionResponse:
     gate = request.app.state.gate
     redis = request.app.state.redis
     postgres = request.app.state.postgres
-    settings = request.app.state.settings
 
     alert = SuricataAlert.from_raw(body.data)
     should, reason = await gate.should_process(alert)

@@ -1,6 +1,5 @@
 """Warm cache: alert history per IP, decision dedup. Uses Redis Streams/hashes."""
 import json
-import time
 from typing import Any
 
 import redis.asyncio as aioredis

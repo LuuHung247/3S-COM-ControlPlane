@@ -37,7 +37,7 @@ import sys
 import time
 import urllib.request
 import urllib.error
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional
 
 try:
@@ -51,8 +51,6 @@ try:
     from rich.console import Console
     from rich.panel import Panel
     from rich.table import Table
-    from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
-    from rich.live import Live
     from rich.text import Text
     from rich.align import Align
     from rich.rule import Rule
@@ -294,7 +292,7 @@ def reset(run_num: int) -> float:
     console.print("  [yellow]\[reset][/] Resetting intel-layer rate limiter...")
     try:
         req = urllib.request.Request(f"{INTEL}/admin/reset", data=b"", method="POST")
-        with urllib.request.urlopen(req, timeout=5) as r:
+        with urllib.request.urlopen(req, timeout=5):
             console.print("    [green]✓[/] Rate limiter reset")
     except Exception as e:
         console.print(f"    [red]✗[/] Admin reset failed: {e}")
@@ -355,8 +353,6 @@ def run_scenario(run_num: int, duration: int, anchor_ts: float = 0.0) -> RunResu
         console.print("    [green]✓[/] Attack armed")
     else:
         console.print(f"    [yellow]?[/] Console output: [dim]{console_out[-100:].strip()}[/]")
-    # Use anchor from /alerts/clear if available, else fall back to t_attack
-    since_ts = anchor_ts if anchor_ts > 0 else t_attack
 
     # 3. Poll until decision or timeout
     t_first_alert = None

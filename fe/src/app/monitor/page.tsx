@@ -214,9 +214,10 @@ export default function MonitorPage() {
   // rate would flood subscribers). Flows reach Redis DB 1 via intel-layer's
   // own poll loop; here we pull newly-stored flows every 5s into the feed so
   // Monitor stays current without an F5. De-dup by flow_id+timestamp.
+  // De-dup against current feed inside setFeed callback so we never double-add
+  // flows that hydration already loaded.
   useEffect(() => {
     let cancelled = false;
-    const seenFlowKeys = new Set<string>();
     const flowKey = (f: Record<string, unknown>) =>
       `${f.flow_id ?? ""}|${f.timestamp ?? ""}|${f.src_ip ?? ""}|${f.src_port ?? ""}`;
 
@@ -224,38 +225,31 @@ export default function MonitorPage() {
       if (cancelled) return;
       try {
         const r = await fetch("/api/intel/events?kind=flow&limit=50");
-        if (r.ok) {
-          const arr = await r.json();
-          if (Array.isArray(arr) && arr.length) {
-            const fresh: TrafficFlow[] = [];
-            for (const raw of arr) {
-              const r0 = raw as Record<string, unknown>;
-              const k = flowKey(r0);
-              if (seenFlowKeys.has(k)) continue;
-              seenFlowKeys.add(k);
-              fresh.push({ kind: "flow", ...r0 } as unknown as TrafficFlow);
-            }
-            if (fresh.length) {
-              setFeed(prev => [...fresh, ...prev].slice(0, FEED_DISPLAY_MAX));
-            }
-            // Bound seen-set to last 1000 keys
-            if (seenFlowKeys.size > 1000) {
-              const arr2 = Array.from(seenFlowKeys).slice(-500);
-              seenFlowKeys.clear();
-              for (const k of arr2) seenFlowKeys.add(k);
-            }
+        if (!r.ok) return;
+        const arr = await r.json();
+        if (!Array.isArray(arr) || arr.length === 0) return;
+
+        setFeed(prev => {
+          const seen = new Set(
+            prev.filter(e => e.kind === "flow")
+                .map(e => flowKey(e as unknown as Record<string, unknown>))
+          );
+          const fresh: TrafficFlow[] = [];
+          for (const raw of arr) {
+            const r0 = raw as Record<string, unknown>;
+            const k = flowKey(r0);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            fresh.push({ kind: "flow", ...r0 } as unknown as TrafficFlow);
           }
-        }
+          if (fresh.length === 0) return prev;
+          return [...fresh, ...prev].slice(0, FEED_DISPLAY_MAX);
+        });
       } catch {}
     };
 
-    // Seed seen-set with already-loaded flows so we don't double-add hydrated ones
-    const seedTimer = setTimeout(() => {
-      // Defer one tick so initial hydration has populated `feed`
-    }, 0);
-
     const interval = setInterval(tick, 5000);
-    return () => { cancelled = true; clearTimeout(seedTimer); clearInterval(interval); };
+    return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
   // Auto-follow: when new events arrive, scroll to top (where newest items render).
