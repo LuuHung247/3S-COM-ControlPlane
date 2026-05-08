@@ -106,10 +106,24 @@ Agent CHỈ có 1 action capability = push DROP rule. Investigation tools là **
 | Tool | Source | Output | Vai trò |
 |------|--------|--------|---------|
 | `query_asset_neighbors(ip)` | NetworkX in-mem + system_model | Asset profile, blast radius score, expected inbound/outbound flows, if_blocked impact | Trước block: biết hậu quả |
-| `find_similar_past_incidents(sid, src_zone, dst_zone, lookback=90d)` | Postgres aggregation | Match count, outcome breakdown, last 5 decisions, pattern assessment | Học từ quá khứ — recurrence pattern |
+| `find_similar_past_incidents(sid, src_zone, dst_zone, lookback=90d)` | Postgres + pgvector — **3 strategies parallel** | Match count, outcome breakdown, last 3 decisions, pattern assessment | Học từ quá khứ — recurrence + novel-variant pattern |
 | `simulate_block_impact(src_ip, dst_ip, dst_port)` | Pydantic cross-ref | Full-block vs targeted-block consequences, baseline match | Counterfactual — chọn rule scope tối thiểu |
 
 **Kill chain match** (in-memory, tự động): match SID đến trong các kill chain stages → output trong alert context cho LLM.
+
+### 4.1 Multi-strategy past-incident retrieval
+
+`find_similar_past_incidents` chạy **3 retrieval paths parallel**, gộp kết quả vào prompt. Production attacks hiếm khi giống past attacks 100% — semantic + MITRE paths catch novel variants:
+
+| Path | Match logic | Index | Khi hữu dụng |
+|------|-------------|-------|--------------|
+| **Exact-SID** | `alert_sid = X AND created_at >= 90d` | `decisions_sid_created_at_idx` (btree) | Recurring threats — same signature fires lặp lại |
+| **Semantic** | `embedding <-> query_vec` cosine ≥ 0.30 | `decisions_embedding_hnsw_idx` (HNSW) | Same pattern, different SID — kill-chain stage variants |
+| **MITRE** | `mitre_technique = X AND alert_sid != Y` | `decisions_mitre_created_at_idx` (btree partial) | Adversary dùng same TTP qua nhiều vectors |
+
+**Sentinel pre-flight** ([tools.py](../intelligence-layer/src/agent/tools.py#L281)): nếu `decisions` table không có row nào trong window (cold cache, eval_iid post-truncate), short-circuit cả 3 paths → save ~250ms wasted compute.
+
+**Embedding cache** ([redis.py](../intelligence-layer/src/storage/redis.py)): `embed_text(query) → vec` deterministic; cache by `sha1(query_text)` với TTL 1h. Saves ~150-200ms CPU embed compute trên repeat queries.
 
 ---
 
@@ -156,7 +170,8 @@ Agent CHỈ có 1 action capability = push DROP rule. Investigation tools là **
 
 ### 7.1 Postgres (`zerotrust` DB)
 
-Table `decisions` — full audit trail per decision:
+**Tables:** `decisions` (workspace, eval-truncatable) + `decisions_history` (audit, never truncated). Schema giống nhau — agent reads from `decisions`, FE Policy History reads from `decisions_history`.
+
 ```
 id, alert_sid, alert_src_ip, outcome, action, src_ip, dst_ip, dst_port,
 confidence, rejection_reason, safety_checks (JSONB), reasoning (JSONB list),
@@ -164,14 +179,33 @@ hypotheses (JSONB list), rollback_plan (JSONB), rule_id, ttl_seconds, latency_ms
 created_at, dry_run, trace_id (Langfuse link),
 primary_hypothesis, alternative_actions (JSONB), follow_up_actions (JSONB),
 mitre_technique, mitre_tactic, reasoning_completed_at,
-retrospective_outcome, retrospective_notes, labeled_at  -- Phase 4 background labeler
+retrospective_outcome, retrospective_notes, labeled_at,  -- Phase 4 background labeler
+embedding vector(384)                                    -- pgvector for semantic search
 ```
+
+**Indexes** (auto-migrated qua `connect()` — [postgres.py](../intelligence-layer/src/storage/postgres.py#L160)):
+
+| Index | Columns | Used by |
+|-------|---------|---------|
+| `decisions_pkey` | `id` (PK) | Per-decision lookup, Langfuse trace fetch |
+| `decisions_embedding_hnsw_idx` | `embedding vector_cosine_ops` HNSW (m=16, ef_construction=64) | Semantic similarity search |
+| `decisions_src_ip_created_at_idx` | `(alert_src_ip, created_at DESC)` | `get_ip_summary`, `get_recent_alerts_for_correlation`, `fetch_reputation` |
+| `decisions_sid_created_at_idx` | `(alert_sid, created_at DESC)` | Exact-SID match in past-incident retrieval |
+| `decisions_mitre_created_at_idx` | `(mitre_technique, created_at DESC) WHERE mitre_technique IS NOT NULL` | MITRE technique cross-SID retrieval (partial — saves space, ~20% rows have technique set) |
+| `decisions_created_at_idx` | `(created_at DESC)` | Sentinel pre-flight count, FE Policy History pagination |
+
+`decisions_history` mirrors all 4 btree + HNSW indexes (same workload from FE).
+
+**Index choice rationale:**
+- **HNSW** thay vì IVFFlat — không cần ANALYZE, immediate optimal post-CREATE, scale tốt 100k-1M vectors
+- Composite `(filter_col, created_at DESC)` — phục vụ cả `WHERE filter = X AND created_at >= cutoff` và `ORDER BY created_at DESC` trong 1 index
+- Partial MITRE index — chỉ lưu rows có technique set, giảm index size + ghi update rẻ hơn
 
 ### 7.2 Redis (logical DB tách biệt)
 
 | DB | Purpose | Eval-flushable? | Keys |
 |----|---------|-----------------|------|
-| **DB 0** | Agent state | ✅ Yes — `redis-cli -n 0 FLUSHDB` | `dedup:*`, `alert_history:*`, `agent:resp_cache:*`, `decision_cache:*` |
+| **DB 0** | Agent state | ✅ Yes — `redis-cli -n 0 FLUSHDB` | `dedup:*`, `alert_history:*`, `agent:resp_cache:*`, `decision_cache:*`, `emb:*` (embedding cache, TTL 1h) |
 | **DB 1** | Events stream (NEW V3) | ❌ NO — preserved across eval | `events:violations`, `events:flows` (sorted sets, score=ts_ms) |
 
 **EventsStore** (Redis DB 1):

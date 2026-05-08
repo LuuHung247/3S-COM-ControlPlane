@@ -86,8 +86,10 @@ Network: `ztnet` bridge. Inter-container DNS qua container name.
 
 | Method | Path | Mục đích |
 |--------|------|----------|
-| **GET** | **`/events?since=&limit=&kind=`** | **Frontend Monitor hydration — Redis DB 1, 7-day window. Eval flush DB 0 KHÔNG ảnh hưởng.** |
+| **GET** | **`/events?since=&limit=&kind=`** | **Frontend Monitor hydration — Redis DB 1, 7-day window. NEWEST-first ordering (zrevrangebyscore). Eval flush DB 0 KHÔNG ảnh hưởng.** |
 | GET | `/events/stats` | Buffer stats (count, oldest_ms, retention) |
+
+> **Bug fixed 2026-05-06:** `/events?limit=600` cũ dùng `zrangebyscore` → trả oldest 600 (events từ 7 ngày trước) thay vì newest. Frontend Monitor F5 chỉ thấy data cũ. Fix: chuyển sang `zrevrangebyscore` ([events_store.py:89](../intelligence-layer/src/storage/events_store.py#L89)).
 
 ### Knowledge & cache observability
 
@@ -336,8 +338,14 @@ curl -s http://localhost:8767/events/stats
 
 **Pages**:
 - `/dashboard` — system status overview
-- `/monitor` — real-time alerts + flows feed (SSE), **theme toggle Dark/Light**, **auto-follow toggle**, server buffer Redis DB 1 (F5 không mất data)
+- `/monitor` — real-time alerts + flows feed, **theme toggle Dark/Light**, **auto-follow toggle**, server buffer Redis DB 1 (F5 không mất data)
+  - **Alerts**: live qua SSE từ ids-agent `/events` (Suricata broadcasts alerts only)
+  - **Flows**: poll mỗi 5s từ `/api/intel/events?kind=flow` (Suricata không broadcast flows qua SSE — rate quá cao, sẽ flood). De-dup by `(flow_id, timestamp, src_ip, src_port)`.
+  - **Zone filter**: ALL / WEB / DB / APP / MGT — filter theo src zone
+  - **Priority filter**: ALL / P1 / P2 / P3 / P4 — chọn 1 priority cụ thể sẽ **ẩn flow events** (chỉ show alerts cùng priority); chọn ALL hiện cả flows
+  - **Traffic ON/OFF**: toggle visibility flow events (chỉ hiệu lực khi P=ALL)
 - `/policy` — Active Rules table + Agent Policy History với **🧠 Reasoning button** mỗi row → modal full hypothesis + reasoning + alternatives + rollback + follow-up + MITRE
+  - **Delete rule confirm dialog**: ấn `Del`/`Delete` button → `window.confirm()` show ID + action summary (`DROP src → dst:port`) + source — chống xoá nhầm
 - `/topology` — network topology view
 - `/rules` — ZT baseline + agent rules
 

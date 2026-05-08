@@ -51,3 +51,27 @@ class RedisStore:
             return await self.client.ping()
         except Exception:
             return False
+
+    # ── Semantic embedding warm cache ─────────────────────────────────────────
+    # Text → vector is deterministic; cache by hash(text). Saves the ~150-200ms
+    # CPU embed compute when the same scenario fires repeatedly (eval, replay,
+    # repeated attack patterns). 1-hour TTL is safe because the embedder model
+    # itself doesn't change between calls.
+    async def get_cached_embedding(self, key_hash: str) -> list[float] | None:
+        try:
+            raw = await self.client.get(f"emb:{key_hash}")
+            if raw is None:
+                return None
+            return json.loads(raw)
+        except Exception:
+            return None
+
+    async def cache_embedding(self, key_hash: str, vec: list[float]) -> None:
+        try:
+            await self.client.set(
+                f"emb:{key_hash}",
+                json.dumps(vec),
+                ex=3600,
+            )
+        except Exception:
+            pass

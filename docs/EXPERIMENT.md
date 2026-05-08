@@ -392,20 +392,73 @@ curl http://localhost:3001/api/public/health   # {"status":"OK","version":"2.95.
 curl http://10.10.6.238:9090/health  # {"status":"ok","mode":"multi-client"}
 ```
 
-### Eval
+### Eval (2026-05-06 update — 2 scripts, rich UI)
 
 ```bash
 cd /home/dis/deploy/zerotrust/experiments
 
-uv run python eval.py --dry-check          # Health check only
-uv run python eval.py --runs 1             # Smoke test
-uv run python eval.py --runs 10            # Full 10-run experiment
-uv run python eval.py --runs 10 --duration 90  # Custom timeout
+# Statistical baseline — i.i.d. independent runs (memory OFF)
+python3 eval_iid.py          # 10 runs, ~22 phút
+
+# Memory-stateful eval — `decisions` preserved across runs (memory ON)
+python3 eval_memory.py       # 10 runs, ~22 phút
 ```
 
-Excel auto-saved to `results/report_YYYYMMDD_HHMM.xlsx`.
+**Khác biệt 2 script duy nhất ở `reset()`:**
+- `eval_iid.py` TRUNCATE `decisions` mỗi run → memory empty mỗi lần (i.i.d.)
+- `eval_memory.py` PRESERVE `decisions` → run N thấy lịch sử run 1..N-1
 
-Per-run + final cleanup tự động chạy → 0 agent rules accumulation guaranteed.
+→ So 2 file xlsx → giá trị thực của memory architecture (variance reduction, tail latency shielding).
+
+**Outputs:**
+```
+experiments/results/
+├── eval_iid_<timestamp>.xlsx       # per-run + aggregate avg/min/max/p95
+├── eval_iid_<timestamp>.json       # raw RunResult
+├── eval_memory_<timestamp>.xlsx    # + memory effect Run 1 vs Run N panel
+└── eval_memory_<timestamp>.json
+```
+
+**Rich CLI output** (k6-style):
+- Header banner + config panel
+- Per-run colored status: PASS ✓ / FAIL ✗
+- `[reset]` (yellow), `[T+0]` (bold yellow), `[poll]` (yellow), `[M1/M2/M3]` (cyan) labels
+- Aggregate metrics table avg/min/max/p95
+- Memory effect panel (eval_memory only) — Run 1 cold → Run N warm delta
+
+**Per-eval docs:**
+- [`experiments/eval_iid.md`](../experiments/eval_iid.md) — i.i.d. methodology
+- [`experiments/eval_memory.md`](../experiments/eval_memory.md) — memory test methodology
+- [`experiments/README.md`](../experiments/README.md) — workflow + reset semantics
+
+### Findings 2026-05-06 — Memory architecture pays off ở variance, không phải mean
+
+**eval_iid (memory OFF) vs eval_memory (memory ON), n=10 mỗi loại, same lab:**
+
+| Metric | IID OFF | MEM ON | Δ avg | **Δ stdev** |
+|--------|--------:|-------:|------:|------------:|
+| MTTD (s) | 3.92 | 3.59 | -8% | tương đương |
+| Agent latency avg | 7385ms | 6841ms | -7.4% | **3487ms → 531ms** ← 6.6× ổn định hơn |
+| Total E2E avg | 11.30s | 10.43s | -7.7% | **3.48s → 0.58s** ← 6× ổn định hơn |
+
+**Tail-latency shielding** (concrete):
+- IID Run 7: 16.5s (LLM tail outlier) → MEM Run 7: 7.66s (-54%)
+- IID Run 9: 10.1s → MEM Run 9: 7.23s (-28%)
+
+→ Memory architecture là **insurance against LLM tail latency**, không phải tối ưu p50. p99 matter cho production SLA.
+
+### Infrastructure optimizations (2026-05-06)
+
+Áp dụng cho cả 2 evals (không động đến reasoning):
+
+| Opt | File | Effect |
+|-----|------|--------|
+| HNSW thay IVFFlat (pgvector) | [postgres.py](../intelligence-layer/src/storage/postgres.py) | Faster vector search, no ANALYZE needed |
+| Embedding cache Redis (`emb:*`, TTL 1h) | [redis.py](../intelligence-layer/src/storage/redis.py) | Skip 150-200ms embed compute on repeat |
+| Sentinel pre-flight count | [tools.py](../intelligence-layer/src/agent/tools.py) | Short-circuit 250ms khi window empty (cold cache) |
+| Btree composite indexes (`src_ip+ts`, `sid+ts`, `mitre+ts`, `ts`) | [postgres.py](../intelligence-layer/src/storage/postgres.py) | Phủ mọi query pattern, scale tới 1M+ rows |
+
+**Đã rollback:** prompt trim 3→2 past decisions — quá aggressive, hỏng quality cho semantic+MITRE retrieval (production attacks hiếm khi exact-SID match).
 
 ### View results
 

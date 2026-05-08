@@ -246,6 +246,12 @@ class KnowledgeLoader:
                         f"mitre_technique: {mitre_n}"
                     )
                     parts.append(f"- Pattern: {past.get('pattern_assessment')}")
+                    # KEEP top-3 across all 3 retrieval strategies. Reasoning quality
+                    # is the point of memory; trimming to save tokens hurts the most
+                    # valuable paths (semantic + MITRE) which catch novel attack
+                    # variants where exact-SID returns zero. In production, attacks
+                    # are almost never identical to past incidents — semantic and
+                    # MITRE retrievals are precisely what makes memory worth having.
                     if exact_n > 0:
                         parts.append(f"- Outcome breakdown (exact-SID): {past.get('outcome_breakdown')}")
                         last = past.get("last_decisions", [])[:3]

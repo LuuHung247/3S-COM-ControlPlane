@@ -131,6 +131,7 @@ async def node_gather_context(
         dst_port=alert.dest_port,
         sid=alert.sid,
         signature=alert.signature or "",
+        redis=redis,
     )
     reputation_task = fetch_reputation(postgres, alert.src_ip, window_hours=1)
 

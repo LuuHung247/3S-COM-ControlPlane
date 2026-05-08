@@ -536,9 +536,15 @@ Base URL: `http://10.10.6.238:8765` (LAN) / `http://112.137.129.232:8765` (publi
 
 ### 8.2 Go IDS Agent (real-time bridge + enforcement proxy)
 
-Base URL: `http://10.10.6.238:8766`
+Base URL: `http://10.10.6.238:8766` (LAN runs trên control-plane host); container `ids-agent` trong [docker-compose.yml](../docker-compose.yml).
 
 > After refactor (2026-04-xx): pure proxy/bridge. `tryAutoBlock()` removed. Auto-enforcement is now handled by Intelligence Layer.
+
+**SSE upstream resilience (2026-05-06):**
+- Watchdog cancels SSE connection nếu không nhận được line nào (data hoặc `: hb` heartbeat) trong `sseStallTimeout = 30s`. Suricata gửi heartbeat mỗi 15s → 30s = 2 missed heartbeats → force reconnect.
+- Exponential backoff giữa retries: 1s → 2s → 4s → 8s → 16s → 30s capped.
+- **Bỏ permanent polling fallback** — luôn retry SSE. Cũ: 5 SSE fails liên tiếp → switch sang polling mode VĨNH VIỄN, không upgrade lại; gây bug "Monitor stuck dù Suricata UP". Mới: chỉ có 1 mode (SSE), retry forever.
+- File: [ids-agent/main.go](../ids-agent/main.go) — `consumeSSE()` + `runBridge()`.
 
 | Method | Path | Use |
 |--------|------|-----|

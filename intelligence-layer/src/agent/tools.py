@@ -260,6 +260,7 @@ async def find_similar_past_incidents(
     limit: int = 5,
     semantic_query_text: str = "",
     mitre_technique: str | None = None,
+    redis: RedisStore | None = None,
 ) -> dict:
     """Tool 2: Past experience lookup with **multi-strategy retrieval**.
 
@@ -277,6 +278,29 @@ async def find_similar_past_incidents(
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
     from sqlalchemy.ext.asyncio import async_sessionmaker
     import asyncio as _asyncio
+
+    # ── Sentinel pre-flight: any decisions in window? ──────────────────────
+    # Fast COUNT (uses created_at index, ~2-5ms). When `decisions` is empty
+    # (eval_iid post-truncate, fresh deployment, cold src_ip on new install),
+    # skip the expensive semantic+MITRE+exact paths entirely. Saves ~250ms of
+    # wasted embedding compute + pgvector probes per cold call.
+    async with async_sessionmaker(postgres._engine, expire_on_commit=False)() as _sess:
+        any_q = await _sess.execute(
+            select(func.count()).select_from(DecisionRecord)
+            .where(DecisionRecord.created_at >= cutoff)
+        )
+        any_count = any_q.scalar() or 0
+    if any_count == 0:
+        return {
+            "sid": sid,
+            "src_zone": src_zone,
+            "dst_zone": dst_zone,
+            "lookback_days": lookback_days,
+            "match_count": 0,
+            "semantic_match_count": 0,
+            "mitre_match_count": 0,
+            "note": "No decisions in window — sentinel short-circuit (cold cache).",
+        }
 
     # ── Path 1: exact SID match (existing behavior) ─────────────────────────
     async def _exact_sid_match() -> dict:
@@ -313,9 +337,21 @@ async def find_similar_past_incidents(
         if not semantic_query_text:
             return []
         from ..storage.embedder import embed_text
-        vec = await embed_text(semantic_query_text)
+        # Warm-cache embedding compute by hash(query_text). Embedder is
+        # deterministic, so reusing across runs of the same scenario is safe.
+        # Saves the ~150-200ms CPU embed compute on repeat queries.
+        vec: list[float] | None = None
+        cache_key: str | None = None
+        if redis is not None:
+            import hashlib
+            cache_key = hashlib.sha1(semantic_query_text.encode("utf-8")).hexdigest()
+            vec = await redis.get_cached_embedding(cache_key)
         if vec is None:
-            return []
+            vec = await embed_text(semantic_query_text)
+            if vec is None:
+                return []
+            if redis is not None and cache_key is not None:
+                await redis.cache_embedding(cache_key, vec)
         return await postgres.search_similar_by_embedding(
             embedding=vec,
             lookback_days=lookback_days,
@@ -465,6 +501,7 @@ async def prefetch_investigation_context(
     dst_port: int,
     sid: int,
     signature: str = "",
+    redis: RedisStore | None = None,
 ) -> dict:
     """Run all 3 investigation tools in parallel. ~30-150ms total (limited by Postgres + pgvector)."""
     import asyncio
@@ -497,6 +534,7 @@ async def prefetch_investigation_context(
             postgres, sid, src_zone, dst_zone,
             semantic_query_text=semantic_text,
             mitre_technique=mitre_t,
+            redis=redis,
         ),
         simulate_block_impact(src_ip, dst_ip, dst_port),
         return_exceptions=True,

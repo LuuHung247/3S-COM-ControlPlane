@@ -176,16 +176,23 @@ class PostgresStore:
             await conn.execute(sa.text(
                 "ALTER TABLE decisions ADD COLUMN IF NOT EXISTS reasoning_completed_at TIMESTAMPTZ"
             ))
-            # P2: pgvector embedding column for semantic search over past decisions
+            # P2: pgvector embedding column for semantic search over past decisions.
+            # Index: HNSW (Hierarchical Navigable Small World) — outperforms IVFFlat
+            # on small-to-medium corpora (< 100k vectors) and doesn't require ANALYZE.
+            # IVFFlat needs reasonable list-count tuning + analyzed stats; HNSW is
+            # immediately optimal post-CREATE. We drop the old IVFFlat index if it
+            # exists so reads switch to HNSW transparently.
             try:
                 await conn.execute(sa.text(
                     "ALTER TABLE decisions ADD COLUMN IF NOT EXISTS embedding vector(384)"
                 ))
-                # IVFFlat index for cosine similarity search
                 await conn.execute(sa.text(
-                    "CREATE INDEX IF NOT EXISTS decisions_embedding_cosine_idx "
-                    "ON decisions USING ivfflat (embedding vector_cosine_ops) "
-                    "WITH (lists = 50)"
+                    "DROP INDEX IF EXISTS decisions_embedding_cosine_idx"
+                ))
+                await conn.execute(sa.text(
+                    "CREATE INDEX IF NOT EXISTS decisions_embedding_hnsw_idx "
+                    "ON decisions USING hnsw (embedding vector_cosine_ops) "
+                    "WITH (m = 16, ef_construction = 64)"
                 ))
                 # Same column on history table — keeps schemas 1:1 (FE may want
                 # semantic search over archived decisions later)
@@ -193,13 +200,54 @@ class PostgresStore:
                     "ALTER TABLE decisions_history ADD COLUMN IF NOT EXISTS embedding vector(384)"
                 ))
                 await conn.execute(sa.text(
-                    "CREATE INDEX IF NOT EXISTS decisions_history_embedding_cosine_idx "
-                    "ON decisions_history USING ivfflat (embedding vector_cosine_ops) "
-                    "WITH (lists = 50)"
+                    "DROP INDEX IF EXISTS decisions_history_embedding_cosine_idx"
+                ))
+                await conn.execute(sa.text(
+                    "CREATE INDEX IF NOT EXISTS decisions_history_embedding_hnsw_idx "
+                    "ON decisions_history USING hnsw (embedding vector_cosine_ops) "
+                    "WITH (m = 16, ef_construction = 64)"
                 ))
             except Exception:
-                # pgvector not installed — skip silently, multi-strategy will degrade gracefully
+                # pgvector not installed or HNSW not supported (older pgvector versions)
+                # — skip silently, multi-strategy will degrade gracefully
                 pass
+
+            # ── Btree indexes for hot query patterns ───────────────────────────
+            # Without these, every retrieval (get_ip_summary, exact-SID match,
+            # MITRE match, sentinel pre-flight count) does a full table scan.
+            # All filters share `created_at >= cutoff`; lead with the most-
+            # selective column then created_at DESC to support both filter +
+            # ORDER BY in one index. Partial index on mitre_technique avoids
+            # storing NULL rows (~80% of decisions have no MITRE attribution
+            # because alerts often don't carry it).
+            for idx_sql in [
+                # Per-IP queries — get_ip_summary, correlation, reputation
+                "CREATE INDEX IF NOT EXISTS decisions_src_ip_created_at_idx "
+                "ON decisions (alert_src_ip, created_at DESC)",
+                # Per-SID queries — exact-SID retrieval
+                "CREATE INDEX IF NOT EXISTS decisions_sid_created_at_idx "
+                "ON decisions (alert_sid, created_at DESC)",
+                # MITRE technique retrieval — partial (skip NULL rows)
+                "CREATE INDEX IF NOT EXISTS decisions_mitre_created_at_idx "
+                "ON decisions (mitre_technique, created_at DESC) "
+                "WHERE mitre_technique IS NOT NULL",
+                # Sentinel pre-flight + general time-range ORDER BY DESC
+                "CREATE INDEX IF NOT EXISTS decisions_created_at_idx "
+                "ON decisions (created_at DESC)",
+                # Same trio on history table — FE Policy History does the same
+                # filters (per-IP audit, per-SID audit, time range)
+                "CREATE INDEX IF NOT EXISTS decisions_history_src_ip_created_at_idx "
+                "ON decisions_history (alert_src_ip, created_at DESC)",
+                "CREATE INDEX IF NOT EXISTS decisions_history_sid_created_at_idx "
+                "ON decisions_history (alert_sid, created_at DESC)",
+                "CREATE INDEX IF NOT EXISTS decisions_history_created_at_idx "
+                "ON decisions_history (created_at DESC)",
+            ]:
+                try:
+                    await conn.execute(sa.text(idx_sql))
+                except Exception:
+                    # Single-index failure shouldn't block startup — log + continue
+                    pass
 
     async def close(self) -> None:
         if self._engine:
