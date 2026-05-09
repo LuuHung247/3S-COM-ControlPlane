@@ -14,6 +14,19 @@ services:
       - AGENT_ADDR=:8766
     networks:
       - ztnet
+    labels:
+      # Autoheal opts-in: restart container automatically when healthcheck fails.
+      autoheal: "true"
+    healthcheck:
+      # Probes BOTH the Go process (localhost) AND external network reach to
+      # Suricata (10.10.6.238:8765). The latter catches the "container alive
+      # but eth0 missing" failure mode observed 2026-05-09 — loopback wouldn't
+      # have caught it, but `nc -z` against an external IP does.
+      test: ["CMD-SHELL", "wget -q --spider --timeout=3 http://localhost:8766/health && nc -z -w 2 10.10.6.238 8765"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
     logging:
       driver: json-file
       options:
@@ -38,6 +51,17 @@ services:
       - intelligence-layer
     networks:
       - ztnet
+    labels:
+      autoheal: "true"
+    healthcheck:
+      # Hits Next.js on /monitor (a real page that must render) AND verifies
+      # bridge-network reach to ids-agent. Catches both Node "zombie alive"
+      # (process up but ResponseAborted) and broken Docker bridge.
+      test: ["CMD-SHELL", "node -e 'Promise.all([fetch(\"http://localhost:3000/monitor\"),fetch(\"http://ids-agent:8766/health\")]).then(rs=>process.exit(rs.every(r=>r.ok)?0:1)).catch(()=>process.exit(1))'"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     logging:
       driver: json-file
       options:
@@ -70,6 +94,17 @@ services:
       - langfuse
     networks:
       - ztnet
+    labels:
+      autoheal: "true"
+    healthcheck:
+      # FastAPI /health checks own liveness; second probe verifies bridge-net
+      # reach to redis (port 6379). Catches both Python crash and Docker
+      # network namespace issues.
+      test: ["CMD-SHELL", "python -c 'import urllib.request,socket; urllib.request.urlopen(\"http://localhost:8767/health\",timeout=3); s=socket.create_connection((\"redis\",6379),timeout=3); s.close()'"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     logging:
       driver: json-file
       options:
@@ -85,6 +120,11 @@ services:
       - "6379:6379"                     # exposed to LAN — RedisInsight / redis-cli from laptop
     networks:
       - ztnet
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     logging:
       driver: json-file
       options:
@@ -106,6 +146,11 @@ services:
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
     networks:
       - ztnet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ztuser -d zerotrust"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     logging:
       driver: json-file
       options:
@@ -146,6 +191,27 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # Autoheal — watches Docker events for `unhealthy` status and restarts the
+  # affected container. Opt-in via label `autoheal=true`. Replaces the manual
+  # `docker restart <svc>` workflow when ids-agent/fe/intel-layer hangs or
+  # loses network namespace. Tiny image (~5 MB), reads docker.sock read-only.
+  autoheal:
+    image: willfarrell/autoheal:1.2.0
+    container_name: zt-autoheal
+    restart: unless-stopped
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=autoheal       # only restart containers with this label
+      - AUTOHEAL_INTERVAL=10                     # check every 10s
+      - AUTOHEAL_START_PERIOD=60                 # grace 60s after container start
+      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=10         # SIGTERM grace before SIGKILL
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "2"
 
 
 networks:
