@@ -386,9 +386,18 @@ async def node_decide_policy(
     state: AgentState,
     primary_llm: LLMClient,
     settings,
+    redis: "RedisStore | None" = None,
+    neo4j_driver=None,
 ) -> dict:
     """V3 Stage 1: produce just the rule fields needed to enforce. Cerebras-friendly
-    schema (9 scalar fields, 0 arrays). Blocking — pipeline stops if this fails."""
+    schema (9 scalar fields, 0 arrays). Blocking — pipeline stops if this fails.
+
+    If `neo4j_driver` is set, the agent runs ReAct: it can call `query_kg(cypher)`
+    against the knowledge graph and `get_alert_history(src_ip)` against Redis to
+    gather facts dynamically before emitting the final structured decision. The
+    static prompt becomes minimal (architecture overview + invariants + tool docs);
+    knowledge specifics are fetched on demand.
+    """
     alert: SuricataAlert = state["alert"]
     src_zone = ip_to_zone(alert.src_ip)
     dst_zone = ip_to_zone(alert.dest_ip)
@@ -404,18 +413,53 @@ async def node_decide_policy(
         {"role": "user", "content": user},
     ]
 
-    # Stage 1 retries on transient parser failures. No self-consistency vote here —
-    # the simple schema rarely fails; if it fails, retry is more useful than vote.
-    last_err = ""
-    result: dict | None = None
-    for attempt in range(3):
+    # ReAct path — only if Neo4j driver is wired in
+    use_react = neo4j_driver is not None
+    if use_react:
+        from .tools import (
+            TOOL_DEFINITIONS, execute_query_kg, execute_get_alert_history,
+        )
+
+        async def _kg_handler(cypher: str) -> str:
+            res = await execute_query_kg(neo4j_driver, cypher)
+            return str(res)
+
+        async def _history_handler(src_ip: str, limit: int = 10) -> str:
+            if redis is None:
+                return str({"error": "Redis unavailable"})
+            res = await execute_get_alert_history(redis, src_ip, limit=limit)
+            return str(res)
+
+        tool_handlers = {
+            "query_kg": _kg_handler,
+            "get_alert_history": _history_handler,
+        }
         try:
-            result = await primary_llm.chat_json(messages=messages, schema=POLICY_DECISION_SCHEMA)
-            break
+            result = await primary_llm.chat_react(
+                messages=messages,
+                tools=TOOL_DEFINITIONS,
+                tool_handlers=tool_handlers,
+                final_schema=POLICY_DECISION_SCHEMA,
+                max_iterations=4,
+            )
         except Exception as exc:
-            last_err = f"{type(exc).__name__}: {str(exc)[:140]}"
-            log.warning("policy_decision_attempt_failed", attempt=attempt + 1, error=last_err)
-            await asyncio.sleep(0.5 * (attempt + 1))
+            log.warning("react_failed_falling_back_to_chat_json",
+                        error=f"{type(exc).__name__}: {str(exc)[:140]}")
+            result = None
+    else:
+        result = None
+
+    # Stage 1 fallback / non-ReAct path: chat_json with retries
+    if result is None:
+        last_err = ""
+        for attempt in range(3):
+            try:
+                result = await primary_llm.chat_json(messages=messages, schema=POLICY_DECISION_SCHEMA)
+                break
+            except Exception as exc:
+                last_err = f"{type(exc).__name__}: {str(exc)[:140]}"
+                log.warning("policy_decision_attempt_failed", attempt=attempt + 1, error=last_err)
+                await asyncio.sleep(0.5 * (attempt + 1))
 
     if result is None:
         return {

@@ -237,3 +237,126 @@ class OpenAICompatibleClient(LLMClient):
                 raise
 
         raise ValueError(f"LLM did not return valid JSON after fallback retries")
+
+    async def chat_react(
+        self,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]],
+        tool_handlers: dict[str, Any],
+        final_schema: dict[str, Any],
+        max_iterations: int = 5,
+    ) -> dict[str, Any]:
+        """ReAct-style multi-round tool calling.
+
+        Each iteration:
+          1. Send messages + tools (model can call tools OR return final structured output)
+          2. If model emits tool_calls → execute each via tool_handlers[name], append
+             results as `tool` role messages, loop
+          3. If model emits structured_output via the final-schema tool → parse + return
+          4. On the LAST iteration force tool_choice=structured_output to bound latency
+
+        Falls back to chat_json on the slim alert messages if tool loop fails.
+        """
+        # Final structured-output tool — added alongside whatever exploration tools
+        # the agent has. The schema is forced on the final round.
+        final_tool = {
+            "type": "function",
+            "function": {
+                "name": "structured_output",
+                "description": "Emit the final structured policy decision after sufficient reasoning.",
+                "parameters": final_schema,
+            },
+        }
+        all_tools = list(tools) + [final_tool]
+
+        msgs: list[dict[str, Any]] = list(messages)
+
+        for iteration in range(max_iterations):
+            is_final_round = iteration == max_iterations - 1
+            # On the final round, force structured_output so we always get an answer
+            tool_choice = (
+                {"type": "function", "function": {"name": "structured_output"}}
+                if is_final_round else "auto"
+            )
+
+            try:
+                result = await self.chat(
+                    messages=msgs,
+                    tools=all_tools,
+                    tool_choice=tool_choice,
+                )
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 400 and is_final_round:
+                    # Cerebras parser rejected the schema — fall back to chat_json
+                    return await self.chat_json(messages=msgs, schema=final_schema)
+                raise
+
+            tool_calls = result.get("tool_calls") or []
+
+            if not tool_calls:
+                # Model emitted plain content — try to parse as JSON in case it produced
+                # the schema directly (some models do this when tools fail to fire)
+                content = result.get("content") or ""
+                if content.strip():
+                    try:
+                        return json.loads(content)
+                    except json.JSONDecodeError:
+                        pass
+                # No tool calls and no parseable content — break to fallback
+                break
+
+            # Check for final structured_output call
+            for tc in tool_calls:
+                if tc["name"] == "structured_output":
+                    return tc["arguments"]
+
+            # Append assistant message recording the tool calls (required by API
+            # before tool result messages can be appended)
+            msgs.append({
+                "role": "assistant",
+                "content": result.get("content") or None,
+                "tool_calls": [
+                    {
+                        "id": tc.get("id", f"call_{idx}"),
+                        "type": "function",
+                        "function": {
+                            "name": tc["name"],
+                            "arguments": json.dumps(tc["arguments"]),
+                        },
+                    }
+                    for idx, tc in enumerate(tool_calls)
+                ],
+            })
+
+            # Execute each tool call sequentially (could be parallel but agent
+            # decisions are typically sequential — and the small KG won't bottleneck)
+            for idx, tc in enumerate(tool_calls):
+                name = tc["name"]
+                args = tc["arguments"]
+                handler = tool_handlers.get(name)
+                if handler is None:
+                    tool_result = json.dumps({"error": f"Unknown tool: {name}"})
+                else:
+                    try:
+                        result_value = await handler(**args) if _is_async(handler) else handler(**args)
+                        tool_result = (
+                            result_value if isinstance(result_value, str)
+                            else json.dumps(result_value, default=str)[:4000]
+                        )
+                    except Exception as exc:
+                        tool_result = json.dumps({"error": f"{exc.__class__.__name__}: {exc}"})
+                msgs.append({
+                    "role": "tool",
+                    "tool_call_id": tc.get("id", f"call_{idx}"),
+                    "name": name,
+                    "content": tool_result,
+                })
+
+        # Loop exhausted without final structured output — fall back to chat_json
+        # on the original messages (without tool conversation, to keep it slim)
+        return await self.chat_json(messages=messages, schema=final_schema)
+
+
+def _is_async(fn) -> bool:
+    import inspect
+    return inspect.iscoroutinefunction(fn)

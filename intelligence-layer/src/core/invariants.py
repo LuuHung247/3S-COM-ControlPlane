@@ -8,42 +8,25 @@ Source of truth: knowledge/01-DATAPLANE.md §9, knowledge/02-SECURE-FRAMEWORK.md
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Hard NEVER_BLOCK list (immutable, hardcoded)
+# Invariants — populated from knowledge/infra/invariants.md at import.
+#
+# Authoring source: knowledge/infra/invariants.md
+# Bootstrap path:   .md → knowledge_parser → these vars (at import time)
+# Runtime path:     replaced in-place at app startup by Neo4j read.
+#
+# 🛑 SAFETY-CRITICAL: even though .md is the authoring layer, the parser fails
+# closed if any expected-critical CIDR (mgt-01, IDS, SVI gateways) is missing
+# — see startup validation in main.py lifespan. Mutation of Neo4j cannot weaken
+# the never-block list below the safety floor.
 # ─────────────────────────────────────────────────────────────────────────────
-NEVER_BLOCK_CIDRS: list[str] = [
-    "127.0.0.0/8",          # loopback
-    "192.168.122.0/24",     # mgmt OOB — block self-DoS
-    "10.10.6.0/24",         # out-of-band reach to control plane
-    "10.1.100.1/32",        # WEB SVI gateway
-    "10.1.200.1/32",        # DB SVI gateway
-    "10.2.100.1/32",        # APP SVI gateway
-    "10.2.50.1/32",         # MGT SVI gateway
-    "10.2.50.10/32",        # mgt-01 — kills audit/compliance/agent-vantage
-    "192.168.122.205/32",   # IDS Suricata — kills agent perception
-]
+from . import knowledge_parser as _kp
 
-NEVER_BLOCK_RATIONALE: dict[str, str] = {
-    "127.0.0.0/8": "Loopback addresses — blocking corrupts host networking stack",
-    "192.168.122.0/24": "Management out-of-band network — agent reaches SF via this path; blocking self-DoSes the agent",
-    "10.10.6.0/24": "Out-of-band reach to control plane — same rationale as above",
-    "10.1.100.1/32": "WEB zone SVI gateway — blocking partitions WEB zone from rest of fabric",
-    "10.1.200.1/32": "DB zone SVI gateway — blocking partitions DB zone (entire data tier offline)",
-    "10.2.100.1/32": "APP zone SVI gateway — blocking partitions APP zone",
-    "10.2.50.1/32": "MGT zone SVI gateway — blocking partitions management plane",
-    "10.2.50.10/32": "Management host (mgt-01) — blocking kills audit, compliance, scenario controllers, and agent's vantage point",
-    "192.168.122.205/32": "Suricata IDS — blocking severs agent perception of network state",
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Allowed agent actions (frozen)
-# ─────────────────────────────────────────────────────────────────────────────
-ALLOWED_AGENT_ACTIONS: frozenset[str] = frozenset({"DROP"})
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Comment provenance prefixes (immutable)
-# ─────────────────────────────────────────────────────────────────────────────
-PROTECTED_COMMENT_PREFIXES: list[str] = ["nos:zt-"]   # baseline ZT — never modify
-AGENT_COMMENT_PREFIX: str = "nos:agent-"              # agent-owned rules
+_inv_data = _kp.parse_invariants()
+NEVER_BLOCK_CIDRS: list[str] = list(_inv_data["never_block_cidrs"])
+NEVER_BLOCK_RATIONALE: dict[str, str] = dict(_inv_data["never_block_rationale"])
+ALLOWED_AGENT_ACTIONS: frozenset[str] = frozenset(_inv_data["allowed_agent_actions"])
+PROTECTED_COMMENT_PREFIXES: list[str] = list(_inv_data["protected_comment_prefixes"])
+AGENT_COMMENT_PREFIX: str = _inv_data["agent_comment_prefix"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Priority bounds for agent rules

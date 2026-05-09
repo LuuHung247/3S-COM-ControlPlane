@@ -52,6 +52,7 @@ class DecisionAgent:
         tracer: LangfuseTracer,
         settings,
         dry_run: bool = True,
+        neo4j_driver=None,  # Optional — when set, Stage 1 uses ReAct with query_kg tool
     ) -> None:
         self._knowledge = knowledge
         self._fast_llm = fast_llm
@@ -66,6 +67,7 @@ class DecisionAgent:
         self._tracer = tracer
         self._settings = settings
         self._dry_run = dry_run
+        self._neo4j_driver = neo4j_driver
 
     async def process(self, alert: SuricataAlert) -> PolicyDecision:
         t0 = time.monotonic()
@@ -131,7 +133,11 @@ class DecisionAgent:
             # trace (Stage 2) runs in parallel with enforce after this returns.
             if not state.get("cache_hit"):
                 with self._tracer.span(trace, "policy_decision"):
-                    patch = await node_decide_policy(state, self._primary_llm, self._settings)
+                    patch = await node_decide_policy(
+                        state, self._primary_llm, self._settings,
+                        redis=self._redis,
+                        neo4j_driver=self._neo4j_driver,
+                    )
                     state.update(patch)
 
             if state.get("outcome") in (DecisionOutcome.REJECTED, DecisionOutcome.HELD):
