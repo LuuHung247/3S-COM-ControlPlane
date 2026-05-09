@@ -1,9 +1,9 @@
 # Intelligence Layer — AI Security Agent
 
 > Reactive Policy Decision Engine cho Zero Trust Microsegmentation
-> **Version**: 0.4.0 — V3 schema split + Langfuse observability + EventsStore
-> **Status**: ✅ Production — port 8767, `AGENT_DRY_RUN=false`, 10/10 eval PASS (2026-05-05)
-> **Last updated**: 2026-05-05
+> **Version**: 0.5.0 — GraphRAG: Neo4j-backed KG + .md authoring + `query_kg` tool
+> **Status**: ✅ Production — port 8767, `AGENT_DRY_RUN=false`, 10/10 eval PASS (2026-05-09)
+> **Last updated**: 2026-05-09
 
 ---
 
@@ -79,39 +79,190 @@ SF POST /api/rules    REASONING_TRACE_SCHEMA (4 arrays + 4 scalars)
 
 ---
 
-## 3. Knowledge Architecture — 5 lớp
+## 3. Knowledge Architecture — GraphRAG hybrid (v0.5.0)
 
-KG render alert-scoped (chỉ phần liên quan alert hiện tại) → giảm prompt từ 5851 tokens → 2970 tokens (-49%).
+Knowledge sống ở **Neo4j** (durable, queryable graph) và được **hydrate vào RAM cache** ở startup.
+Authoring layer là markdown files — humans edit, parser validate qua Pydantic schema, ETL push vào Neo4j.
+Agent có 2 đường tiếp cận: **static prompt inject** (alert-scoped slice, instant) và
+**`query_kg` tool** (live Cypher, on-demand cho cases prompt không cover).
 
-| Lớp | File | Nội dung | Render |
-|-----|------|----------|--------|
-| **Datacenter system model** | `src/core/system_model.py` | 4 zones, 4 hosts, 2 LEAFs, criticality, services, blast radius | `render_for_alert(src_ip, dst_ip)` — chỉ zones/assets liên quan |
-| **Production traffic baselines** | `src/core/baselines.py` | 8 legitimate flows (web→app proxy, app→db OLTP, mgt audit/scrape/logpull) | `render_for_alert(src_ip, dst_ip)` — chỉ baselines involve các IP này |
-| **Threat playbook** | `src/core/threat_playbook.py` | 8 SID detections + 4 kill chains (presentation-tier-breach, app-tier-breach, mgt-credential-compromise, db-direct-exfil) | `render_for_alert(sid)` — full SID detail + matching kill chains |
-| **Enforcement plane contract** | `src/core/enforcement_plane.py` | SF REST API, RBAC matrix (sdnc/auto OU), 6 critical gotchas, 6 failure modes | `render_summary()` — compact gotchas + invariants |
-| **Network invariants** | `src/core/invariants.py` | NEVER_BLOCK CIDR list (8 entries), allowed actions, priority bounds, TTL bounds | always full inject (~500 tokens) |
+### 3.1 Boot path
 
-**Source of truth chính** (production language, đọc được human):
-- `intelligence-layer/knowledge/01-DATAPLANE.md`
-- `intelligence-layer/knowledge/02-SECURE-FRAMEWORK.md`
+```
+knowledge/infra/*.md (humans edit, git-tracked)
+    │
+    ▼
+src/core/knowledge_parser.py    (.md YAML blocks → Pydantic validate)
+    │
+    ├──▶ Module-level dicts in core/*.py (BOOTSTRAP — used as fallback)
+    │
+    ▼
+src/storage/neo4j_kg.py         (ETL: Pydantic → Neo4j MERGE, idempotent)
+    │
+    ▼
+Neo4j  (70 nodes, 28 edges — single durable source of truth)
+    │
+    ▼
+src/storage/neo4j_reader.py     (Cypher → Pydantic rehydrate)
+    │
+    ▼
+main.py lifespan HOT-SWAP       (replace core/*.py module dicts in place)
+    │
+    ▼
+core/system_model.ZONES, ASSETS, LEAFS               ◀─── Agent reads from RAM
+core/baselines.ALL_BASELINES, APPLICATION_FLOWS, ...    here. Identical Python
+core/threat_playbook.SID_DETECTIONS, KILL_CHAINS        API to v0.4.0; only the
+core/policy.POLICY_MATRIX                                source has changed.
+core/enforcement_plane.ENDPOINT_CONTRACTS, ...
+core/invariants.NEVER_BLOCK_CIDRS, ...
+```
 
-→ Pydantic models trong `src/core/` mirror các .md docs này. Khi datacenter thay đổi: update .md trước, sync Pydantic data sau.
+After lifespan: Neo4j is the runtime source. The .md bootstrap is the cold-start
+fallback (used if Neo4j is unreachable at startup). Agent code consumes the same
+Pydantic objects regardless of which source populated them.
+
+### 3.2 Authoring source — `intelligence-layer/knowledge/infra/`
+
+Each `.md` file is hybrid: prose for humans + ` ```yaml ` fenced blocks parsed
+deterministically. Pydantic validates every block before it reaches Neo4j —
+typo / wrong enum / missing field aborts ETL fail-closed.
+
+| File | Entities | Pydantic schema |
+|------|----------|-----------------|
+| `zones.md` | 4 trust zones | `Zone` |
+| `assets.md` | 4 workload hosts | `Asset` (nested `Service`) |
+| `leafs.md` | 2 SONiC leafs | `Leaf` |
+| `baselines.md` | 8 traffic flows + anomaly patterns + steady-state constants | `TrafficPattern` |
+| `policy-matrix.md` | 12 zone-pair verdicts | `(src, dst) → ALLOW/DENY` |
+| `sids.md` | 8 Suricata signatures | `SidDetection` |
+| `kill-chains.md` | 4 multi-stage adversary playbooks | `KillChain` (nested `KillChainStage`) |
+| `enforcement-plane.md` | SF REST contracts, gotchas, failure modes, RBAC | mixed |
+| `invariants.md` | NEVER_BLOCK CIDRs, allowed actions, comment prefixes | hard safety constants |
+
+Workflow: edit `.md` → run `scripts/dump_pydantic_to_markdown.py` (only needed
+to seed initially) and `scripts/verify_knowledge_roundtrip.py` (ensures parser
+output equals reference) → restart container (lifespan ETL pushes to Neo4j +
+hot-swaps RAM cache).
+
+### 3.3 Neo4j schema (Layer 1 — current)
+
+```
+Nodes:
+  (:Zone {name, cidr, leaf, vlan, svi_gateway, trust_level, criticality, purpose})
+  (:Asset {ip, hostname, zone, tier, role, criticality, data_classification,
+           owner_team, services_json, expected_inbound_sources,
+           expected_outbound_destinations, if_compromised_impact, if_blocked_impact})
+  (:Leaf {name, mgmt_ip, zones, role})
+  (:Sid {sid, severity_p_level, signature_msg, production_description,
+         mitre_tactic, mitre_technique, detection_logic, recommended_response,
+         default_ttl_seconds, false_positive_likelihood, false_positive_scenarios})
+  (:KillChain {name, production_description, typical_dwell,
+               recommended_intervention, containment_strategy, stage_count})
+  (:Baseline {name, src_zone, src_ip, dst_zone, dst_ip, dst_port, proto, cadence,
+              expected_volume_per_hour, burst_anomaly_threshold,
+              criticality_to_business, production_description, if_disrupted})
+  (:NeverBlockEntry {cidr, rationale})
+  (:ApiEndpoint), (:Gotcha), (:FailureMode), (:FieldMapping)
+  (:KnowledgeMeta)  — singletons (baseline_constants, rbac_contract, agent_invariants)
+
+Edges:
+  (:Asset)-[:MEMBER_OF]->(:Zone)
+  (:Leaf)-[:ENFORCES]->(:Zone)
+  (:Zone)-[:ALLOW|DENY]->(:Zone)              — policy matrix
+  (:Sid)-[:EXPECTED_IN {stage, tactic,
+       indicators, false_positive_sources}]->(:KillChain)
+
+All nodes/edges flagged with kg_managed=true so ETL can wipe + reload safely
+without clobbering user-authored Cypher.
+```
+
+### 3.4 What's in the prompt vs. what's in Neo4j only
+
+The static system prompt receives an **alert-scoped slice** (~3K tokens) — only
+zones/assets/baselines/SID-detail relevant to the current `(src_ip, dst_ip, sid)`.
+Anything not in that slice lives in Neo4j and is reachable only via `query_kg`.
+
+| | In static prompt? | In Neo4j? | Notes |
+|---|---|---|---|
+| Architecture overview, principles | ✅ Always | — | Persona — "agent is expert" |
+| Invariants (NEVER_BLOCK, allowed actions) | ✅ Always | ✅ | Hard safety, double-encoded |
+| Anomalous patterns (red flags) | ✅ Always | ✅ | Detect contract |
+| Zones/assets/leafs relevant to alert | ✅ Selective | ✅ Full | Other zones in Neo4j only |
+| Baselines involving alert IPs | ✅ Selective | ✅ Full | Other baselines in Neo4j only |
+| Triggered SID detail + short ref of others | ✅ | ✅ Full | Other SIDs full detail in Neo4j only |
+| **Kill chains** | **❌ Removed** | ✅ Full | **Anti-leak** (see 3.5) |
+| Multi-hop traversal | — | ✅ | `query_kg` only |
+| Enforcement plane gotchas + RBAC | ✅ | ✅ | Always inject |
+
+### 3.5 Anti-leak design — kill chains intentionally NOT in prompt
+
+Pre-baking "SID 9000001 = stage 2 of presentation-tier-breach playbook → block at LEAF-1"
+into the agent's prompt turns reasoning into pattern-matching against the test
+scenario itself. The agent quotes the playbook and executes the recipe; it does
+not actually reason about lateral movement.
+
+After v0.5.0: kill chains are stored in Neo4j but **not injected** into the
+prompt or pre-fetched. Agent must INFER multi-stage attacks from primitives
+(baseline absence + zone trust mismatch + MITRE technique + asset criticality).
+If the agent decides it genuinely needs kill-chain context (e.g., correlated
+alert sequence suggests a campaign), it can call:
+
+```cypher
+MATCH (s:Sid {sid: 9000001})-[r:EXPECTED_IN]->(k:KillChain)
+RETURN k.name, r.stage, r.tactic, k.containment_strategy
+```
+
+via the `query_kg` tool — this is a deliberate investigation step, not a
+pre-loaded answer key.
+
+### 3.6 Cold-start safety floor
+
+`main.py` lifespan validates after Neo4j hot-swap that critical NEVER_BLOCK
+CIDRs are present (mgt-01, IDS, all SVI gateways, mgmt OOB). Missing entries
+abort startup — even if Neo4j is mutated post-deployment, the safety floor
+is enforced at container boot. The list is hardcoded in lifespan code, not
+data-driven, so removing it requires a code change + review.
 
 ---
 
-## 4. Investigation Tools (V3 — 3 tools, pre-fetched parallel)
+## 4. Investigation Tools — pre-fetch + ReAct hybrid (v0.5.0)
 
-Agent CHỈ có 1 action capability = push DROP rule. Investigation tools là **read-only data fetchers** giúp LLM hiểu context trước khi quyết định. Tất cả pre-fetched trong `node_gather_context` (~30ms parallel).
+Agent CHỈ có 1 action capability = push DROP rule. Investigation tools là **read-only data fetchers**. Two access modes:
+
+### 4.1 Pre-fetched (node_gather_context, parallel, ~30ms)
+
+Agent always receives these regardless of whether it asked.
 
 | Tool | Source | Output | Vai trò |
 |------|--------|--------|---------|
-| `query_asset_neighbors(ip)` | NetworkX in-mem + system_model | Asset profile, blast radius score, expected inbound/outbound flows, if_blocked impact | Trước block: biết hậu quả |
+| `query_asset_neighbors(ip)` | system_model + baselines (Neo4j-hydrated dicts) | Asset profile, blast radius score, expected inbound/outbound flows, if_blocked impact | Trước block: biết hậu quả |
 | `find_similar_past_incidents(sid, src_zone, dst_zone, lookback=90d)` | Postgres + pgvector — **3 strategies parallel** | Match count, outcome breakdown, last 3 decisions, pattern assessment | Học từ quá khứ — recurrence + novel-variant pattern |
-| `simulate_block_impact(src_ip, dst_ip, dst_port)` | Pydantic cross-ref | Full-block vs targeted-block consequences, baseline match | Counterfactual — chọn rule scope tối thiểu |
+| `simulate_block_impact(src_ip, dst_ip, dst_port)` | baselines (Neo4j-hydrated dicts) | Full-block vs targeted-block consequences, baseline match | Counterfactual — chọn rule scope tối thiểu |
 
-**Kill chain match** (in-memory, tự động): match SID đến trong các kill chain stages → output trong alert context cho LLM.
+**Kill chain match removed** — previously pre-fetched, now anti-leak (see §3.5).
+Agent reaches kill chains via `query_kg` if it suspects multi-stage campaign.
 
-### 4.1 Multi-strategy past-incident retrieval
+### 4.2 LLM-callable via ReAct (`query_kg`, `get_alert_history`)
+
+Agent decides at decision time whether to invoke. Wired through `chat_react`
+multi-round loop in `node_decide_policy` (max 4 iterations, then forces final
+structured output).
+
+| Tool | Backend | Use case | Safety |
+|------|---------|----------|--------|
+| `query_kg(cypher)` | Neo4j async driver, read-only | Verify hypothesis ("does SID X appear in any kill chain?"), multi-hop traversal, find entities not in alert-scope slice | Read-only regex (rejects CREATE/DELETE/MERGE/SET/REMOVE/DROP/DETACH/FOREACH/LOAD CSV/CALL DBMS), 50-row cap, 5s timeout |
+| `get_alert_history(src_ip, limit)` | Redis cache | Re-fetch IP history if pre-fetched value insufficient | Read-only |
+
+**Tool teaching in system prompt**: explicit instructions to use `query_kg` ONLY
+to verify hypotheses or fetch facts NOT in the prompt — not to re-look-up basic
+zone/asset/SID facts already provided. This preserves the "expert who already
+knows the system" persona while enabling deep exploration when needed.
+
+In practice for Layer 1 (small KG, fits in alert-scoped slice): agent rarely
+invokes `query_kg` — slice usually sufficient. For Phase B (Layer 2 docs),
+agent will use it heavily because NIST/CIS content cannot fit prompt.
+
+### 4.3 Multi-strategy past-incident retrieval
 
 `find_similar_past_incidents` chạy **3 retrieval paths parallel**, gộp kết quả vào prompt. Production attacks hiếm khi giống past attacks 100% — semantic + MITRE paths catch novel variants:
 
@@ -281,9 +432,20 @@ embedding vector(384)                                    -- pgvector for semanti
 
 ```
 intelligence-layer/
-├── knowledge/                          # Source of truth (production-language docs)
-│   ├── 01-DATAPLANE.md
-│   └── 02-SECURE-FRAMEWORK.md
+├── knowledge/                          # Authoring source for KG content
+│   ├── 01-DATAPLANE.md                 # Human narrative reference
+│   ├── 02-SECURE-FRAMEWORK.md
+│   └── infra/                          # ★ Machine-parsable .md (parser → Pydantic → Neo4j)
+│       ├── README.md
+│       ├── zones.md                    # 4 trust zones
+│       ├── assets.md                   # 4 workload hosts
+│       ├── leafs.md                    # 2 SONiC leafs
+│       ├── baselines.md                # 8 traffic flows + anomalous patterns
+│       ├── policy-matrix.md            # 12 zone-pair verdicts
+│       ├── sids.md                     # 8 Suricata signatures
+│       ├── kill-chains.md              # 4 multi-stage adversary playbooks (Neo4j-only, NOT injected)
+│       ├── enforcement-plane.md        # SF REST contract / gotchas / failure modes
+│       └── invariants.md               # NEVER_BLOCK + allowed actions + comment prefixes
 ├── pyproject.toml                      # Dependencies (no chromadb, no langgraph, no langchain)
 ├── Dockerfile
 ├── docker-compose.yml
@@ -299,16 +461,17 @@ intelligence-layer/
 │   │   ├── topology.py
 │   │   └── enforcement.py
 │   │
-│   ├── core/                           # Knowledge layers
-│   │   ├── system_model.py             # ASSETS, ZONES, LEAFS — render_for_alert()
-│   │   ├── baselines.py                # LEGITIMATE_FLOWS — render_for_alert()
-│   │   ├── threat_playbook.py          # SID_DETECTIONS + KILL_CHAINS — render_for_alert(sid)
-│   │   ├── enforcement_plane.py        # SF contract — render_summary()
-│   │   ├── invariants.py               # NEVER_BLOCK + bounds
+│   ├── core/                           # Knowledge layers (Neo4j-hydrated at lifespan)
+│   │   ├── knowledge_parser.py         # ★ .md YAML blocks → Pydantic objects (with deferred imports for circular-dep safety)
+│   │   ├── system_model.py             # ASSETS, ZONES, LEAFS — populated from parser at import, hot-swapped from Neo4j at lifespan
+│   │   ├── baselines.py                # ALL_BASELINES, ANOMALOUS_PATTERNS, constants — same pattern
+│   │   ├── threat_playbook.py          # SID_DETECTIONS + KILL_CHAINS — render_for_alert(sid) NO LONGER injects kill chains
+│   │   ├── enforcement_plane.py        # ENDPOINT_CONTRACTS, GOTCHAS, FAILURE_MODES, RBAC — same pattern
+│   │   ├── invariants.py               # NEVER_BLOCK_CIDRS + bounds — same pattern
 │   │   ├── topology.py                 # NetworkX + ip_to_zone/leaf
-│   │   ├── policy.py                   # POLICY_MATRIX, detect_conflict
+│   │   ├── policy.py                   # POLICY_MATRIX — same pattern
 │   │   ├── knowledge.py                # SID_KNOWLEDGE
-│   │   ├── knowledge_loader.py         # 3-tier cache + alert-scoped render
+│   │   ├── knowledge_loader.py         # 3-tier cache + alert-scoped render (kill_chain_match section removed)
 │   │   └── kg_visualizer.py            # pyvis HTML export
 │   │
 │   ├── pipeline/
@@ -318,14 +481,14 @@ intelligence-layer/
 │   │
 │   ├── agent/
 │   │   ├── state.py                    # AgentState TypedDict
-│   │   ├── graph.py                    # 8-node pipeline + asyncio.gather fork
-│   │   ├── nodes.py                    # node_decide_policy + node_collect_reasoning (V3)
-│   │   ├── prompts.py                  # build_policy_prompt + build_reasoning_prompt
-│   │   ├── tools.py                    # POLICY_DECISION_SCHEMA + REASONING_TRACE_SCHEMA + 3 investigation tools
+│   │   ├── graph.py                    # 8-node pipeline + asyncio.gather fork (now accepts neo4j_driver)
+│   │   ├── nodes.py                    # node_decide_policy uses chat_react when driver wired (v0.5.0)
+│   │   ├── prompts.py                  # build_policy_prompt + build_reasoning_prompt + ★ KG ACCESS section teaching when to query_kg
+│   │   ├── tools.py                    # POLICY_DECISION_SCHEMA + REASONING_TRACE_SCHEMA + investigation tools + ★ query_kg + execute_query_kg + TOOL_DEFINITIONS
 │   │   ├── response_cache.py           # Redis-backed PolicyIntent cache
 │   │   ├── llm/
-│   │   │   ├── interface.py
-│   │   │   ├── openai_compat.py        # chat_json + JSON-mode fallback
+│   │   │   ├── interface.py            # +chat_react abstract method
+│   │   │   ├── openai_compat.py        # chat_json + JSON-mode fallback + ★ chat_react multi-round loop
 │   │   │   └── factory.py
 │   │   └── safety/                     # 9-layer defense
 │   │       ├── guardrails.py           # NEVER_BLOCK
@@ -345,6 +508,8 @@ intelligence-layer/
 │   │   ├── redis.py                    # DB 0 — agent state
 │   │   ├── events_store.py             # DB 1 — traffic+violations buffer (V3)
 │   │   ├── postgres.py                 # decisions audit table
+│   │   ├── neo4j_kg.py                 # ★ Async Neo4j ETL: parser → Pydantic → Cypher MERGE (extended for Asset.services_json, anomaly patterns, FailureModes, NeverBlockEntries, etc.)
+│   │   ├── neo4j_reader.py             # ★ Cypher → Pydantic rehydrator (inverse of ETL, used by main.py hot-swap)
 │   │   ├── operational_memory.py       # 30-day aggregations
 │   │   └── incident_memory.py          # Retrospective labeler
 │   │
@@ -363,7 +528,10 @@ intelligence-layer/
 └── scripts/
     ├── init_db.py
     ├── load_topology.py
-    └── benchmark_agent.py
+    ├── benchmark_agent.py
+    ├── dump_pydantic_to_markdown.py    # ★ One-shot: dumps Pydantic constants → knowledge/infra/*.md (used to seed)
+    ├── verify_knowledge_roundtrip.py   # ★ Asserts parser output identical to original Pydantic
+    └── verify_neo4j_roundtrip.py       # ★ Asserts ETL+Reader preserves data through Neo4j
 ```
 
 **Total: ~50 Python source files, 31 unit tests passing.**
@@ -400,7 +568,16 @@ intelligence-layer/
 - Semantic entropy L2+ (Shannon over decision-shape clusters)
 - Response cache Redis (60s TTL, ~30-60% hit rate in burst)
 
-#### v0.4.0 — V3 Schema split + Observability + EventsStore (CURRENT)
+#### v0.5.0 — GraphRAG: Neo4j durable KG + .md authoring + query_kg tool (CURRENT)
+- **Knowledge moves from `.py` constants to `knowledge/infra/*.md`** — humans edit markdown, parser validates via Pydantic, ETL pushes to Neo4j. Module-level dicts in `core/*.py` populated from parser at import (bootstrap), hot-swapped from Neo4j at lifespan. Single durable source of truth.
+- **Neo4j ETL extended** — pushes `Asset.services_json` (nested JSON), `Asset.expected_inbound/outbound_destinations`, `Asset.if_compromised_impact`, `STEADY_STATE_FLOWS_PER_MINUTE`/`MGT_AUDIT_ALERT_RATE_PER_MINUTE`, `ANOMALOUS_PATTERNS`, `KillChainStage` props (full), `FieldMapping`, `ApiEndpoint`, `Gotcha`, `FailureMode`, `NeverBlockEntry`, `KnowledgeMeta` singletons. 70 nodes / 28 edges (vs ~30 nodes pre-refactor).
+- **`neo4j_reader.py`** — Cypher → Pydantic rehydrate, inverse of ETL. Drop-in replacement for `knowledge_parser.parse_all()` shape. Used by `main.py` lifespan hot-swap.
+- **`query_kg(cypher)` tool** — read-only Cypher executor exposed to LLM via new `chat_react` multi-round tool-calling loop. Regex word-boundary safety rejects writes (CREATE/DELETE/MERGE/SET/REMOVE/DROP/DETACH/FOREACH/LOAD CSV/CALL DBMS), 50-row cap, 5s timeout. Wired through `node_decide_policy` when `neo4j_driver` is available; falls back to `chat_json` if ReAct loop exhausts max iterations or fails.
+- **Kill chain anti-leak** — removed from agent's static prompt and from pre-fetched `kill_chain_match`. Test scenario "presentation-tier-breach-to-data-exfiltration" no longer leaks into reasoning (was previously the test answer key). Agent must INFER multi-stage from primitives or actively call `query_kg`. Reasoning shifted from playbook quoting to multi-source primitive synthesis.
+- **Cold-start safety floor** — `main.py` validates after hot-swap that critical NEVER_BLOCK CIDRs (mgt-01, IDS, SVI gateways, mgmt OOB) are present. Missing entries abort startup, even if Neo4j was mutated post-deployment.
+- **Eval (10 runs, dry_run=false)** — pass rate 10/10 unchanged, confidence 0.95 unchanged, agent latency avg `7385ms → 6627ms (−10%)`, max `16499ms → 10115ms (−39% tail cut)`, M1 stdev `3.31s → 1.32s (−60% variance)`.
+
+#### v0.4.0 — V3 Schema split + Observability + EventsStore
 - **V3 schema split**: POLICY_DECISION_SCHEMA (Stage 1, 9 scalar) + REASONING_TRACE_SCHEMA (Stage 2, 4 arrays)
 - **Parallel enforce + reasoning**: `asyncio.gather(_enforce_path, _reasoning_path)` — Stage 2 fail-tolerant
 - **Cerebras 400 zero rate**: Stage 1 simple schema → 0/30 parser failures in 10-run eval

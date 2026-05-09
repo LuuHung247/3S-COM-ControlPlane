@@ -250,7 +250,12 @@ python3 eval_memory.py     # 10 stateful runs (~22 phút)
 
 `rule-id` là deterministic SHA256 của flow tuple → cùng pattern lần sau hit cùng rule_id → SF replace, không duplicate.
 
-### 6.5 Reasoning trace mẫu (Stage 2 output)
+### 6.5 Reasoning trace mẫu (Stage 2 output, v0.4.0 — KILL CHAIN STILL LEAKED)
+
+> ⚠️ Note: trace dưới đây được sinh ở v0.4.0 trước khi kill-chain leak được fix.
+> Lưu ý dòng "Kill chain analysis: matches Stage 2 of presentation-tier-breach..."
+> là **test contamination** — agent quote tên test scenario thay vì reason from
+> primitives. Xem §6.6/§6.7 cho v0.5.0 sau khi fix.
 
 ```json
 {
@@ -284,6 +289,84 @@ python3 eval_memory.py     # 10 stateful runs (~22 phút)
   "mitre_tactic": "TA0008"
 }
 ```
+
+---
+
+### 6.6 v0.5.0 — GraphRAG refactor results (10 runs, 2026-05-09)
+
+3-stage progression compared head-to-head, all on identical scenario (SID 9000001
+WEB→DB direct, dry_run=false, 10 runs each):
+
+| metric (avg) | v0.3 PRE-Neo4j (2026-05-06) | v0.4 + Neo4j hot-swap (2026-05-09 morn) | **v0.5 + ReAct + clean (2026-05-09 aft)** |
+|---|---|---|---|
+| Pass rate | 10/10 | 10/10 | **10/10** |
+| MTTD (s) | 3.92 | 3.66 | **3.68** |
+| M1 Alert→Decision (s) | 7.38 | 6.04 | **6.63** |
+| Agent latency (ms) | 7385 | 6037 | **6627** |
+| Total E2E (s) | 11.31 | 9.70 | **10.31** |
+| Confidence avg | 0.95 | 0.95 | **0.95** |
+
+| metric (max) | v0.3 PRE | v0.4 | **v0.5** | Δ vs PRE |
+|---|---|---|---|---|
+| Agent latency (ms) | 16499 | 6848 | **10115** | **−39%** |
+| M1 Alert→Decision (s) | 16.50 | 6.85 | **10.12** | −39% |
+
+| metric (stdev) | v0.3 PRE | v0.4 | **v0.5** | Δ vs PRE |
+|---|---|---|---|---|
+| M1 Alert→Decision (s) | 3.31 | 0.44 | **1.32** | **−60%** |
+| Agent latency (ms) | 3308 | 443 | **1317** | −60% |
+
+**Diễn giải:**
+- v0.4 (Neo4j hot-swap) cải thiện latency mạnh — variance cut 87% — vì
+  RAM cache loaded 1 lần ở startup thay vì lazy import time.
+- v0.5 (thêm ReAct + remove kill chain) tăng latency ~10% so với v0.4 vì
+  thêm tool definition overhead, nhưng vẫn nhanh hơn baseline v0.3 mọi metric.
+- Pass rate + confidence không đổi qua cả 3 stages — refactor bảo toàn correctness.
+
+**Files**:
+- v0.3 baseline: [`results/eval_iid_20260506_174009.json`](../experiments/results/eval_iid_20260506_174009.json)
+- v0.4 Neo4j hot-swap: [`results/eval_iid_20260509_130127.json`](../experiments/results/eval_iid_20260509_130127.json)
+- v0.5 final (kill chain removed): [`results/eval_iid_20260509_162919.json`](../experiments/results/eval_iid_20260509_162919.json)
+
+### 6.7 Reasoning quality — kill-chain leak vs primitive synthesis
+
+**v0.4 reasoning (kill chain leaked, lookup-style):**
+
+> *"Threat playbook match: SID 9000001 maps to **'presentation-tier-breach-to-data-exfiltration' kill chain, Stage 2 (Lateral Movement)**. Recommended intervention: immediate block at LEAF-1. **This is exactly what the playbook prescribes**."*
+
+→ Agent quotes the test-scenario name and executes the recipe. Pattern-matching
+against a pre-loaded answer key — gameable; doesn't measure intelligence.
+
+**v0.5 reasoning (clean, primitive synthesis):**
+
+```
+1. Baseline violation check: Flow 10.1.100.10 → 10.1.200.10:5432 is NOT
+   in any known production baseline. Legitimate path is WEB→APP→DB.
+2. System model constraints: WEB zone (untrusted) initiating to DB zone
+   (crown-jewel) is explicitly called out as anomalous pattern.
+3. Asset criticality: web-01 (high-criticality, public-facing),
+   db-01 (critical, crown-jewel). Targeted block preserves legitimate
+   web-to-application-proxy flow.
+4. False-positive evaluation: No prior alerts from 10.1.100.10 in 30 days,
+   trust score 0.5, runtime reputation clean.
+5. Impact simulation: Full-source block would break critical flow.
+   Targeted block (src+dst+port) achieves containment while preserving
+   legitimate business traffic.
+6. MITRE mapping: TA0008 Lateral Movement, T1021 Remote Services.
+7. Decision confidence: 0.95 — Hard invariant violation (WEB→DB direct)
+   with no legitimate production explanation.
+```
+
+→ Agent synthesizes evidence from 6 independent primitives — baseline absence,
+zone trust mismatch, asset criticality, alert history, counterfactual block
+impact, MITRE classification — to reach the same correct decision (DROP, 0.95).
+The reasoning is **earned**, not looked up. The kill chain "presentation-tier-breach..."
+is **not mentioned anywhere** in the trace.
+
+**Architectural takeaway**: with kill chain in Neo4j-only (reachable via
+`query_kg`) but not pre-loaded, the test now measures whether the agent CAN
+infer attack patterns from infrastructure primitives — which is the actual
+intelligence claim being evaluated.
 
 ---
 
