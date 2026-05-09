@@ -12,6 +12,7 @@ from .storage.postgres import PostgresStore
 from .storage.operational_memory import OperationalMemory
 from .storage.incident_memory import IncidentLabeler
 from .storage.events_store import EventsStore
+from .storage.neo4j_kg import Neo4jKG
 from .core.knowledge_loader import KnowledgeLoader
 from .pipeline.gate import AlertGate
 from .pipeline.consumer import SSEConsumer
@@ -59,6 +60,22 @@ async def lifespan(app: FastAPI):
 
     postgres = PostgresStore(settings.postgres_url)
     await postgres.connect()
+
+    # Neo4j Knowledge Graph — ETL Pydantic models on startup. Best-effort:
+    # if Neo4j unreachable (cold start ordering), agent still works using the
+    # in-memory Pydantic source-of-truth; KG endpoints will return empty.
+    neo4j_kg: Neo4jKG | None = None
+    try:
+        neo4j_kg = Neo4jKG(
+            uri=settings.neo4j_uri,
+            user=settings.neo4j_user,
+            password=settings.neo4j_password,
+        )
+        await neo4j_kg.connect()
+        await neo4j_kg.reload_from_models()
+    except Exception as exc:
+        log.warning("neo4j_kg_unavailable_continuing_without", error=str(exc))
+        neo4j_kg = None
 
     # Knowledge loader (3-tier cache) + operational memory
     knowledge = KnowledgeLoader(settings.ids_agent_url, semi_dynamic_ttl=30)
@@ -137,6 +154,7 @@ async def lifespan(app: FastAPI):
     app.state.response_cache = response_cache
     app.state.tracer = tracer
     app.state.events_store = events_store
+    app.state.neo4j_kg = neo4j_kg
 
     # SSE consumer — subscribe to ids-agent events
     import asyncio as _asyncio
@@ -254,6 +272,8 @@ async def lifespan(app: FastAPI):
     tracer.shutdown()
     await redis.close()
     await postgres.close()
+    if neo4j_kg is not None:
+        await neo4j_kg.close()
     log.info("intelligence_layer_stopped")
 
 

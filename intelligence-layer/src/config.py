@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     # Postgres
     postgres_url: str = "postgresql+asyncpg://ztuser:ztpass@localhost:5432/zerotrust"
 
+    # Neo4j Knowledge Graph (replaces in-memory NetworkX KG)
+    neo4j_uri: str = "bolt://neo4j:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "zerotrust2026"
+
     # IDS Agent
     ids_agent_url: str = "http://ids-agent:8766"
 

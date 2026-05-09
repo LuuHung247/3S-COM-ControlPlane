@@ -287,21 +287,33 @@ async def prompt_preview(
 
 
 @router.get("/kg/visualize", response_class=HTMLResponse)
-async def visualize_knowledge_graph() -> HTMLResponse:
+async def visualize_knowledge_graph(request: Request) -> HTMLResponse:
     """Render the agent's knowledge graph as interactive HTML.
 
-    Shows: zones, assets, leafs, SIDs, kill chains, baselines, and relationships
-    (membership, enforcement, policy ALLOW/DENY, kill-chain stages, traffic flows).
-    Open in browser to inspect what the agent 'knows'.
+    Reads from Neo4j (production KG store) if available, falls back to in-memory
+    NetworkX (Pydantic source-of-truth) on cold start or Neo4j outage.
     """
+    neo4j_kg = getattr(request.app.state, "neo4j_kg", None)
+    if neo4j_kg is not None:
+        try:
+            dump = await neo4j_kg.all_nodes_edges()
+            from ..core.kg_visualizer import render_html_from_neo4j
+            return HTMLResponse(content=render_html_from_neo4j(dump))
+        except Exception:
+            pass
     from ..core.kg_visualizer import render_html_string
-    html = render_html_string()
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=render_html_string())
 
 
 @router.get("/kg/stats")
-async def knowledge_graph_stats() -> dict:
-    """Lightweight summary of KG contents — counts of each node type and edges."""
+async def knowledge_graph_stats(request: Request) -> dict:
+    """Node + edge counts — Neo4j-backed; falls back to in-memory NetworkX."""
+    neo4j_kg = getattr(request.app.state, "neo4j_kg", None)
+    if neo4j_kg is not None:
+        try:
+            return await neo4j_kg.stats()
+        except Exception:
+            pass
     from ..core.kg_visualizer import build_knowledge_graph
     G = build_knowledge_graph()
     type_counts: dict[str, int] = {}
@@ -316,14 +328,23 @@ async def knowledge_graph_stats() -> dict:
 
 
 @router.get("/kg/json")
-async def knowledge_graph_json() -> dict:
+async def knowledge_graph_json(request: Request) -> dict:
     """KG in Cytoscape.js elements format: {nodes: [...], edges: [...]}.
 
-    Each node carries `data: {id, type, label, title, ...}` and each edge
-    `data: {id, source, target, label, kind}` for client-side styling.
+    Reads from Neo4j when available; falls back to in-memory NetworkX. Both
+    paths build a NetworkX MultiDiGraph then convert to Cytoscape elements.
     """
-    from ..core.kg_visualizer import build_knowledge_graph
-    G = build_knowledge_graph()
+    from ..core.kg_visualizer import build_knowledge_graph, graph_from_neo4j_dump
+    neo4j_kg = getattr(request.app.state, "neo4j_kg", None)
+    G = None
+    if neo4j_kg is not None:
+        try:
+            dump = await neo4j_kg.all_nodes_edges()
+            G = graph_from_neo4j_dump(dump)
+        except Exception:
+            G = None
+    if G is None:
+        G = build_knowledge_graph()
 
     nodes = []
     for nid, attrs in G.nodes(data=True):
@@ -368,12 +389,24 @@ async def knowledge_graph_json() -> dict:
 
 
 @router.get("/kg/export/graphml")
-async def knowledge_graph_export_graphml() -> Response:
-    """Export KG as GraphML — open in yEd / Gephi / Cytoscape Desktop for figures."""
+async def knowledge_graph_export_graphml(request: Request) -> Response:
+    """Export KG as GraphML — open in yEd / Gephi / Cytoscape Desktop for figures.
+
+    Source priority: Neo4j (production), fallback NetworkX (Pydantic in-memory).
+    """
     import io
     import networkx as nx
-    from ..core.kg_visualizer import build_knowledge_graph
-    G = build_knowledge_graph()
+    from ..core.kg_visualizer import build_knowledge_graph, graph_from_neo4j_dump
+    neo4j_kg = getattr(request.app.state, "neo4j_kg", None)
+    G = None
+    if neo4j_kg is not None:
+        try:
+            dump = await neo4j_kg.all_nodes_edges()
+            G = graph_from_neo4j_dump(dump)
+        except Exception:
+            G = None
+    if G is None:
+        G = build_knowledge_graph()
 
     # GraphML doesn't support multi-edges with same key cleanly; convert to DiGraph
     H = nx.DiGraph()

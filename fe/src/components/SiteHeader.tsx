@@ -6,11 +6,19 @@ import ThemeToggle from "./ThemeToggle";
 export default function SiteHeader() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
+  // Knowledge link opens the Neo4j Browser in a new tab. The browser auto-fills
+  // connection params via URL query string so the user only needs to enter the
+  // password (`zerotrust2026`). Bolt port 7687 must be reachable from the
+  // user's machine — same forward as port 7474. Set per-machine in VSCode
+  // Ports panel or via SSH `-L 7687:localhost:7687`.
+  const NEO4J_BROWSER_URL =
+    "http://localhost:7474/browser/?dbms=bolt%3A%2F%2Flocalhost%3A7687&db=neo4j&username=neo4j";
+
   const navLinks = [
     { href: "/", label: "Dashboard" },
     { href: "/monitor", label: "Monitor" },
     { href: "/topology", label: "Topology" },
-    { href: "/kg", label: "Knowledge" },
+    { href: NEO4J_BROWSER_URL, label: "Knowledge", external: true },
     { href: "/rules", label: "Rules" },
     { href: "/policy", label: "Policy" },
   ];
@@ -30,8 +38,13 @@ export default function SiteHeader() {
         {/* Desktop nav */}
         <div className="hidden lg:flex items-center gap-6 text-sm text-tc-text-dim">
           {navLinks.map((link) => (
-            <a key={link.href} href={link.href} className="hover:text-tc-green transition-colors">
-              {link.label}
+            <a
+              key={link.href}
+              href={link.href}
+              className="hover:text-tc-green transition-colors"
+              {...(link.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+            >
+              {link.label}{link.external ? " ↗" : ""}
             </a>
           ))}
           <ThemeToggle />
@@ -59,8 +72,9 @@ export default function SiteHeader() {
                 href={link.href}
                 className="hover:text-tc-green transition-colors"
                 onClick={() => setMobileNavOpen(false)}
+                {...(link.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
               >
-                {link.label}
+                {link.label}{link.external ? " ↗" : ""}
               </a>
             ))}
             <div className="pt-2 border-t border-tc-border/30">

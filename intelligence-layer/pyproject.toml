@@ -36,6 +36,10 @@ dependencies = [
     # Vector embeddings — pgvector multi-strategy retrieval over past decisions
     "pgvector>=0.3.6",
     "fastembed>=0.4.0",
+
+    # Knowledge Graph store — Neo4j replaces NetworkX in-memory KG (production grade,
+    # persistent, Cypher traversal, GraphRAG-ready)
+    "neo4j>=5.26.0",
 ]
 
 [dependency-groups]

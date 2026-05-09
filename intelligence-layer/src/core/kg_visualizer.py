@@ -220,3 +220,120 @@ def render_html_string() -> str:
     except OSError:
         pass
     return content
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Neo4j-sourced render — used when Neo4jKG is the active KG store
+# (Pydantic models are still source-of-truth, but reads come from Neo4j).
+# ─────────────────────────────────────────────────────────────────────────────
+def graph_from_neo4j_dump(dump: dict) -> nx.MultiDiGraph:
+    """Build a NetworkX MultiDiGraph from `Neo4jKG.all_nodes_edges()` dump.
+
+    Mapping:
+      Neo4j label (PascalCase) → KG node `type` (snake_case to match FE filter
+      keys + color palette). e.g. KillChain → kill_chain.
+      Asset uses `ip` as node id; everything else uses `name` or `sid`.
+    """
+    # Neo4j label → FE/KG type name (legacy NetworkX builder convention)
+    LABEL_TO_TYPE = {
+        "Zone": "zone", "Asset": "asset", "Leaf": "leaf",
+        "Sid": "sid", "KillChain": "kill_chain", "Baseline": "baseline",
+    }
+
+    G = nx.MultiDiGraph()
+    for n in dump.get("nodes", []):
+        labels = n.get("labels") or []
+        ntype = LABEL_TO_TYPE.get(labels[0], labels[0].lower()) if labels else "unknown"
+        props = n.get("properties", {})
+        # Choose stable node id matching legacy NetworkX builder
+        nid = (
+            props.get("ip") if ntype == "asset" else
+            f"SID-{props.get('sid')}" if ntype == "sid" else
+            f"flow:{props.get('name')}" if ntype == "baseline" else
+            props.get("name") or props.get("ip") or str(n.get("id"))
+        )
+        # Compose human-readable title (hover tooltip)
+        title_lines = [f"{ntype}: {nid}"]
+        for k, v in props.items():
+            if k in ("ip", "name", "sid"):
+                continue
+            title_lines.append(f"{k}: {v}")
+        label = props.get("name") or props.get("hostname") or str(nid)
+        if ntype == "sid":
+            label = f"SID {props.get('sid')}\nP{props.get('severity_p_level','?')}"
+        elif ntype == "asset":
+            label = f"{props.get('hostname','?')}\n{props.get('ip','?')}"
+        elif ntype == "zone":
+            label = f"{props.get('name','?')}\n{props.get('cidr','?')}"
+        shape = {
+            "zone": "box", "leaf": "diamond", "asset": "ellipse",
+            "sid": "triangle", "kill_chain": "star", "baseline": "hexagon",
+        }.get(ntype, "ellipse")
+        G.add_node(nid, type=ntype, label=label, title="\n".join(title_lines), shape=shape)
+
+    # Build id-mapping for edges (Neo4j internal id → our nid)
+    id_to_nid: dict[int, str] = {}
+    for n in dump.get("nodes", []):
+        labels = n.get("labels") or []
+        ntype = LABEL_TO_TYPE.get(labels[0], labels[0].lower()) if labels else "unknown"
+        props = n.get("properties", {})
+        nid = (
+            props.get("ip") if ntype == "asset" else
+            f"SID-{props.get('sid')}" if ntype == "sid" else
+            f"flow:{props.get('name')}" if ntype == "baseline" else
+            props.get("name") or props.get("ip") or str(n.get("id"))
+        )
+        id_to_nid[n["id"]] = nid
+
+    for e in dump.get("edges", []):
+        src = id_to_nid.get(e["source"])
+        dst = id_to_nid.get(e["target"])
+        if src is None or dst is None:
+            continue
+        rtype = e.get("type", "")
+        eprops = e.get("properties", {})
+        if rtype == "ALLOW":
+            G.add_edge(src, dst, label="ALLOW", color="#27ae60")
+        elif rtype == "DENY":
+            G.add_edge(src, dst, label="DENY", color="#c0392b")
+        elif rtype == "MEMBER_OF":
+            G.add_edge(src, dst, label="member_of", color="#2ecc71")
+        elif rtype == "ENFORCES":
+            G.add_edge(src, dst, label="enforces", color="#f39c12")
+        elif rtype == "EXPECTED_IN":
+            stage = eprops.get("stage", "")
+            G.add_edge(src, dst, label=f"stage{stage}", color="#9b59b6")
+        else:
+            G.add_edge(src, dst, label=rtype.lower(), color="#95a5a6")
+    return G
+
+
+def render_html_from_neo4j(dump: dict) -> str:
+    """Render KG HTML from Neo4j dump. Same physics/styling as legacy render."""
+    G = graph_from_neo4j_dump(dump)
+    net = Network(
+        height="900px", width="100%", directed=True, notebook=False,
+        cdn_resources="in_line", bgcolor="#fafafa",
+    )
+    net.from_nx(G)
+    for node in net.nodes:
+        ntype = node.get("type", "")
+        node["color"] = _NODE_COLORS.get(ntype, "#95a5a6")
+    net.set_options("""
+    {
+      "physics": {"barnesHut": {"gravitationalConstant": -8000, "centralGravity": 0.3,
+        "springLength": 200, "springConstant": 0.04, "damping": 0.09}, "minVelocity": 0.5},
+      "nodes": {"font": {"size": 12, "face": "monospace"}},
+      "edges": {"font": {"size": 10}, "smooth": {"type": "continuous"}}
+    }
+    """)
+    fd, out_path = tempfile.mkstemp(suffix=".html", prefix="kg_neo4j_")
+    os.close(fd)
+    net.save_graph(out_path)
+    with open(out_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    try:
+        os.unlink(out_path)
+    except OSError:
+        pass
+    return content

@@ -83,6 +83,9 @@ services:
       - IDS_AGENT_URL=http://ids-agent:8766
       - REDIS_URL=redis://redis:6379/0
       - POSTGRES_URL=postgresql+asyncpg://ztuser:ztpass@postgres:5432/zerotrust
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=zerotrust2026
       - LANGFUSE_HOST=http://langfuse:3000
       - LANGFUSE_PUBLIC_KEY=pk-lf-zt-public-2026
       - LANGFUSE_SECRET_KEY=sk-lf-zt-secret-2026
@@ -91,6 +94,7 @@ services:
       - ids-agent
       - redis
       - postgres
+      - neo4j
       - langfuse
     networks:
       - ztnet
@@ -130,6 +134,44 @@ services:
       options:
         max-size: "5m"
         max-file: "2"
+
+  # Neo4j Community — Knowledge Graph store. Replaces in-memory NetworkX:
+  # Pydantic models → ETL on startup → Neo4j nodes/edges → Cypher traversal +
+  # vector search (pgvector-equivalent) for GraphRAG. Single-node, persistent.
+  # 30 nodes/43 edges current; scales to 100k+ without issue on community edition.
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: zt-neo4j
+    restart: unless-stopped
+    ports:
+      - "7474:7474"   # HTTP browser UI
+      - "7687:7687"   # Bolt protocol (driver)
+    environment:
+      NEO4J_AUTH: "neo4j/zerotrust2026"
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+      # Memory caps — small footprint for 30-node lab; bump for prod
+      NEO4J_server_memory_heap_initial__size: "256m"
+      NEO4J_server_memory_heap_max__size: "512m"
+      NEO4J_server_memory_pagecache_size: "256m"
+    volumes:
+      - zt_neo4j_data:/data
+      - zt_neo4j_logs:/logs
+    networks:
+      - ztnet
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    labels:
+      autoheal: "true"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   postgres:
     image: pgvector/pgvector:pg16
@@ -220,3 +262,5 @@ networks:
 
 volumes:
   zt_pgdata:
+  zt_neo4j_data:
+  zt_neo4j_logs:
