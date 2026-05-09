@@ -61,9 +61,15 @@ async def lifespan(app: FastAPI):
     postgres = PostgresStore(settings.postgres_url)
     await postgres.connect()
 
-    # Neo4j Knowledge Graph — ETL Pydantic models on startup. Best-effort:
-    # if Neo4j unreachable (cold start ordering), agent still works using the
-    # in-memory Pydantic source-of-truth; KG endpoints will return empty.
+    # Neo4j Knowledge Graph — durable runtime source of truth.
+    # Boot sequence:
+    #   1. .md files already populated core/*.py constants at import time (bootstrap).
+    #   2. ETL: parse .md → validate Pydantic → push to Neo4j (single canonical store).
+    #   3. Reader: pull Neo4j → Pydantic → hot-swap core/*.py module dicts in place.
+    #   4. After step 3, Neo4j is the runtime source. The bootstrap from step 1
+    #      becomes the cold-start fallback (used if Neo4j is unreachable).
+    # Safety floor: critical NEVER_BLOCK CIDRs (mgt-01, IDS, SVI gateways) are
+    # validated post-hot-swap. If missing → app fails closed, refuses to start.
     neo4j_kg: Neo4jKG | None = None
     try:
         neo4j_kg = Neo4jKG(
@@ -72,9 +78,84 @@ async def lifespan(app: FastAPI):
             password=settings.neo4j_password,
         )
         await neo4j_kg.connect()
-        await neo4j_kg.reload_from_models()
+        etl_counts = await neo4j_kg.reload_from_models()
+        log.info("neo4j_etl_done", **etl_counts)
+
+        # Hot-swap core/*.py module dicts from Neo4j → Pydantic
+        from .storage import neo4j_reader
+        from .core import system_model as _sm
+        from .core import baselines as _bl
+        from .core import threat_playbook as _tp
+        from .core import policy as _pol
+        from .core import enforcement_plane as _ep
+        from .core import invariants as _inv
+        from .core.enforcement_plane import FailureMode
+
+        kb = await neo4j_reader.read_all(neo4j_kg.driver)
+
+        _sm.ZONES.clear(); _sm.ZONES.update(kb["zones"])
+        _sm.ASSETS.clear(); _sm.ASSETS.update(kb["assets"])
+        _sm.LEAFS.clear(); _sm.LEAFS.update(kb["leafs"])
+
+        _bl.ALL_BASELINES.clear(); _bl.ALL_BASELINES.extend(kb["baselines"]["patterns"])
+        _bl.APPLICATION_FLOWS.clear()
+        _bl.APPLICATION_FLOWS.extend(p for p in _bl.ALL_BASELINES if p.src_zone != "MGT")
+        _bl.MANAGEMENT_FLOWS.clear()
+        _bl.MANAGEMENT_FLOWS.extend(p for p in _bl.ALL_BASELINES if p.src_zone == "MGT")
+        _bl.ANOMALOUS_PATTERNS.clear()
+        _bl.ANOMALOUS_PATTERNS.extend(kb["baselines"]["anomalous_patterns"])
+        _bl.STEADY_STATE_FLOWS_PER_MINUTE = kb["baselines"]["steady_state_flows_per_minute"]
+        _bl.MGT_AUDIT_ALERT_RATE_PER_MINUTE = kb["baselines"]["mgt_audit_alert_rate_per_minute"]
+
+        _tp.SID_DETECTIONS.clear(); _tp.SID_DETECTIONS.update(kb["sids"])
+        _tp.KILL_CHAINS.clear(); _tp.KILL_CHAINS.extend(kb["kill_chains"])
+
+        _pol.POLICY_MATRIX.clear(); _pol.POLICY_MATRIX.update(kb["policy_matrix"])
+
+        _ep.ENDPOINT_CONTRACTS.clear(); _ep.ENDPOINT_CONTRACTS.update(kb["enforcement_plane"]["endpoint_contracts"])
+        _ep.FIELD_NAME_MAPPING.clear(); _ep.FIELD_NAME_MAPPING.extend(kb["enforcement_plane"]["field_name_mapping"])
+        _ep.CRITICAL_GOTCHAS.clear(); _ep.CRITICAL_GOTCHAS.extend(kb["enforcement_plane"]["critical_gotchas"])
+        _ep.FAILURE_MODES.clear()
+        _ep.FAILURE_MODES.extend(FailureMode(**fm) for fm in kb["enforcement_plane"]["failure_modes"])
+        _ep.RBAC_CONTRACT = "\n" + kb["enforcement_plane"]["rbac_contract"] + "\n"
+
+        _inv.NEVER_BLOCK_CIDRS.clear(); _inv.NEVER_BLOCK_CIDRS.extend(kb["invariants"]["never_block_cidrs"])
+        _inv.NEVER_BLOCK_RATIONALE.clear(); _inv.NEVER_BLOCK_RATIONALE.update(kb["invariants"]["never_block_rationale"])
+        _inv.ALLOWED_AGENT_ACTIONS = frozenset(kb["invariants"]["allowed_agent_actions"])
+        _inv.PROTECTED_COMMENT_PREFIXES.clear()
+        _inv.PROTECTED_COMMENT_PREFIXES.extend(kb["invariants"]["protected_comment_prefixes"])
+        _inv.AGENT_COMMENT_PREFIX = kb["invariants"]["agent_comment_prefix"]
+
+        # 🛑 Safety floor — refuse to start if any critical never-block CIDR is missing.
+        # This is the contract: even if Neo4j is mutated post-startup, app must hold
+        # these. Listed inline (not data-driven) so removing them requires a code change.
+        _SAFETY_FLOOR = {
+            "10.2.50.10/32",        # mgt-01 — agent vantage / audit
+            "192.168.122.205/32",   # Suricata IDS — agent perception
+            "10.1.100.1/32", "10.1.200.1/32", "10.2.100.1/32", "10.2.50.1/32",  # SVI gateways
+            "192.168.122.0/24",     # mgmt OOB
+        }
+        missing = _SAFETY_FLOOR - set(_inv.NEVER_BLOCK_CIDRS)
+        if missing:
+            raise RuntimeError(
+                f"Safety floor violated — Neo4j is missing critical NEVER_BLOCK CIDRs: {sorted(missing)}. "
+                f"Refusing to start (would risk blocking crown-jewel infrastructure)."
+            )
+
+        log.info(
+            "neo4j_hotswap_done",
+            zones=len(_sm.ZONES), assets=len(_sm.ASSETS),
+            baselines=len(_bl.ALL_BASELINES), sids=len(_tp.SID_DETECTIONS),
+            kill_chains=len(_tp.KILL_CHAINS), policy_pairs=len(_pol.POLICY_MATRIX),
+            never_block_cidrs=len(_inv.NEVER_BLOCK_CIDRS),
+        )
+    except RuntimeError:
+        # Safety floor failure — re-raise to abort startup
+        raise
     except Exception as exc:
-        log.warning("neo4j_kg_unavailable_continuing_without", error=str(exc))
+        # Neo4j unreachable / transient — keep .md bootstrap data, log warning.
+        # App still works in degraded mode (Neo4j-backed endpoints return errors).
+        log.warning("neo4j_unavailable_using_md_bootstrap", error=str(exc))
         neo4j_kg = None
 
     # Knowledge loader (3-tier cache) + operational memory
@@ -133,6 +214,7 @@ async def lifespan(app: FastAPI):
         tracer=tracer,
         settings=settings,
         dry_run=settings.agent_dry_run,
+        neo4j_driver=neo4j_kg.driver if neo4j_kg is not None else None,
     )
 
     # Alert gate (pre-LLM filters)

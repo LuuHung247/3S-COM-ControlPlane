@@ -289,16 +289,10 @@ class KnowledgeLoader:
                                  f"matches baseline={targeted.get('matches_legitimate_baseline')}")
                 parts.append(f"- Recommendation: {impact.get('recommendation')}")
 
-            # Kill chain match
-            kc_match = investigation.get("kill_chain_match", [])
-            if kc_match:
-                parts.append("\n### Kill-chain stage matches")
-                for m in kc_match:
-                    parts.append(
-                        f"- **{m['kill_chain']}** stage {m['stage']} ({m['tactic']}): {m['indicator']}"
-                    )
-                    parts.append(f"  - Recommended intervention: {m['intervention_point']}")
-                    parts.append(f"  - Containment: {m['containment_strategy']}")
+            # Kill-chain stage matches removed: see comment in
+            # tools.prefetch_investigation_context. Pre-baking "your alert IS
+            # stage N of playbook X" is test contamination. Agent must reason
+            # multi-stage from primitives or query_kg explicitly.
 
         return "\n".join(parts)
 

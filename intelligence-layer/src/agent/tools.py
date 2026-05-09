@@ -17,9 +17,156 @@ from ..core.threat_playbook import find_kill_chain_stage
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LLM-callable tool definitions (only get_alert_history is LLM-facing)
+# query_kg — read-only Cypher executor against the agent's knowledge graph.
+#
+# Designed to be exposed to the LLM via tool-calling. The agent decides which
+# Cypher to write based on the alert + reasoning state. Server-side enforces:
+#   - Read-only (rejects CREATE / DELETE / MERGE / SET / REMOVE / DROP / DETACH)
+#   - Result size cap (50 records max — bounds prompt cost when fed back to LLM)
+#   - Timeout (5s — Neo4j driver hard limit)
 # ─────────────────────────────────────────────────────────────────────────────
+import re as _re
+# Word-boundary regex avoids false matches like "SET" inside "Asset".
+_KG_WRITE_KEYWORD_RE = _re.compile(
+    r"\b(CREATE|DELETE|MERGE|SET|REMOVE|DROP|DETACH|FOREACH|"
+    r"LOAD\s+CSV|CALL\s+DBMS|CALL\s+APOC\.LOAD)\b",
+    _re.IGNORECASE,
+)
+_KG_RESULT_LIMIT = 50
+_KG_TIMEOUT_SECONDS = 5.0
+
+
+async def execute_query_kg(driver, cypher: str) -> dict[str, Any]:
+    """Run a read-only Cypher query and return rows + metadata.
+
+    Driver: an open neo4j AsyncDriver (from app.state.neo4j_kg.driver).
+    Returns: {ok: bool, rows: list[dict], row_count, truncated, error}.
+
+    Safety: rejects any write keyword, caps row count, enforces timeout.
+    The agent is expected to write valid Cypher against the schema documented
+    in the tool description (see TOOL_DEFINITIONS below).
+    """
+    if driver is None:
+        return {"ok": False, "rows": [], "row_count": 0, "truncated": False,
+                "error": "Neo4j driver unavailable — KG offline."}
+
+    write_match = _KG_WRITE_KEYWORD_RE.search(cypher)
+    if write_match:
+        return {"ok": False, "rows": [], "row_count": 0, "truncated": False,
+                "error": f"Write operation '{write_match.group(0).upper()}' rejected — query_kg is read-only."}
+
+    try:
+        async with driver.session() as sess:
+            result = await sess.run(cypher, timeout=_KG_TIMEOUT_SECONDS)
+            rows: list[dict[str, Any]] = []
+            truncated = False
+            async for r in result:
+                if len(rows) >= _KG_RESULT_LIMIT:
+                    truncated = True
+                    break
+                # Convert Neo4j Node/Relationship to plain dict
+                d: dict[str, Any] = {}
+                for k, v in dict(r).items():
+                    if hasattr(v, "items"):  # Node / Relationship
+                        d[k] = {kk: vv for kk, vv in dict(v).items()
+                                if kk not in ("kg_managed",)}
+                    elif isinstance(v, (list, tuple)):
+                        d[k] = list(v)
+                    else:
+                        d[k] = v
+                rows.append(d)
+        return {"ok": True, "rows": rows, "row_count": len(rows),
+                "truncated": truncated, "error": None}
+    except Exception as exc:
+        return {"ok": False, "rows": [], "row_count": 0, "truncated": False,
+                "error": f"Cypher error: {exc.__class__.__name__}: {exc}"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LLM-callable tool definitions (exposed in chat_react)
+# ─────────────────────────────────────────────────────────────────────────────
+QUERY_KG_TOOL_DESCRIPTION = """Run a read-only Cypher query against the knowledge graph.
+
+Use this when you need a specific fact about the datacenter that ISN'T in your
+system prompt. Your prompt has high-level architecture + invariants — for any
+specific entity (zone CIDR, asset blast radius, baseline match, kill chain
+stage, SID detail), use this tool instead of guessing.
+
+## SCHEMA
+
+Nodes:
+  (:Zone {name, cidr, leaf, vlan, svi_gateway, trust_level, criticality, purpose})
+  (:Asset {ip, hostname, zone, tier, role, criticality, data_classification,
+           owner_team, services_json, expected_inbound_sources,
+           expected_outbound_destinations, if_compromised_impact, if_blocked_impact})
+  (:Leaf {name, mgmt_ip, zones, role})
+  (:Sid {sid, severity_p_level, signature_msg, production_description,
+         mitre_tactic, mitre_technique, detection_logic, recommended_response,
+         default_ttl_seconds, false_positive_likelihood, false_positive_scenarios})
+  (:KillChain {name, production_description, typical_dwell,
+               recommended_intervention, containment_strategy, stage_count})
+  (:Baseline {name, src_zone, src_ip, dst_zone, dst_ip, dst_port, proto,
+              cadence, expected_volume_per_hour, burst_anomaly_threshold,
+              criticality_to_business, production_description, if_disrupted})
+  (:NeverBlockEntry {cidr, rationale})
+  (:KnowledgeMeta {key, ...})  — singletons (baseline_constants, rbac_contract, agent_invariants)
+
+Edges:
+  (:Asset)-[:MEMBER_OF]->(:Zone)
+  (:Leaf)-[:ENFORCES]->(:Zone)
+  (:Zone)-[:ALLOW]->(:Zone)   — policy matrix
+  (:Zone)-[:DENY]->(:Zone)
+  (:Sid)-[:EXPECTED_IN {stage, tactic, indicators, false_positive_sources}]->(:KillChain)
+
+## EXAMPLES
+
+Get full asset profile:
+  MATCH (a:Asset {ip: '10.1.100.10'}) RETURN a
+
+Find baselines involving a src IP (is this flow legitimate?):
+  MATCH (b:Baseline) WHERE b.src_ip = '10.1.100.10' OR b.dst_ip = '10.1.100.10'
+  RETURN b.name, b.src_ip, b.dst_ip, b.dst_port, b.proto, b.criticality_to_business
+
+Find kill chains containing this SID + which stage:
+  MATCH (s:Sid {sid: 9000001})-[r:EXPECTED_IN]->(k:KillChain)
+  RETURN k.name, r.stage, r.tactic, r.indicators, k.containment_strategy
+
+Get SID detail with FP scenarios:
+  MATCH (s:Sid {sid: 9000001}) RETURN s
+
+Check policy verdict between zones:
+  MATCH (s:Zone {name: 'WEB'})-[r:ALLOW|DENY]->(d:Zone {name: 'DB'}) RETURN type(r)
+
+Find all assets in same zone (lateral movement candidates):
+  MATCH (a:Asset)-[:MEMBER_OF]->(z:Zone {name: 'DB'}) RETURN a.ip, a.hostname
+
+## CONSTRAINTS
+
+- Read-only: no CREATE/DELETE/MERGE/SET/REMOVE.
+- Max 50 rows returned (truncated if more — refine your query).
+- 5s timeout. Keep queries simple — no expensive cartesian products.
+- Use exact node labels and property names from the schema above.
+"""
+
+
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "query_kg",
+            "description": QUERY_KG_TOOL_DESCRIPTION,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cypher": {
+                        "type": "string",
+                        "description": "Read-only Cypher query against the schema above.",
+                    },
+                },
+                "required": ["cypher"],
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -539,23 +686,16 @@ async def prefetch_investigation_context(
         return_exceptions=True,
     )
 
-    # Kill chain stage match (in-memory, ~1ms)
-    kc_matches = find_kill_chain_stage(sid)
-    kill_chain_context = []
-    for kc, stage in kc_matches:
-        kill_chain_context.append({
-            "kill_chain": kc.name,
-            "stage": stage.stage,
-            "tactic": stage.tactic,
-            "expected_signals": stage.expected_signals,
-            "indicator": stage.production_indicators,
-            "intervention_point": kc.recommended_intervention_point,
-            "containment_strategy": kc.containment_strategy,
-        })
-
+    # Kill-chain pre-fetch removed: handing the agent "SID X = stage Y of playbook Z"
+    # turns reasoning into pattern-matching against the test scenario itself
+    # (data leakage). Agent must instead INFER multi-stage attacks from primitives:
+    # baseline violation, MITRE technique, blast radius. If the agent decides it
+    # genuinely needs kill-chain context (e.g., correlated alert sequence
+    # suggests a campaign), it can call query_kg to traverse
+    #   (Sid)-[:EXPECTED_IN]->(KillChain)
+    # explicitly — that's a deliberate investigation step, not pre-baked answer.
     return {
         "asset_neighbors": neighbors if not isinstance(neighbors, Exception) else {"error": str(neighbors)},
         "past_incidents": past if not isinstance(past, Exception) else {"error": str(past)},
         "block_impact": impact if not isinstance(impact, Exception) else {"error": str(impact)},
-        "kill_chain_match": kill_chain_context,
     }

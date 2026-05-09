@@ -45,287 +45,18 @@ class KillChain(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Active Suricata SID inventory (8 rules, verified 2026-05-04)
+# SID + KillChain catalogs — populated from knowledge/infra/*.md at import.
+#
+# Authoring source: knowledge/infra/{sids,kill-chains}.md
+# Bootstrap path:   .md → knowledge_parser → these vars (at import time)
+# Runtime path:     replaced in-place at app startup by Neo4j read.
 # ─────────────────────────────────────────────────────────────────────────────
-SID_DETECTIONS: dict[int, SidDetection] = {
-    9000001: SidDetection(
-        sid=9000001,
-        severity_p_level=1,
-        signature_msg="WEB direct to DB - microsegmentation bypass",
-        production_description=(
-            "Detection trigger: direct connection initiated from presentation tier toward data "
-            "tier database service ports. This violates defense-in-depth principle requiring "
-            "application-mediated data access. Likely lateral movement preparing SQL exfiltration."
-        ),
-        mitre_tactic="TA0008 Lateral Movement",
-        mitre_technique="T1021 Remote Services",
-        detection_logic="TCP SYN from 10.1.100.0/24 to 10.1.200.0/24 dst_port in {5432,3306,1433,27017}",
-        uses_flags_s_workaround=True,
-        recommended_response="DROP src_ip",
-        default_ttl_seconds=3600,
-        false_positive_likelihood="low",
-        false_positive_scenarios=[
-            "Legitimate DB migration script run from WEB tier (rare, pre-announced)",
-            "Misconfigured monitoring tool scraping DB from wrong zone",
-        ],
-    ),
-    9000002: SidDetection(
-        sid=9000002,
-        severity_p_level=1,
-        signature_msg="DB initiating outbound connection - exfiltration",
-        production_description=(
-            "Detection trigger: data tier initiating outbound connection beyond all internal "
-            "trust zones. Violates crown-jewel invariant (DB never initiates outbound). Strong "
-            "indicator of data exfiltration over C2 channel or covert tunnel."
-        ),
-        mitre_tactic="TA0010 Exfiltration",
-        mitre_technique="T1041 Exfiltration Over C2 Channel",
-        detection_logic="TCP SYN from 10.1.200.0/24 to !{WEB,DB,APP,MGT}",
-        uses_flags_s_workaround=True,
-        recommended_response="DROP src_ip",
-        default_ttl_seconds=3600,
-        false_positive_likelihood="low",
-        false_positive_scenarios=[
-            "OS package update from DB host (should be staged via MGT proxy, but possible)",
-            "DNS resolver call (legitimate but should not happen in this datacenter)",
-        ],
-    ),
-    9000003: SidDetection(
-        sid=9000003,
-        severity_p_level=2,
-        signature_msg="APP reverse call to WEB - lateral movement",
-        production_description=(
-            "Detection trigger: application tier initiating connection toward presentation "
-            "tier — direction reversal from intended dataflow. APP should never call WEB. "
-            "Indicator of APP tier compromise pivoting toward web frontend."
-        ),
-        mitre_tactic="TA0008 Lateral Movement",
-        mitre_technique="T1021 Remote Services",
-        detection_logic="TCP SYN from 10.2.100.0/24 to 10.1.100.0/24 dst_port in {80,443,22}",
-        uses_flags_s_workaround=True,
-        recommended_response="DROP src_ip",
-        default_ttl_seconds=1800,
-        false_positive_likelihood="low",
-        false_positive_scenarios=[],
-    ),
-    9000004: SidDetection(
-        sid=9000004,
-        severity_p_level=2,
-        signature_msg="WEB to MGT - unauthorized escalation attempt",
-        production_description=(
-            "Detection trigger: presentation tier initiating connection toward management plane "
-            "on operational ports (SSH/RDP). Lateral movement from untrusted zone into "
-            "privileged management zone. Strong indicator of WEB compromise attempting "
-            "credential pivot or remote shell."
-        ),
-        mitre_tactic="TA0008 Lateral Movement",
-        mitre_technique="T1021 Remote Services",
-        detection_logic="TCP SYN from 10.1.100.0/24 to 10.2.50.0/24 dst_port in {22,3389}",
-        uses_flags_s_workaround=True,
-        recommended_response="DROP src_ip",
-        default_ttl_seconds=1800,
-        false_positive_likelihood="low",
-        false_positive_scenarios=[],
-    ),
-    9000005: SidDetection(
-        sid=9000005,
-        severity_p_level=2,
-        signature_msg="APP to MGT - unauthorized escalation attempt",
-        production_description=(
-            "Detection trigger: application tier initiating connection toward management plane "
-            "on operational ports. Same threat model as 9000004 but from APP tier — indicates "
-            "deeper compromise reaching application layer."
-        ),
-        mitre_tactic="TA0008 Lateral Movement",
-        mitre_technique="T1021 Remote Services",
-        detection_logic="TCP SYN from 10.2.100.0/24 to 10.2.50.0/24 dst_port in {22,3389}",
-        uses_flags_s_workaround=True,
-        recommended_response="DROP src_ip",
-        default_ttl_seconds=1800,
-        false_positive_likelihood="low",
-        false_positive_scenarios=[],
-    ),
-    9000010: SidDetection(
-        sid=9000010,
-        severity_p_level=3,
-        signature_msg="ICMP ping sweep - reconnaissance",
-        production_description=(
-            "Detection trigger: ICMP echo activity from a single source exceeding 3 within 10 "
-            "seconds. Indicative of network reconnaissance scanning live hosts."
-        ),
-        mitre_tactic="TA0043 Reconnaissance",
-        mitre_technique="T1018 Remote System Discovery",
-        detection_logic="ICMP echo, threshold 3 within 10s per src",
-        uses_flags_s_workaround=False,
-        recommended_response="log_only",
-        default_ttl_seconds=0,
-        false_positive_likelihood="medium",
-        false_positive_scenarios=[
-            "Legitimate operations team running connectivity verification",
-            "Health check tools doing host enumeration",
-        ],
-    ),
-    9000011: SidDetection(
-        sid=9000011,
-        severity_p_level=3,
-        signature_msg="TCP port scan - reconnaissance",
-        production_description=(
-            "Detection trigger: TCP SYN burst from single source — 10 SYN within 5 seconds. "
-            "Indicative of port-scanning behavior mapping service surface area."
-        ),
-        mitre_tactic="TA0043 Reconnaissance",
-        mitre_technique="T1046 Network Service Discovery",
-        detection_logic="TCP SYN, threshold 10 within 5s per src",
-        uses_flags_s_workaround=False,
-        recommended_response="log_only",
-        default_ttl_seconds=0,
-        false_positive_likelihood="medium",
-        false_positive_scenarios=[
-            "Vulnerability scanner from MGT zone",
-            "Application connection-pool warmup",
-        ],
-    ),
-    9000020: SidDetection(
-        sid=9000020,
-        severity_p_level=4,
-        signature_msg="MGT zone access - audit baseline",
-        production_description=(
-            "Detection trigger: management plane initiating any flow, rate-limited to 1/min/src. "
-            "BY DESIGN — required visibility for compliance. NOT an incident. Confirms management "
-            "plane is operating normally."
-        ),
-        mitre_tactic="TA0007 Discovery",
-        mitre_technique="T1082 System Information Discovery",
-        detection_logic="MGT (10.2.50.0/24) → any, rate-limit 1/min/src",
-        uses_flags_s_workaround=False,
-        recommended_response="log_only",
-        default_ttl_seconds=0,
-        false_positive_likelihood="high",
-        false_positive_scenarios=[
-            "Every legitimate MGT scrape, audit, logpull triggers this — by design.",
-        ],
-    ),
-}
+from . import knowledge_parser as _kp
 
+SID_DETECTIONS: dict[int, SidDetection] = _kp.parse_sids()
+KILL_CHAINS: list[KillChain] = _kp.parse_kill_chains()
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Kill chains — multi-stage adversary playbooks
-# ─────────────────────────────────────────────────────────────────────────────
-KILL_CHAINS: list[KillChain] = [
-    KillChain(
-        name="presentation-tier-breach-to-data-exfiltration",
-        production_description=(
-            "Adversary gains foothold on presentation tier (web-01) through external-facing "
-            "service vulnerability. Conducts internal reconnaissance to map data tier. Attempts "
-            "direct lateral movement bypassing application access controls. Once on data tier, "
-            "exfiltrates database content over outbound channel."
-        ),
-        stages=[
-            KillChainStage(
-                stage=1, tactic="Discovery",
-                expected_signals=[9000010, 9000011],
-                production_indicators="Anomalous probing from compromised presentation tier toward internal services",
-                false_positive_sources=["Legitimate scanner from MGT zone"],
-            ),
-            KillChainStage(
-                stage=2, tactic="Lateral Movement",
-                expected_signals=[9000001],
-                production_indicators="WEB tier directly contacting DB tier on database ports — bypasses application mediation",
-                false_positive_sources=[],
-            ),
-            KillChainStage(
-                stage=3, tactic="Exfiltration",
-                expected_signals=[9000002],
-                production_indicators="Data tier initiating outbound connection — likely C2 callback or exfil tunnel",
-                false_positive_sources=[],
-            ),
-        ],
-        typical_dwell_between_stages="5-30 minutes",
-        recommended_intervention_point="Stage 1 (block recon source IP early prevents escalation to stages 2-3)",
-        containment_strategy=(
-            "Block presentation tier src_ip at LEAF-1 immediately on stage 1+ detection. "
-            "If stage 2+ confirmed, additionally block any DB outbound. Escalate to SOC if "
-            "stage 3 reached — implies data has likely been touched."
-        ),
-    ),
-    KillChain(
-        name="application-tier-breach-pivoting",
-        production_description=(
-            "Adversary gains foothold on application tier (app-01), abuses legitimate APP→DB "
-            "path while pivoting toward presentation tier (reverse direction) or escalating "
-            "to management plane via SSH."
-        ),
-        stages=[
-            KillChainStage(
-                stage=1, tactic="Lateral Movement (reverse)",
-                expected_signals=[9000003],
-                production_indicators="APP tier reaching back to WEB tier — direction reversal indicates compromise",
-                false_positive_sources=[],
-            ),
-            KillChainStage(
-                stage=2, tactic="Privilege Escalation Attempt",
-                expected_signals=[9000005],
-                production_indicators="APP tier attempting SSH to management plane",
-                false_positive_sources=[],
-            ),
-        ],
-        typical_dwell_between_stages="2-15 minutes",
-        recommended_intervention_point="Stage 1 (any APP-originated reverse flow)",
-        containment_strategy=(
-            "Block app-01 outbound at LEAF-2 on first reverse-direction or MGT-direction signal. "
-            "Application tier compromise affects business logic integrity — high-priority response."
-        ),
-    ),
-    KillChain(
-        name="management-plane-credential-compromise",
-        production_description=(
-            "Adversary acquires management plane credentials (insider threat, supply chain, or "
-            "credential leak). Uses MGT plane's universal access to pivot freely. Hardest "
-            "scenario to detect because MGT traffic is whitelisted by design."
-        ),
-        stages=[
-            KillChainStage(
-                stage=1, tactic="Discovery (anomalous volume)",
-                expected_signals=[9000020],
-                production_indicators=(
-                    "Spike in SID 9000020 rate beyond ~1/min baseline. Unusual destination "
-                    "diversity or off-pattern timing."
-                ),
-                false_positive_sources=["Operations team running ad-hoc audit"],
-            ),
-        ],
-        typical_dwell_between_stages="N/A — single-stage detection",
-        recommended_intervention_point="Stage 1 (escalate to human, agent must NOT auto-block MGT)",
-        containment_strategy=(
-            "MGT zone is in NEVER_BLOCK list — agent CANNOT auto-block. On 9000020 anomaly "
-            "(rate spike or off-pattern timing), escalate to SOC for human investigation. "
-            "Auto-blocking MGT would self-DoS audit/visibility."
-        ),
-    ),
-    KillChain(
-        name="data-tier-direct-exfiltration",
-        production_description=(
-            "Less common but high-impact: adversary gains direct access to data tier (db-01) "
-            "through database vulnerability or stolen credentials, beacons or exfiltrates data "
-            "directly without going through application tier."
-        ),
-        stages=[
-            KillChainStage(
-                stage=1, tactic="Exfiltration / C2",
-                expected_signals=[9000002],
-                production_indicators="Any DB-originated outbound flow — DB is crown-jewel, never initiates",
-                false_positive_sources=[],
-            ),
-        ],
-        typical_dwell_between_stages="N/A — single-stage detection",
-        recommended_intervention_point="Stage 1 (immediate)",
-        containment_strategy=(
-            "Block db-01 outbound at LEAF-1 immediately. DB outbound = data is at risk RIGHT NOW. "
-            "Escalate to SOC for incident response — assume confidentiality breach."
-        ),
-    ),
-]
-
+# Legacy literal definitions removed. Edit knowledge/infra/{sids,kill-chains}.md instead.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -382,9 +113,16 @@ def render_for_prompt() -> str:
 
 
 def render_for_alert(sid: int) -> str:
-    """Render ONLY this SID's detail + kill chains containing this SID.
-    For other SIDs, list short reference (just sid + severity + tactic) so LLM has
-    awareness without verbose detail.
+    """Render ONLY this SID's detail (no kill-chain leakage).
+
+    Kill chains are intentionally NOT injected into the agent's prompt: doing so
+    would hand the agent the test-scenario answer (e.g., "SID 9000001 = stage 2
+    of presentation-tier-breach playbook → block") and turn reasoning into
+    pattern-matching. Kill-chain knowledge remains in Neo4j and is reachable via
+    the `query_kg` tool when the agent decides it needs to reason about
+    multi-stage campaigns. The agent must INFER lateral movement / exfiltration
+    from primitives (zone violation, baseline absence, MITRE technique), not
+    from a pre-baked playbook.
     """
     parts: list[str] = ["## THREAT PLAYBOOK (alert-specific slice)\n"]
 
@@ -405,18 +143,12 @@ def render_for_alert(sid: int) -> str:
                 f"- SID {d.sid} (P{d.severity_p_level}): {d.signature_msg} — {d.recommended_response}"
             )
 
-    # Only kill chains that involve this SID
-    matching_chains = []
-    for kc in KILL_CHAINS:
-        for stage in kc.stages:
-            if sid in stage.expected_signals:
-                matching_chains.append(kc)
-                break
-
-    if matching_chains:
-        parts.append("\n### Kill chains containing this SID\n")
-        parts.extend(_render_kill_chain(kc) for kc in matching_chains)
-    else:
-        parts.append("\n### Kill chains: this SID is not part of any modeled multi-stage attack.")
+    parts.append(
+        "\n### Multi-stage campaign analysis\n"
+        "Kill-chain playbooks are NOT pre-loaded here. If you suspect this alert is\n"
+        "part of a multi-stage attack, use `query_kg` to traverse `(Sid)-[:EXPECTED_IN]->(KillChain)`\n"
+        "and decide based on what you find. Otherwise reason from primitives:\n"
+        "baseline violation, MITRE technique, blast radius, asset criticality."
+    )
 
     return "\n".join(parts)

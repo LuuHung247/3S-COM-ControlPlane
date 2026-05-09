@@ -1,13 +1,13 @@
-"""Zone-to-zone policy matrix. Pure logic, no I/O."""
-from .topology import ip_to_zone
+"""Zone-to-zone policy matrix. Pure logic, no I/O.
 
-# Explicit ALLOW/DENY per zone pair. All unlisted pairs default to DENY.
-POLICY_MATRIX: dict[tuple[str, str], str] = {
-    ("WEB", "DB"):  "DENY",   ("WEB", "APP"): "ALLOW", ("WEB", "MGT"): "DENY",
-    ("DB",  "WEB"): "DENY",   ("DB",  "APP"): "DENY",  ("DB",  "MGT"): "DENY",
-    ("APP", "WEB"): "DENY",   ("APP", "DB"):  "ALLOW", ("APP", "MGT"): "DENY",
-    ("MGT", "WEB"): "ALLOW",  ("MGT", "DB"):  "ALLOW", ("MGT", "APP"): "ALLOW",
-}
+Authoring source: knowledge/infra/policy-matrix.md
+Bootstrap path:   .md → knowledge_parser → POLICY_MATRIX (at import time)
+Runtime path:     replaced in-place at app startup by Neo4j read.
+"""
+from .topology import ip_to_zone
+from . import knowledge_parser as _kp
+
+POLICY_MATRIX: dict[tuple[str, str], str] = _kp.parse_policy_matrix()
 
 
 def check_policy(src_zone: str, dst_zone: str) -> str:
