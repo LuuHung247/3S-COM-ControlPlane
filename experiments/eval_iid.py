@@ -48,6 +48,12 @@ except ImportError:
 
 console = Console()
 
+# Eval campaign identity — wrappers (eval_<scenario>.py) override this to
+# produce distinct Excel/JSON filenames + banner title without duplicating
+# the harness logic. Default keeps backwards compatibility with eval_iid.
+EVAL_NAME  = "eval_iid"
+EVAL_TITLE = "IID Statistical Baseline"
+
 # ── Config ──────────────────────────────────────────────────────────────────
 IDS_API   = os.getenv("IDS_API_URL",   "http://10.10.6.238:8765")
 IDS_AGENT = os.getenv("IDS_AGENT_URL", "http://localhost:8766")
@@ -55,9 +61,60 @@ INTEL     = os.getenv("INTEL_URL",     "http://localhost:8767")
 SF_API    = os.getenv("SF_API_URL",    "http://10.10.6.238:9090")
 MGT_CONSOLE_HOST = os.getenv("MGT_CONSOLE_HOST", "10.10.6.238")
 MGT_CONSOLE_PORT = int(os.getenv("MGT_CONSOLE_PORT", "5016"))
-ATTACKER_IP  = "10.1.100.10"
+ATTACKER_IP  = "10.1.100.10"          # default: legacy WEB→DB scenario (SID 9000001)
 TARGET_SID   = 9000001
+TARGET_DST_IP = "10.1.200.10"        # expected destination in agent's DROP rule
+TARGET_DST_PORT = 5432               # expected destination port (0 = any)
+SCENARIO_TRIGGER = "compromise-web.sh"   # script name run from MGT (Alpine-5) console
+SCENARIO_RESTORE = "restore-web.sh"
+EXPECTED_OUTCOME = "enforced"          # 'enforced' (DROP pushed) or 'log_only' (P3/P4)
 POLL_INTERVAL = 10   # seconds — keep Suricata IDS API load low (re-reads 100MB eve.json per request)
+
+# Catalog of preset scenarios — pass via --preset to set ATTACKER_IP, TARGET_SID, etc. in one go.
+SCENARIO_PRESETS = {
+    "web-db-lateral": {
+        "attacker_ip": "10.1.100.10", "target_sid": 9000001,
+        "target_dst_ip": "10.1.200.10", "target_dst_port": 5432,
+        "trigger": "compromise-web.sh", "restore": "restore-web.sh",
+        "expected_outcome": "enforced",
+    },
+    "db-exfil": {
+        "attacker_ip": "10.1.200.10", "target_sid": 9000002,
+        "target_dst_ip": "8.8.8.8", "target_dst_port": 443,
+        "trigger": "compromise-db.sh", "restore": "restore-db.sh",
+        "expected_outcome": "enforced",
+    },
+    "web-app-burst": {
+        "attacker_ip": "10.1.100.10", "target_sid": 9000030,
+        "target_dst_ip": "10.2.100.10", "target_dst_port": 8080,
+        "trigger": "compromise-web-burst.sh", "restore": "restore-web-burst.sh",
+        "expected_outcome": "enforced",
+    },
+    "app-db-burst": {
+        "attacker_ip": "10.2.100.10", "target_sid": 9000031,
+        "target_dst_ip": "10.1.200.10", "target_dst_port": 5432,
+        "trigger": "compromise-app-burst.sh", "restore": "restore-app.sh",
+        "expected_outcome": "enforced",
+    },
+    "app-db-bulk": {
+        "attacker_ip": "10.2.100.10", "target_sid": 9000032,
+        "target_dst_ip": "10.1.200.10", "target_dst_port": 5432,
+        "trigger": "compromise-app-bulk.sh", "restore": "restore-app.sh",
+        "expected_outcome": "enforced",
+    },
+    "app-db-sql": {
+        "attacker_ip": "10.2.100.10", "target_sid": 9000033,
+        "target_dst_ip": "10.1.200.10", "target_dst_port": 5432,
+        "trigger": "compromise-app-sql.sh", "restore": "restore-app.sh",
+        "expected_outcome": "enforced",
+    },
+    "app-mgt-ssh": {
+        "attacker_ip": "10.2.100.10", "target_sid": 9000035,
+        "target_dst_ip": "10.1.200.10", "target_dst_port": 22,
+        "trigger": "compromise-app-ssh.sh", "restore": "restore-app.sh",
+        "expected_outcome": "enforced",
+    },
+}
 
 # ── HTTP helpers ─────────────────────────────────────────────────────────────
 
@@ -234,7 +291,7 @@ def cleanup_agent_rules(prefix: str = "  [cleanup]") -> int:
 def reset(run_num: int) -> float:
     """Reset state between runs. Returns unix timestamp anchor from /alerts/clear."""
     console.print("  [yellow]\[reset][/] Disarming scenario...")
-    console_run("/root/scenario/restore-web.sh", wait=5.0)
+    console_run(f"/root/scenario/{SCENARIO_RESTORE}", wait=5.0)
 
     console.print("  [yellow]\[reset][/] Deleting agent-pushed rules...")
     cleanup_agent_rules(prefix="    ")
@@ -322,9 +379,9 @@ def run_scenario(run_num: int, duration: int, anchor_ts: float = 0.0) -> RunResu
     pre_rules = get_agent_rules_from_sf()
 
     # 2. Trigger attack
-    console.print("  [bold yellow]\[T+0][/] Triggering compromise-web...")
+    console.print(f"  [bold yellow]\[T+0][/] Triggering [cyan]{SCENARIO_TRIGGER}[/]...")
     t_attack = time.time()
-    console_out = console_run("/root/scenario/compromise-web.sh", wait=5.0)
+    console_out = console_run(f"/root/scenario/{SCENARIO_TRIGGER}", wait=5.0)
     if "armed" in console_out.lower() or "arming" in console_out.lower():
         console.print("    [green]✓[/] Attack armed")
     else:
@@ -410,7 +467,7 @@ def run_scenario(run_num: int, duration: int, anchor_ts: float = 0.0) -> RunResu
     print()
 
     # 4. Disarm + post-snapshot
-    console_run("/root/scenario/restore-web.sh", wait=4.0)
+    console_run(f"/root/scenario/{SCENARIO_RESTORE}", wait=4.0)
     time.sleep(3)
 
     # 5. Check rule in SF
@@ -596,7 +653,7 @@ def preflight() -> bool:
         ok = False
 
     scr = console_run("ls /root/scenario/", wait=3.0)
-    for script in ("compromise-web.sh", "restore-web.sh"):
+    for script in (SCENARIO_TRIGGER, SCENARIO_RESTORE):
         if script in scr:
             console.print(f"  [green]✓[/] [cyan]/root/scenario/{script}[/]")
         else:
@@ -616,19 +673,19 @@ PAUSE_BETWEEN_RUNS_SECONDS = 10           # cool-down between iterations
 DRY_CHECK_ONLY = False                    # True = preflight only, no attack
 
 def _default_output() -> str:
-    # Filename: <test_title>_<YYYYMMDD>_<HHMMSS>.xlsx  (date + time of run)
+    # Filename: <eval_name>_<YYYYMMDD>_<HHMMSS>.xlsx  (date + time of run)
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    return os.path.join(RESULTS_DIR, f"eval_iid_{ts}.xlsx")
+    return os.path.join(RESULTS_DIR, f"{EVAL_NAME}_{ts}.xlsx")
 
 # ── Rich UI helpers ──────────────────────────────────────────────────────────
 
 def _render_header(output_path: str) -> None:
     """Top banner + config panel — printed once at start."""
     title = Text()
-    title.append("ZT-EVAL · IID", style="bold cyan")
+    title.append(f"ZT-EVAL · {EVAL_NAME}", style="bold cyan")
     title.append("  ", style="")
-    title.append("Statistical Baseline", style="dim")
+    title.append(EVAL_TITLE, style="dim")
     console.print()
     console.print(Panel(
         Align.center(title),
@@ -639,9 +696,11 @@ def _render_header(output_path: str) -> None:
     cfg = Table.grid(padding=(0, 2))
     cfg.add_column(style="dim")
     cfg.add_column(style="bold")
-    cfg.add_row("scenario",       "WEB → DB direct (microsegmentation bypass)")
+    cfg.add_row("scenario",       SCENARIO_TRIGGER)
     cfg.add_row("target SID",     str(TARGET_SID))
     cfg.add_row("attacker IP",    ATTACKER_IP)
+    cfg.add_row("target dst",     f"{TARGET_DST_IP}:{TARGET_DST_PORT}")
+    cfg.add_row("expected",       EXPECTED_OUTCOME)
     cfg.add_row("runs",           str(RUNS))
     cfg.add_row("run timeout",    f"{DURATION_SECONDS}s")
     cfg.add_row("pause between",  f"{PAUSE_BETWEEN_RUNS_SECONDS}s")
@@ -769,7 +828,66 @@ def _render_summary(results: List[RunResult]) -> None:
     console.print(Panel(summary, title="[bold]summary[/]", border_style=pass_color, padding=(1, 2)))
 
 
+def _apply_preset(name: str) -> None:
+    """Mutate module-level scenario constants based on a preset key."""
+    global ATTACKER_IP, TARGET_SID, TARGET_DST_IP, TARGET_DST_PORT
+    global SCENARIO_TRIGGER, SCENARIO_RESTORE, EXPECTED_OUTCOME
+    if name not in SCENARIO_PRESETS:
+        console.print(f"[bold red]Unknown preset '{name}'. Available: {', '.join(SCENARIO_PRESETS)}[/]")
+        sys.exit(2)
+    p = SCENARIO_PRESETS[name]
+    ATTACKER_IP = p["attacker_ip"]
+    TARGET_SID = p["target_sid"]
+    TARGET_DST_IP = p["target_dst_ip"]
+    TARGET_DST_PORT = p["target_dst_port"]
+    SCENARIO_TRIGGER = p["trigger"]
+    SCENARIO_RESTORE = p["restore"]
+    EXPECTED_OUTCOME = p["expected_outcome"]
+
+
+def _parse_cli() -> None:
+    """Parse CLI flags and override scenario constants. Call before main()."""
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Run an IID eval campaign for a single (scenario, target_sid) pair.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Presets:\n  " + "\n  ".join(
+                f"{k:18s} → SID {v['target_sid']:>7}  ({v['attacker_ip']} → {v['target_dst_ip']}:{v['target_dst_port']})"
+                for k, v in SCENARIO_PRESETS.items()
+            )
+        ),
+    )
+    parser.add_argument("--preset", help="Named scenario preset (see epilog).")
+    parser.add_argument("--attacker-ip", help="Override source host IP.")
+    parser.add_argument("--target-sid", type=int, help="Override Suricata SID to anchor on.")
+    parser.add_argument("--target-dst-ip", help="Override expected destination IP in DROP rule.")
+    parser.add_argument("--target-dst-port", type=int, help="Override expected destination port (0=any).")
+    parser.add_argument("--scenario", dest="trigger", help="Override compromise-*.sh trigger script name.")
+    parser.add_argument("--restore", help="Override restore-*.sh script name.")
+    parser.add_argument(
+        "--expected-outcome",
+        choices=["enforced", "dry_run", "log_only", "rejected"],
+        help="Override pass criterion for outcome (default: enforced).",
+    )
+    args = parser.parse_args()
+
+    if args.preset:
+        _apply_preset(args.preset)
+
+    global ATTACKER_IP, TARGET_SID, TARGET_DST_IP, TARGET_DST_PORT
+    global SCENARIO_TRIGGER, SCENARIO_RESTORE, EXPECTED_OUTCOME
+    if args.attacker_ip:      ATTACKER_IP = args.attacker_ip
+    if args.target_sid:       TARGET_SID = args.target_sid
+    if args.target_dst_ip:    TARGET_DST_IP = args.target_dst_ip
+    if args.target_dst_port is not None:  TARGET_DST_PORT = args.target_dst_port
+    if args.trigger:          SCENARIO_TRIGGER = args.trigger
+    if args.restore:          SCENARIO_RESTORE = args.restore
+    if args.expected_outcome: EXPECTED_OUTCOME = args.expected_outcome
+
+
 def main():
+    _parse_cli()
     output_path = _default_output()
     _render_header(output_path)
 
