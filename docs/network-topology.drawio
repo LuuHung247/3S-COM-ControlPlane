@@ -1,0 +1,157 @@
+<mxfile host="app.diagrams.net" agent="zerotrust-docs" version="24.0.0">
+  <diagram name="ZT Lab Network Topology" id="zt-net-topo">
+    <mxGraphModel dx="1280" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="950" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="Zero-Trust Lab — Network Topology (GNS3 micro-segmentation-lab)" style="text;html=1;align=center;verticalAlign=middle;fontSize=18;fontStyle=1;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="280" y="20" width="840" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="L3 routed underlay (BGP fabric, /31 + /30) — IDS-Suricata is in-path L3 next-hop (NOT a SPAN/mirror tap)" style="text;html=1;align=center;verticalAlign=middle;fontSize=12;fontStyle=2;fontColor=#444;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="280" y="48" width="840" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="nat1" value="NAT1&#xa;(uplink cloud)" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="100" y="100" width="120" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="nat2" value="NAT2&#xa;(IDS mgmt OOB)" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="100" width="120" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="spine" value="SONIC-SPINE&#xa;ASN 65100 RR&#xa;Loopback 10.1.0.0/32" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="430" y="220" width="180" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leaf1" value="SONIC-LEAF-1&#xa;ASN 65100&#xa;Lo 10.1.0.1/32&#xa;Eth0(SPINE) | Eth4(IDS-eth0)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="200" y="430" width="200" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leaf2" value="SONIC-LEAF-2&#xa;ASN 65100&#xa;Lo 10.1.0.2/32&#xa;Eth0(SPINE) | Eth4(IDS-eth1)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="640" y="430" width="200" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ids" value="IDS-Suricata&#xa;af-packet eth0 + eth1&#xa;stream.midstream + async-oneside&#xa;HOME_NET = 10.1/16 + 10.2/16" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="990" y="280" width="240" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="ids_mgmt" value="eth2 → 192.168.122.205&#xa;(mgmt OOB)" style="text;html=1;align=center;fontSize=9;fontColor=#999;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="990" y="384" width="240" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="alp1" value="Alpine-Linux-1&#xa;WEB tier&#xa;10.1.100.10" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" vertex="1" parent="1">
+          <mxGeometry x="120" y="660" width="130" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="alp2" value="Alpine-Linux-2&#xa;DB tier&#xa;10.1.200.10" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=center;" vertex="1" parent="1">
+          <mxGeometry x="290" y="660" width="130" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="alp3" value="Alpine-Linux-3&#xa;APP tier&#xa;10.2.100.10" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;align=center;" vertex="1" parent="1">
+          <mxGeometry x="620" y="660" width="130" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="alp5" value="Alpine-Linux-5&#xa;MGT tier&#xa;10.2.50.10" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;align=center;" vertex="1" parent="1">
+          <mxGeometry x="790" y="660" width="130" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_nat1_spine" style="endArrow=none;html=1;strokeColor=#6c8ebf;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="nat1" target="spine">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="160" y="200" />
+              <mxPoint x="460" y="200" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lbl_nat1_spine" value="uplink" style="text;html=1;align=center;fontSize=10;fontStyle=2;fillColor=#fff;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="290" y="190" width="60" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_spine_leaf1" style="endArrow=none;html=1;strokeColor=#9673a6;strokeWidth=2;" edge="1" parent="1" source="spine" target="leaf1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_spine_leaf1" value="10.0.0.6/31  ↔  10.0.0.7/31&#xa;BGP iBGP" style="text;html=1;align=center;fontSize=9;fillColor=#fff;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="280" y="340" width="160" height="36" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_spine_leaf2" style="endArrow=none;html=1;strokeColor=#9673a6;strokeWidth=2;" edge="1" parent="1" source="spine" target="leaf2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_spine_leaf2" value="10.0.0.8/31  ↔  10.0.0.9/31&#xa;BGP iBGP" style="text;html=1;align=center;fontSize=9;fillColor=#fff;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="610" y="340" width="160" height="36" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_leaf1_ids" style="endArrow=none;html=1;strokeColor=#b85450;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="leaf1" target="ids">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="700" y="480" />
+              <mxPoint x="700" y="330" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="lbl_leaf1_ids" value="10.0.1.0/30&#xa;LEAF1 .1  ↔  IDS .2 (eth0)" style="text;html=1;align=center;fontSize=9;fillColor=#fff;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="700" y="410" width="180" height="32" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_leaf2_ids" style="endArrow=none;html=1;strokeColor=#b85450;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.8;" edge="1" parent="1" source="leaf2" target="ids">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_leaf2_ids" value="10.0.0.x/30&#xa;LEAF2  ↔  IDS (eth1)" style="text;html=1;align=center;fontSize=9;fillColor=#fff;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="860" y="460" width="160" height="32" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_nat2_ids" style="endArrow=none;html=1;strokeColor=#999;strokeWidth=1;dashed=1;exitX=0.5;exitY=1;entryX=1;entryY=0.5;" edge="1" parent="1" source="nat2" target="ids">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_nat2_ids" value="mgmt (eth2)" style="text;html=1;align=center;fontSize=9;fontStyle=2;fillColor=#fff;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="220" width="80" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_leaf1_alp1" style="endArrow=none;html=1;strokeColor=#6c8ebf;strokeWidth=2;" edge="1" parent="1" source="leaf1" target="alp1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_leaf1_alp2" style="endArrow=none;html=1;strokeColor=#82b366;strokeWidth=2;" edge="1" parent="1" source="leaf1" target="alp2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_leaf2_alp3" style="endArrow=none;html=1;strokeColor=#d79b00;strokeWidth=2;" edge="1" parent="1" source="leaf2" target="alp3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_leaf2_alp5" style="endArrow=none;html=1;strokeColor=#9673a6;strokeWidth=2;" edge="1" parent="1" source="leaf2" target="alp5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend_box" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f9f9f9;strokeColor=#888;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="760" width="640" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_title" value="Static routes (verified on SONIC LEAF-1 — `show ip route static`)" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontStyle=1;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="60" y="765" width="600" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_routes" value="LEAF-1:&#xa;  S  10.1.0.0/16  via 10.0.1.2 Ethernet4  → IDS-Suricata eth0&#xa;  S  10.2.0.0/16  via 10.0.2.2 Ethernet0  → SPINE (bypasses Suricata!)&#xa;&#xa;LEAF-2 (symmetric):&#xa;  S  10.2.0.0/16  via Suricata eth1   |   S  10.1.0.0/16  via SPINE" style="text;html=1;align=left;verticalAlign=top;fontSize=10;fontFamily=Courier New;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="60" y="790" width="620" height="130" as="geometry" />
+        </mxCell>
+
+        <mxCell id="zone_legend" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f9f9f9;strokeColor=#888;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="720" y="760" width="630" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="zone_legend_title" value="Zones &amp; East-West Detection Coverage (eval 2026-05-12, 6/7 SIDs pass)" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontStyle=1;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="730" y="765" width="600" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="zone_legend_body" value="• WEB 10.1.100.0/24 (Alp-1) → APP — burst SID 9000030 ✓&#xa;• APP 10.2.100.0/24 (Alp-3) → DB — burst 9000031 ✓ | DROP TABLE 9000033 ✓&#xa;• APP → DB bulk reply (DB→APP &gt;4KB) SID 9000032 ✗  ← reply via SPINE, bypasses IDS&#xa;• APP → {WEB, DB} :22 — cross-tier SSH SID 9000035 ✓&#xa;• DB 10.1.200.0/24 (Alp-2) → outbound exfil SID 9000002 ✓&#xa;• MGT 10.2.50.0/24 (Alp-5) → ANY — audit baseline SID 9000020" style="text;html=1;align=left;verticalAlign=top;fontSize=10;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="730" y="790" width="610" height="130" as="geometry" />
+        </mxCell>
+
+        <mxCell id="async_arrow" style="endArrow=classic;html=1;strokeColor=#cc0000;strokeWidth=3;dashed=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;curved=1;" edge="1" parent="1" source="alp3" target="alp2">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="500" y="850" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="async_lbl" value="Reply DB→APP (≥4 KB)&#xa;path: LEAF-1 → SPINE → LEAF-2&#xa;BYPASSES Suricata → SID 9000032 cannot fire" style="text;html=1;align=center;fontSize=9;fontColor=#cc0000;fontStyle=2;fillColor=#fff;strokeColor=#cc0000;" vertex="1" parent="1">
+          <mxGeometry x="410" y="870" width="280" height="46" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
