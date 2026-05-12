@@ -224,39 +224,50 @@ python3 08-verify-policy.py           # 12-flow verification
 
 ---
 
-## 6. Traffic Mirroring — IDS Tap
+## 6. Traffic Tap — IDS as L3 Next-Hop
 
-### 6.1 tc mirred config (LEAF-1)
+> **Update 2026-05-12 — cơ chế capture thực tế là L3 routing in-path, KHÔNG phải tc mirred.**
+> Investigation cho thấy SONIC `show mirror_session` rỗng, không có ACL mirror, không có tc filter. Suricata nhận traffic vì các LEAF dùng **static route** đi qua interface Suricata cho subnet east-west.
 
-```bash
-# Mirror Vlan100 ingress (WEB) → eth4 (đến IDS eth0)
-tc qdisc add dev Vlan100 handle ffff: ingress
-tc filter add dev Vlan100 parent ffff: protocol ip u32 match u32 0 0 \
-    action mirred egress mirror dev eth4
+### 6.1 Cơ chế thực tế — Suricata là L3 hop trên đường east-west
 
-# Mirror Vlan200 ingress (DB) → eth4
-tc qdisc add dev Vlan200 handle ffff: ingress
-tc filter add dev Vlan200 parent ffff: protocol ip u32 match u32 0 0 \
-    action mirred egress mirror dev eth4
+```
+APP host (10.2.100.10 trên LEAF-2)
+       │ → DB request
+       ▼
+SONIC-LEAF-2 — static route `10.1.0.0/16 via Suricata-eth1`
+       │
+       ▼
+IDS-Suricata eth1 ───► af-packet capture ───► eth0 (route lookup)
+       │
+       ▼
+SONIC-LEAF-1 — directly connected DB zone
+       │
+       ▼
+DB host (10.1.200.10) ─── reply ───────────────┐
+                                                │
+SONIC-LEAF-1 static route `10.2.0.0/16 via SPINE`  ◄── (does NOT pass Suricata!)
+       │
+       ▼
+SONIC-SPINE → LEAF-2 → APP host
 ```
 
-### 6.2 tc mirred config (LEAF-2)
-
-```bash
-# Mirror Vlan100 ingress (APP) → eth4 (đến IDS eth1)
-tc qdisc add dev Vlan100 handle ffff: ingress
-tc filter add dev Vlan100 parent ffff: protocol ip u32 match u32 0 0 \
-    action mirred egress mirror dev eth4
-
-# Mirror Vlan300 ingress (MGT) → eth4
-tc qdisc add dev Vlan300 handle ffff: ingress
-tc filter add dev Vlan300 parent ffff: protocol ip u32 match u32 0 0 \
-    action mirred egress mirror dev eth4
+**Cấu hình static route (xác minh trên SONIC LEAF-1):**
+```
+S   10.1.0.0/16 [1/0] via 10.0.1.2, Ethernet4 (Suricata eth0)
+S   10.2.0.0/16 [1/0] via 10.0.2.2, Ethernet0 (SPINE)
 ```
 
-**Quan trọng:** tc mirred chạy ở `ingress` qdisc, **trước** netfilter. IDS thấy được packet kể cả khi iptables DROP.
+LEAF-2 đối xứng (10.2/16 → Suricata eth1, 10.1/16 → SPINE).
 
-> **Cảnh báo asymmetric capture:** mirred chỉ tap ingress của VLAN — chỉ thấy **một chiều** flow (zone→gateway), miss return path. Suricata flow tracking + `flow:to_server` không hoạt động chuẩn. Detection rules phải dùng `flags:S` workaround (xem Section 7.1).
+### 6.2 Hệ quả — Asymmetric routing (không phải asymmetric mirror)
+
+- **Chiều đi** (client → server, e.g., APP→DB): Suricata thấy đầy đủ ở eth1 → forward sang eth0.
+- **Chiều về** (server → client, e.g., DB→APP): LEAF-1 route 10.2/16 qua **SPINE** (route shorter), **không qua Suricata**.
+
+→ Suricata thấy SYN+DATA của request, nhưng KHÔNG thấy SYN-ACK / ACK / DATA reply. TCP stream reassembly mặc định stuck ở `NEW` state vì không có ACK. Workaround Suricata config xem §7.1.
+
+> **Lưu ý lịch sử:** Phiên bản sớm của lab có thiết kế tc mirred (mirror VLAN ingress → eth4). Tuy nhiên deployment hiện tại không dùng mirror — IDS là một L3 router thật, không phải passive tap. Behavior detection vẫn đạt được nhờ workaround Suricata stream config.
 
 ---
 
@@ -355,24 +366,72 @@ Scenario controllers ở `/root/scenario/` trên Alpine-5 (MGT). Mỗi scenario 
 **eve.json types:** `alert`, `flow` (flow logging bật để dashboard show normal traffic)
 **Reload:** `kill -USR2 $(cat /run/suricata-zt.pid)` — không cần restart
 
-### 7.1 Asymmetric capture workaround
+### 7.1 Asymmetric routing workaround (Suricata stream config)
 
-`tc mirred` ingress qdisc chỉ mirror **một chiều** (request hoặc reply, không phải cả hai) → Suricata không reassemble được full TCP session → `flow:to_server` keyword **không tin cậy**. Workaround: dùng `flags:S` (chỉ match SYN packet — connection initiation) + ràng buộc `dst_port` = service port. Chỉ fire trên init, suppress được FP từ return-traffic của shopper/scrape cron.
+**Vấn đề:** Routing east-west asymmetric (§6.2) — Suricata thấy forward direction request, không thấy reply. Mặc định Suricata không reassemble TCP stream nếu không thấy 3-way handshake + ACK → các rule có `flow:established` và `content:` match không trigger được.
 
-### 7.2 Active rule set (8 rules)
+**Workaround (2026-05-12) — bật trong `suricata-zt.yaml`:**
+```yaml
+stream:
+  midstream: true            # treat flow as established without seeing SYN handshake
+  midstream-policy: pass-flow # explicit accept mid-stream session
+  async-oneside: true        # inspect segments without waiting for ACK from opposite direction
+```
 
-| SID | Priority | Class | Match | Msg |
-|-----|----------|-------|-------|-----|
-| 9000001 | P1 | policy-violation | `WEB → DB:[5432,3306,1433,27017] flags:S` | WEB direct to DB - microsegmentation bypass |
-| 9000002 | P1 | policy-violation | `DB → !lab-zones any flags:S` | DB initiating outbound connection |
-| 9000003 | P2 | policy-violation | `APP → WEB:[80,443,22] flags:S` | APP reverse call to WEB - lateral movement |
-| 9000004 | P2 | policy-violation | `WEB → MGT:[22,3389] flags:S` | WEB to MGT - unauthorized access |
-| 9000005 | P2 | policy-violation | `APP → MGT:[22,3389] flags:S` | APP to MGT - unauthorized access |
-| 9000010 | P3 | network-scan | ICMP echo, threshold 3/10s/src | ICMP ping sweep detected |
-| 9000011 | P3 | network-scan | TCP SYN, threshold 10/5s/src | Possible port scan |
-| 9000020 | P4 | policy-violation | `MGT → ANY` (1/min/src) | Management zone access (audit) |
+**Tác động đo được (eval 2026-05-12, runs trước/sau khi bật):**
 
-> Note: SID 9000006 (APP→DB direct) đã removed vì APP→DB là **allowed path** trong policy matrix (5.1). Đã thay bằng audit-by-design pattern qua SID 9000020 cho MGT.
+| SID | Rule pattern | Trước (midstream off) | Sau (midstream + async-oneside) |
+|---|---|---|---|
+| 9000031 | `flags:S` threshold | 10/10 PASS | 10/10 PASS |
+| 9000033 | `flow:established, content:"DROP TABLE"` | **0/10 FAIL** | **10/10 PASS** |
+| 9000035 | `flags:S` cross-tier | 10/10 PASS | 10/10 PASS |
+| 9000032 | `flow:established,from_server dsize>4096` (DB→APP) | 0/10 FAIL | **0/10 FAIL (still)** |
+
+**Lưu ý SID 9000032 không cứu được bằng stream config** — vì reply DB→APP đi qua SPINE bypass Suricata hoàn toàn (§6.2). Đây là routing-level limitation, không phải config-level. Để fix sẽ cần SONIC LEAF-1 add static route `10.2.0.0/16 via Suricata` (đối xứng với LEAF-2). Hiện được document như known limitation (xem [EXPERIMENT.md §6.9](EXPERIMENT.md#69--ánh-giá-cuối-cùng-2026-05-12-final-eval-snapshot)).
+
+**Pattern thiết kế rule sau workaround:**
+- `flags:S` cho rate/threshold detection (forward-only đủ).
+- `flow:established,to_server` + `content` cho semantic detection chiều request — work với async-oneside.
+- `flow:established,from_server` (reply-side detection) — **tránh** nếu routing asymmetric không qua Suricata.
+
+### 7.2 Active rule set (11 SIDs after 2026-05-09 refactor)
+
+Phân thành 4 lớp theo vai trò agent. **Class D là 6 SIDs mới** firing trên ALLOW paths
+— chính là scope LEAF iptables static không xử lý được, nơi AI agent là layer essential.
+
+**Class A — DENY-path violations** (LEAF zt-default-drop đã chặn, agent thêm audit trail)
+| SID | Priority | Match | Msg |
+|---|---|---|---|
+| 9000001 | P1 | `WEB → DB:[5432,3306,1433,27017] flags:S` | WEB direct to DB - microsegmentation bypass |
+| 9000002 | P1 | `DB → !lab-zones any flags:S` | DB initiating outbound connection |
+
+**Class B — Reconnaissance** (context only, agent giảm trust score)
+| SID | Priority | Match | Msg |
+|---|---|---|---|
+| 9000010 | P3 | ICMP echo, threshold 3/10s/src | ICMP ping sweep detected |
+| 9000011 | P3 | TCP SYN, threshold 10/5s/src | Possible port scan |
+
+**Class C — Audit baseline** (compliance, agent filtered)
+| SID | Priority | Match | Msg |
+|---|---|---|---|
+| 9000020 | P4 | `MGT → ANY` (1/min/src) | Management zone access (audit) |
+
+**Class D — East-West behavioral anomaly on ALLOW paths** (★ agent essential — LEAF accepts ★)
+| SID | Priority | Match | Msg |
+|---|---|---|---|
+| 9000030 | P2 | `WEB → APP:8080 flags:S` threshold 200/60s by_src | WEB→APP abnormal connection rate (compromised web-tier?) |
+| 9000031 | P2 | `APP → DB:5432 flags:S` threshold 100/60s by_src | APP→DB volume anomaly (possible exfiltration) |
+| 9000032 | P2 | `DB:5432 → APP from_server dsize>4096` threshold 10/30s | DB large reply payload (bulk SELECT) |
+| 9000033 | P1 | `APP → DB:5432 to_server content "DROP TABLE"/"TRUNCATE"` | Destructive SQL pattern detected |
+| 9000034 | P3 | `APP → DB:5432 flags:S` throttle 1/300s by_src | APP→DB time-window probe (agent evaluates off-hours) |
+| 9000035 | P1 | `{WEB,APP} → {WEB,APP,DB}:22 flags:S` | SSH attempt between workload tiers (lateral movement) |
+
+**Refactor notes (2026-05-09):**
+- **Removed 9000003 / 9000004 / 9000005** — tất cả DENY-path; LEAF default-drop đã handle; agent rule redundant về function. Đổi sang Class D demonstrate AI essential.
+- **Added 9000030–9000035** — ALLOW-path anomaly. LEAF accept (match `zt-*-allow`), Suricata detect rate/volume/content/lateral, agent push targeted DROP overriding baseline ACCEPT (priority 50 > priority 200).
+- **9000034 always-fire pattern** — Suricata không native time-based detection; off-hours logic làm ở agent prompt (current UTC hour vs business window 08-18).
+
+> Note: SID 9000006 (APP→DB direct) đã removed vì APP→DB là **allowed path** trong policy matrix (5.1) — fire SID này sẽ tạo ~120 FP alerts/giờ trên baseline `application-to-database-oltp`.
 
 ---
 
@@ -468,8 +527,11 @@ Single Python process, `ThreadingHTTPServer`. 1 background tail thread + N HTTP 
 
 | Field | Value | Note |
 |-------|-------|------|
-| Capture interfaces | `af-packet eth1` (cluster-id 99) + `eth0` (cluster-id 98) | Mirror traffic từ LEAF qua tc mirred (§6) |
+| Capture interfaces | `af-packet eth1` (cluster-id 99) + `eth0` (cluster-id 98) | L3 in-path capture (§6.1), KHÔNG phải mirror |
 | `HOME_NET` | `[10.1.0.0/16, 10.2.0.0/16]` | Toàn bộ lab subnet |
+| `stream.midstream` | `true` | (2026-05-12) Treat flow established without 3-way handshake — routing asymmetric (§6.2) |
+| `stream.midstream-policy` | `pass-flow` | Explicit accept mid-stream session |
+| `stream.async-oneside` | `true` | Inspect segments without waiting ACK from opposite direction — bắt buộc cho content rules với asymmetric routing |
 | eve.json output | `types: [alert, flow]` | Flow logging bật cho dashboard / `/service-health` |
 | Profile | `low`, `max-pending-packets: 512` | VM resource-constrained |
 | Rules path | `/etc/suricata/rules/zt-lab.rules` | Reload không cần restart: `kill -USR2 $(cat /run/suricata-zt.pid)` |
