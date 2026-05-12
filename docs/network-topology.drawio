@@ -1,173 +1,1148 @@
-<mxfile host="app.diagrams.net" agent="zerotrust-docs" version="24.0.0">
+<mxfile host="app.diagrams.net" agent="zerotrust-docs">
   <diagram name="ZT Lab Network Topology" id="zt-net-topo">
-    <mxGraphModel dx="1400" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+    <mxGraphModel dx="1508" dy="835" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-
-        <mxCell id="title" value="Zero-Trust Lab — Network Topology" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#1a237e;fillColor=none;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="300" y="20" width="900" height="32" as="geometry" />
+        <mxCell id="title" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#1a237e;fillColor=none;strokeColor=none;" value="Network Topology" vertex="1">
+          <mxGeometry height="32" width="900" x="285" y="270" as="geometry" />
         </mxCell>
-        <mxCell id="subtitle" value="SONIC Leaf-Spine fabric · IDS-Suricata as in-path L3 next-hop · 4 workload tiers (WEB / DB / APP / MGT)" style="text;html=1;align=center;verticalAlign=middle;fontSize=12;fontStyle=2;fontColor=#555;fillColor=none;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="300" y="52" width="900" height="22" as="geometry" />
+        <mxCell id="spine" parent="1" style="shape=mxgraph.cisco.routers.router;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="697.5" y="370" as="geometry" />
         </mxCell>
-
-        <mxCell id="underlay" value="BGP Underlay Fabric&#10;(ASN 65100, /31 P2P links)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8eaf6;strokeColor=#3949ab;dashed=1;strokeWidth=2;fontSize=11;fontStyle=1;align=left;verticalAlign=top;fontColor=#3949ab;" vertex="1" parent="1">
-          <mxGeometry x="80" y="100" width="1340" height="280" as="geometry" />
+        <mxCell id="spine_lbl" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-SPINE&lt;/b&gt;&lt;br&gt;Route Reflector" vertex="1">
+          <mxGeometry height="48" width="120" x="677.5" y="312" as="geometry" />
         </mxCell>
-
-        <mxCell id="spine" value="" style="shape=mxgraph.cisco.routers.router;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" vertex="1" parent="1">
-          <mxGeometry x="710" y="160" width="80" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="spine_lbl" value="&lt;b&gt;SONIC-SPINE&lt;/b&gt;&#10;Lo0: 10.1.0.0/32&#10;Route Reflector" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;strokeWidth=1;rounded=1;" vertex="1" parent="1">
-          <mxGeometry x="675" y="248" width="150" height="48" as="geometry" />
-        </mxCell>
-
-        <mxCell id="leaf1" value="" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" vertex="1" parent="1">
-          <mxGeometry x="230" y="290" width="100" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="leaf1_lbl" value="&lt;b&gt;SONIC-LEAF-1&lt;/b&gt;&#10;Lo0: 10.1.0.1/32&#10;Eth4 → IDS-Suricata eth0" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" vertex="1" parent="1">
-          <mxGeometry x="185" y="355" width="190" height="48" as="geometry" />
-        </mxCell>
-
-        <mxCell id="leaf2" value="" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" vertex="1" parent="1">
-          <mxGeometry x="1170" y="290" width="100" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="leaf2_lbl" value="&lt;b&gt;SONIC-LEAF-2&lt;/b&gt;&#10;Lo0: 10.1.0.2/32&#10;Eth4 → IDS-Suricata eth1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" vertex="1" parent="1">
-          <mxGeometry x="1125" y="355" width="190" height="48" as="geometry" />
-        </mxCell>
-
-        <mxCell id="ids" value="" style="shape=mxgraph.cisco.security.firewall;html=1;pointerEvents=1;dashed=0;fillColor=#e57373;strokeColor=#b71c1c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" vertex="1" parent="1">
-          <mxGeometry x="710" y="450" width="80" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="ids_lbl" value="&lt;b&gt;IDS-Suricata (in-path L3)&lt;/b&gt;&#10;af-packet eth0 + eth1&#10;stream.midstream + async-oneside&#10;HOME_NET = 10.1/16 + 10.2/16" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#b71c1c;strokeWidth=1;rounded=1;" vertex="1" parent="1">
-          <mxGeometry x="630" y="540" width="240" height="64" as="geometry" />
-        </mxCell>
-
-        <mxCell id="zone_web" value="WEB tier · 10.1.100.0/24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#0d47a1;" vertex="1" parent="1">
-          <mxGeometry x="80" y="660" width="280" height="220" as="geometry" />
-        </mxCell>
-        <mxCell id="alp1" value="" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#6c8ebf;strokeColor=#0d47a1;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" vertex="1" parent="1">
-          <mxGeometry x="170" y="710" width="80" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="alp1_lbl" value="&lt;b&gt;Alpine-Linux-1&lt;/b&gt;&#10;10.1.100.10&#10;nginx :8080" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#6c8ebf;rounded=1;" vertex="1" parent="1">
-          <mxGeometry x="135" y="800" width="150" height="48" as="geometry" />
-        </mxCell>
-
-        <mxCell id="zone_db" value="DB tier · 10.1.200.0/24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#1b5e20;" vertex="1" parent="1">
-          <mxGeometry x="380" y="660" width="280" height="220" as="geometry" />
-        </mxCell>
-        <mxCell id="alp2" value="" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#1b5e20;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" vertex="1" parent="1">
-          <mxGeometry x="470" y="710" width="80" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="alp2_lbl" value="&lt;b&gt;Alpine-Linux-2&lt;/b&gt;&#10;10.1.200.10&#10;postgres :5432" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;rounded=1;" vertex="1" parent="1">
-          <mxGeometry x="435" y="800" width="150" height="48" as="geometry" />
-        </mxCell>
-
-        <mxCell id="zone_app" value="APP tier · 10.2.100.0/24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#e65100;" vertex="1" parent="1">
-          <mxGeometry x="840" y="660" width="280" height="220" as="geometry" />
-        </mxCell>
-        <mxCell id="alp3" value="" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#d79b00;strokeColor=#e65100;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" vertex="1" parent="1">
-          <mxGeometry x="930" y="710" width="80" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="alp3_lbl" value="&lt;b&gt;Alpine-Linux-3&lt;/b&gt;&#10;10.2.100.10&#10;app worker" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#d79b00;rounded=1;" vertex="1" parent="1">
-          <mxGeometry x="895" y="800" width="150" height="48" as="geometry" />
-        </mxCell>
-
-        <mxCell id="zone_mgt" value="MGT tier · 10.2.50.0/24" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#4a148c;" vertex="1" parent="1">
-          <mxGeometry x="1140" y="660" width="280" height="220" as="geometry" />
-        </mxCell>
-        <mxCell id="alp5" value="" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" vertex="1" parent="1">
-          <mxGeometry x="1230" y="710" width="80" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="alp5_lbl" value="&lt;b&gt;Alpine-Linux-5&lt;/b&gt;&#10;10.2.50.10&#10;ssh / mgmt jumpbox" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;rounded=1;" vertex="1" parent="1">
-          <mxGeometry x="1195" y="800" width="150" height="48" as="geometry" />
-        </mxCell>
-
-        <mxCell id="e_spine_leaf1" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.25;exitY=1;entryX=0.75;entryY=0;" edge="1" parent="1" source="spine" target="leaf1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="lbl_spine_leaf1" value="10.0.0.6/31 ↔ 10.0.0.7/31&#10;iBGP · 1 GbE" style="text;html=1;align=center;fontSize=9;fontColor=#3949ab;fillColor=#fff;strokeColor=#3949ab;rounded=1;strokeWidth=1;" vertex="1" parent="1">
-          <mxGeometry x="430" y="260" width="170" height="32" as="geometry" />
-        </mxCell>
-
-        <mxCell id="e_spine_leaf2" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.75;exitY=1;entryX=0.25;entryY=0;" edge="1" parent="1" source="spine" target="leaf2">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="lbl_spine_leaf2" value="10.0.0.8/31 ↔ 10.0.0.9/31&#10;iBGP · 1 GbE" style="text;html=1;align=center;fontSize=9;fontColor=#3949ab;fillColor=#fff;strokeColor=#3949ab;rounded=1;strokeWidth=1;" vertex="1" parent="1">
-          <mxGeometry x="900" y="260" width="170" height="32" as="geometry" />
-        </mxCell>
-
-        <mxCell id="e_leaf1_ids" style="endArrow=none;html=1;strokeColor=#b71c1c;strokeWidth=3;exitX=0.7;exitY=1;entryX=0.2;entryY=0;" edge="1" parent="1" source="leaf1" target="ids">
+        <mxCell id="Cmn-Uz8HW59QNkbMKJJD-10" edge="1" parent="1" source="leaf1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;dashed=1;startSize=8;endSize=8;">
           <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="300" y="440" />
-              <mxPoint x="726" y="440" />
-            </Array>
+            <mxPoint x="450.00000000000006" y="529.78" as="sourcePoint" />
+            <mxPoint x="731.8" y="529.78" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="lbl_leaf1_ids" value="10.0.1.0/30&#10;LEAF1 .1 ↔ IDS .2 (eth0)" style="text;html=1;align=center;fontSize=9;fontColor=#b71c1c;fontStyle=1;fillColor=#fff;strokeColor=#b71c1c;rounded=1;strokeWidth=1;" vertex="1" parent="1">
-          <mxGeometry x="370" y="420" width="190" height="34" as="geometry" />
+        <mxCell id="leaf1" parent="1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="320" y="500" as="geometry" />
         </mxCell>
-
-        <mxCell id="e_leaf2_ids" style="endArrow=none;html=1;strokeColor=#b71c1c;strokeWidth=3;exitX=0.3;exitY=1;entryX=0.8;entryY=0;" edge="1" parent="1" source="leaf2" target="ids">
+        <mxCell id="leaf1_lbl" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-1&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="320" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="Cmn-Uz8HW59QNkbMKJJD-11" edge="1" parent="1" source="leaf2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;entryX=0.369;entryY=0.624;entryDx=0;entryDy=0;entryPerimeter=0;dashed=1;startSize=8;endSize=8;" target="ids">
           <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="1200" y="440" />
-              <mxPoint x="774" y="440" />
-            </Array>
+            <mxPoint x="780" y="530" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="lbl_leaf2_ids" value="10.0.1.4/30&#10;LEAF2 .5 ↔ IDS .6 (eth1)" style="text;html=1;align=center;fontSize=9;fontColor=#b71c1c;fontStyle=1;fillColor=#fff;strokeColor=#b71c1c;rounded=1;strokeWidth=1;" vertex="1" parent="1">
-          <mxGeometry x="940" y="420" width="190" height="34" as="geometry" />
+        <mxCell id="leaf2" parent="1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="1080" y="500" as="geometry" />
         </mxCell>
-
-        <mxCell id="e_leaf1_alp1" style="endArrow=none;html=1;strokeColor=#6c8ebf;strokeWidth=2;exitX=0.3;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="leaf1" target="alp1">
+        <mxCell id="ids" parent="1" style="shape=mxgraph.cisco.security.firewall;html=1;pointerEvents=1;dashed=0;fillColor=#e57373;strokeColor=#b71c1c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="695" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="ids_lbl" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#b71c1c;strokeWidth=1;rounded=1;" value="&lt;b&gt;IDS-Suricata (in-path L3)&lt;/b&gt;&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="50" width="125" x="675" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="zone_web" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#0d47a1;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="80" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="alp1" parent="1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#6c8ebf;strokeColor=#0d47a1;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="160" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="alp1_lbl" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#6c8ebf;rounded=1;" value="&lt;b&gt;Alpine-Linux-1&lt;/b&gt;&#xa;10.1.100.10&#xa;nginx :8080" vertex="1">
+          <mxGeometry height="48" width="150" x="115" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="zone_db" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#1b5e20;" value="&lt;blockquote style=&quot;margin: 0 0 0 40px; border: none; padding: 0px;&quot;&gt;&lt;br&gt;&lt;/blockquote&gt;" vertex="1">
+          <mxGeometry height="200" width="240" x="400" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="alp2" parent="1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#1b5e20;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="480" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="alp2_lbl" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;rounded=1;" value="&lt;b&gt;Alpine-Linux-2&lt;/b&gt;&#xa;10.1.200.10&#xa;postgres :5432" vertex="1">
+          <mxGeometry height="48" width="150" x="445" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="zone_app" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#e65100;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="840" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="alp3" parent="1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#d79b00;strokeColor=#e65100;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="920" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="alp3_lbl" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#d79b00;rounded=1;" value="&lt;b&gt;Alpine-Linux-3&lt;/b&gt;&#xa;10.2.100.10&#xa;app worker" vertex="1">
+          <mxGeometry height="48" width="150" x="885" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="zone_mgt" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#4a148c;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="1160" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="alp5" parent="1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="1240" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="alp5_lbl" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;rounded=1;" value="&lt;b&gt;Alpine-Linux-5&lt;/b&gt;&#xa;10.2.50.10&#xa;ssh / mgmt jumpbox" vertex="1">
+          <mxGeometry height="48" width="150" x="1205" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="e_spine_leaf1" edge="1" parent="1" source="spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.25;exitY=1;entryX=0.75;entryY=0;" target="leaf1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_leaf1_alp2" style="endArrow=none;html=1;strokeColor=#82b366;strokeWidth=2;exitX=0.7;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="leaf1" target="alp2">
+        <mxCell id="e_spine_leaf2" edge="1" parent="1" source="spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.75;exitY=1;entryX=0.25;entryY=0;" target="leaf2">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_leaf2_alp3" style="endArrow=none;html=1;strokeColor=#d79b00;strokeWidth=2;exitX=0.3;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="leaf2" target="alp3">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e_leaf2_alp5" style="endArrow=none;html=1;strokeColor=#9673a6;strokeWidth=2;exitX=0.7;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="leaf2" target="alp5">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <mxCell id="east_west_arrow" style="endArrow=classic;html=1;strokeColor=#00897b;strokeWidth=3;dashed=0;exitX=0.5;exitY=0;entryX=0.5;entryY=0;curved=1;" edge="1" parent="1" source="alp3" target="alp2">
+        <mxCell id="e_leaf1_alp1" edge="1" parent="1" source="leaf1" style="endArrow=none;html=1;strokeColor=#6c8ebf;strokeWidth=2;entryX=0.5;entryY=0;">
           <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="970" y="620" />
-              <mxPoint x="700" y="620" />
-              <mxPoint x="510" y="620" />
-            </Array>
+            <mxPoint x="340" y="560" as="sourcePoint" />
+            <mxPoint x="210" y="710" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="east_west_lbl" value="① Request APP→DB&#10;path: LEAF-2 → IDS eth1 → IDS eth0 → LEAF-1 → DB&#10;✓ Suricata sees this direction" style="text;html=1;align=center;fontSize=10;fontColor=#00897b;fontStyle=1;fillColor=#fff;strokeColor=#00897b;rounded=1;strokeWidth=1;" vertex="1" parent="1">
-          <mxGeometry x="565" y="585" width="320" height="50" as="geometry" />
-        </mxCell>
-
-        <mxCell id="async_arrow" style="endArrow=classic;html=1;strokeColor=#cc0000;strokeWidth=3;dashed=8;exitX=0.3;exitY=0;entryX=0.3;entryY=0;curved=1;" edge="1" parent="1" source="alp2" target="alp3">
+        <mxCell id="e_leaf1_alp2" edge="1" parent="1" source="leaf1" style="endArrow=none;html=1;strokeColor=#82b366;strokeWidth=2;entryX=0.5;entryY=0;exitX=0.5;exitY=0.98;exitDx=0;exitDy=0;exitPerimeter=0;" target="alp2">
           <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="475" y="160" />
-              <mxPoint x="750" y="140" />
-              <mxPoint x="970" y="160" />
-            </Array>
+            <mxPoint x="410" y="570" as="sourcePoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="async_lbl" value="② Reply DB→APP (large payload)&#10;path: LEAF-1 → SPINE → LEAF-2 → APP&#10;✗ BYPASSES IDS → SID 9000032 cannot fire" style="text;html=1;align=center;fontSize=10;fontColor=#cc0000;fontStyle=1;fillColor=#fff;strokeColor=#cc0000;rounded=1;strokeWidth=1;" vertex="1" parent="1">
-          <mxGeometry x="595" y="80" width="330" height="50" as="geometry" />
+        <mxCell id="e_leaf2_alp3" edge="1" parent="1" source="leaf2" style="endArrow=none;html=1;strokeColor=#d79b00;strokeWidth=2;entryX=0.5;entryY=0;" target="alp3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1160" y="410" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_leaf2_alp5" edge="1" parent="1" source="leaf2" style="endArrow=none;html=1;strokeColor=#9673a6;strokeWidth=2;entryX=0.5;entryY=0;" target="alp5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_routes_anchor" parent="1" style="endArrow=none;html=1;strokeColor=none;" vertex="1">
+          <mxGeometry x="80" y="910" as="geometry" />
+        </mxCell>
+        <mxCell id="Cmn-Uz8HW59QNkbMKJJD-1" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;forced-color-adjust: none; color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; white-space: pre;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;WEB tier · 10.1.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="180" x="115" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="Cmn-Uz8HW59QNkbMKJJD-2" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(27, 94, 32); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;DB tier · 10.1.200.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="440" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="Cmn-Uz8HW59QNkbMKJJD-3" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(230, 81, 0); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;APP tier · 10.2.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="885" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="Cmn-Uz8HW59QNkbMKJJD-4" parent="1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(74, 20, 140); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;MGT tier · 10.2.50.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="1205" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="Cmn-Uz8HW59QNkbMKJJD-13" parent="1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-2&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="1080" y="450" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="1 · SID 9000001 WEB→DB direct" id="s1">
+    <mxGraphModel dx="1508" dy="835" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="s1_1" parent="0" />
+        <mxCell id="s1_title" parent="s1_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#1a237e;fillColor=none;strokeColor=none;" value="1 · SID 9000001 WEB→DB direct" vertex="1">
+          <mxGeometry height="32" width="900" x="285" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_spine" parent="s1_1" style="shape=mxgraph.cisco.routers.router;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="697.5" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_spine_lbl" parent="s1_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-SPINE&lt;/b&gt;&lt;br&gt;Route Reflector" vertex="1">
+          <mxGeometry height="48" width="120" x="677.5" y="312" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_Cmn-Uz8HW59QNkbMKJJD-10" edge="1" parent="s1_1" source="s1_leaf1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;dashed=1;startSize=8;endSize=8;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="450.00000000000006" y="529.78" as="sourcePoint" />
+            <mxPoint x="731.8" y="529.78" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s1_leaf1" parent="s1_1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="320" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_leaf1_lbl" parent="s1_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-1&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="320" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_Cmn-Uz8HW59QNkbMKJJD-11" edge="1" parent="s1_1" source="s1_leaf2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;entryX=0.369;entryY=0.624;entryDx=0;entryDy=0;entryPerimeter=0;dashed=1;startSize=8;endSize=8;" target="s1_ids">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="780" y="530" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s1_leaf2" parent="s1_1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="1080" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_ids" parent="s1_1" style="shape=mxgraph.cisco.security.firewall;html=1;pointerEvents=1;dashed=0;fillColor=#e57373;strokeColor=#b71c1c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="695" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_ids_lbl" parent="s1_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#b71c1c;strokeWidth=1;rounded=1;" value="&lt;b&gt;IDS-Suricata (in-path L3)&lt;/b&gt;&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="50" width="125" x="675" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_zone_web" parent="s1_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#0d47a1;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="80" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_alp1" parent="s1_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#6c8ebf;strokeColor=#0d47a1;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="160" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_alp1_lbl" parent="s1_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#6c8ebf;rounded=1;" value="&lt;b&gt;Alpine-Linux-1&lt;/b&gt;&#xa;10.1.100.10&#xa;nginx :8080" vertex="1">
+          <mxGeometry height="48" width="150" x="115" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_zone_db" parent="s1_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#1b5e20;" value="&lt;blockquote style=&quot;margin: 0 0 0 40px; border: none; padding: 0px;&quot;&gt;&lt;br&gt;&lt;/blockquote&gt;" vertex="1">
+          <mxGeometry height="200" width="240" x="400" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_alp2" parent="s1_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#1b5e20;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="480" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_alp2_lbl" parent="s1_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;rounded=1;" value="&lt;b&gt;Alpine-Linux-2&lt;/b&gt;&#xa;10.1.200.10&#xa;postgres :5432" vertex="1">
+          <mxGeometry height="48" width="150" x="445" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_zone_app" parent="s1_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#e65100;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="840" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_alp3" parent="s1_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#d79b00;strokeColor=#e65100;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="920" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_alp3_lbl" parent="s1_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#d79b00;rounded=1;" value="&lt;b&gt;Alpine-Linux-3&lt;/b&gt;&#xa;10.2.100.10&#xa;app worker" vertex="1">
+          <mxGeometry height="48" width="150" x="885" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_zone_mgt" parent="s1_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#4a148c;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="1160" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_alp5" parent="s1_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="1240" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_alp5_lbl" parent="s1_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;rounded=1;" value="&lt;b&gt;Alpine-Linux-5&lt;/b&gt;&#xa;10.2.50.10&#xa;ssh / mgmt jumpbox" vertex="1">
+          <mxGeometry height="48" width="150" x="1205" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_e_spine_leaf1" edge="1" parent="s1_1" source="s1_spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.25;exitY=1;entryX=0.75;entryY=0;" target="s1_leaf1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_e_spine_leaf2" edge="1" parent="s1_1" source="s1_spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.75;exitY=1;entryX=0.25;entryY=0;" target="s1_leaf2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_e_leaf1_alp1" edge="1" parent="s1_1" source="s1_leaf1" style="endArrow=none;html=1;strokeColor=#6c8ebf;strokeWidth=2;entryX=0.5;entryY=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="340" y="560" as="sourcePoint" />
+            <mxPoint x="210" y="710" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s1_e_leaf1_alp2" edge="1" parent="s1_1" source="s1_leaf1" style="endArrow=none;html=1;strokeColor=#82b366;strokeWidth=2;entryX=0.5;entryY=0;exitX=0.5;exitY=0.98;exitDx=0;exitDy=0;exitPerimeter=0;" target="s1_alp2">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="410" y="570" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s1_e_leaf2_alp3" edge="1" parent="s1_1" source="s1_leaf2" style="endArrow=none;html=1;strokeColor=#d79b00;strokeWidth=2;entryX=0.5;entryY=0;" target="s1_alp3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1160" y="410" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s1_e_leaf2_alp5" edge="1" parent="s1_1" source="s1_leaf2" style="endArrow=none;html=1;strokeColor=#9673a6;strokeWidth=2;entryX=0.5;entryY=0;" target="s1_alp5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_legend_routes_anchor" parent="s1_1" style="endArrow=none;html=1;strokeColor=none;" vertex="1">
+          <mxGeometry x="80" y="910" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_Cmn-Uz8HW59QNkbMKJJD-1" parent="s1_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;forced-color-adjust: none; color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; white-space: pre;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;WEB tier · 10.1.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="180" x="115" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_Cmn-Uz8HW59QNkbMKJJD-2" parent="s1_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(27, 94, 32); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;DB tier · 10.1.200.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="440" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_Cmn-Uz8HW59QNkbMKJJD-3" parent="s1_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(230, 81, 0); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;APP tier · 10.2.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="885" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_Cmn-Uz8HW59QNkbMKJJD-4" parent="s1_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(74, 20, 140); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;MGT tier · 10.2.50.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="1205" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_Cmn-Uz8HW59QNkbMKJJD-13" parent="s1_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-2&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="1080" y="450" as="geometry" />
+        </mxCell>
+      
+
+        <mxCell id="s1_banner" value="SCENARIO 1 — Microsegmentation Bypass (SID 9000001)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#b71c1c;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#b71c1c;align=center;verticalAlign=middle;" vertex="1" parent="s1_1">
+          <mxGeometry x="80" y="20" width="1340" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s1_caption" value="&lt;b&gt;SID 9000001 · WEB → DB direct&lt;/b&gt;&#10;Attack: WEB host (10.1.100.10) opens a connection directly to DB (10.1.200.10:5432), skipping the APP tier required by zone policy.&#10;Detection: LEAF-1 iptables zt-default-drop blocks → Suricata fires SID 9000001 for the audit trail." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#f9a825;strokeWidth=1;fontSize=11;align=left;verticalAlign=top;" vertex="1" parent="s1_1">
+          <mxGeometry x="80" y="80" width="1340" height="70" as="geometry" />
         </mxCell>
 
-        <mxCell id="legend_routes" value="&lt;b&gt;Static Routes (verified on SONIC LEAF-1)&lt;/b&gt;&#10;&#10;&lt;b&gt;LEAF-1:&lt;/b&gt;&#10;  S  10.1.0.0/16  via 10.0.1.2 (IDS-eth0)&#10;  S  10.2.0.0/16  via SPINE&#10;&#10;&lt;b&gt;LEAF-2&lt;/b&gt; (symmetric):&#10;  S  10.2.0.0/16  via IDS-eth1&#10;  S  10.1.0.0/16  via SPINE&#10;&#10;⇒ east-west request traverses IDS&#10;⇒ east-west reply bypasses IDS via SPINE" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff9c4;strokeColor=#fbc02d;strokeWidth=2;fontSize=10;align=left;verticalAlign=top;fontFamily=Courier New;" vertex="1" parent="1">
-          <mxGeometry x="80" y="910" width="430" height="60" as="geometry" />
+        <mxCell id="s1_atk" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=1;exitY=0.5;entryX=0;entryY=0.5;curved=1;" edge="1" parent="s1_1" source="s1_alp1" target="s1_alp2">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="360" y="750" /><mxPoint x="440" y="750" /></Array></mxGeometry>
         </mxCell>
-        <mxCell id="legend_routes_anchor" style="endArrow=none;html=1;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="80" y="910" width="0" height="0" as="geometry" />
+        <mxCell id="s1_lbl" value="Direct WEB → DB (bypass APP tier)" style="text;html=1;align=center;fontSize=10;fontColor=#d50000;fontStyle=1;fillColor=#fff;strokeColor=#d50000;rounded=1;strokeWidth=1;" vertex="1" parent="s1_1">
+          <mxGeometry x="400" y="760" width="220" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="2 · SID 9000002 DB outbound" id="s2">
+    <mxGraphModel dx="1508" dy="835" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="s2_1" parent="0" />
+        <mxCell id="s2_title" parent="s2_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#1a237e;fillColor=none;strokeColor=none;" value="2 · SID 9000002 DB outbound" vertex="1">
+          <mxGeometry height="32" width="900" x="285" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_spine" parent="s2_1" style="shape=mxgraph.cisco.routers.router;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="697.5" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_spine_lbl" parent="s2_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-SPINE&lt;/b&gt;&lt;br&gt;Route Reflector" vertex="1">
+          <mxGeometry height="48" width="120" x="677.5" y="312" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_Cmn-Uz8HW59QNkbMKJJD-10" edge="1" parent="s2_1" source="s2_leaf1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;dashed=1;startSize=8;endSize=8;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="450.00000000000006" y="529.78" as="sourcePoint" />
+            <mxPoint x="731.8" y="529.78" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s2_leaf1" parent="s2_1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="320" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_leaf1_lbl" parent="s2_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-1&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="320" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_Cmn-Uz8HW59QNkbMKJJD-11" edge="1" parent="s2_1" source="s2_leaf2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;entryX=0.369;entryY=0.624;entryDx=0;entryDy=0;entryPerimeter=0;dashed=1;startSize=8;endSize=8;" target="s2_ids">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="780" y="530" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s2_leaf2" parent="s2_1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="1080" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_ids" parent="s2_1" style="shape=mxgraph.cisco.security.firewall;html=1;pointerEvents=1;dashed=0;fillColor=#e57373;strokeColor=#b71c1c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="695" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_ids_lbl" parent="s2_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#b71c1c;strokeWidth=1;rounded=1;" value="&lt;b&gt;IDS-Suricata (in-path L3)&lt;/b&gt;&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="50" width="125" x="675" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_zone_web" parent="s2_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#0d47a1;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="80" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_alp1" parent="s2_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#6c8ebf;strokeColor=#0d47a1;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="160" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_alp1_lbl" parent="s2_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#6c8ebf;rounded=1;" value="&lt;b&gt;Alpine-Linux-1&lt;/b&gt;&#xa;10.1.100.10&#xa;nginx :8080" vertex="1">
+          <mxGeometry height="48" width="150" x="115" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_zone_db" parent="s2_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#1b5e20;" value="&lt;blockquote style=&quot;margin: 0 0 0 40px; border: none; padding: 0px;&quot;&gt;&lt;br&gt;&lt;/blockquote&gt;" vertex="1">
+          <mxGeometry height="200" width="240" x="400" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_alp2" parent="s2_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#1b5e20;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="480" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_alp2_lbl" parent="s2_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;rounded=1;" value="&lt;b&gt;Alpine-Linux-2&lt;/b&gt;&#xa;10.1.200.10&#xa;postgres :5432" vertex="1">
+          <mxGeometry height="48" width="150" x="445" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_zone_app" parent="s2_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#e65100;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="840" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_alp3" parent="s2_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#d79b00;strokeColor=#e65100;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="920" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_alp3_lbl" parent="s2_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#d79b00;rounded=1;" value="&lt;b&gt;Alpine-Linux-3&lt;/b&gt;&#xa;10.2.100.10&#xa;app worker" vertex="1">
+          <mxGeometry height="48" width="150" x="885" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_zone_mgt" parent="s2_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#4a148c;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="1160" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_alp5" parent="s2_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="1240" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_alp5_lbl" parent="s2_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;rounded=1;" value="&lt;b&gt;Alpine-Linux-5&lt;/b&gt;&#xa;10.2.50.10&#xa;ssh / mgmt jumpbox" vertex="1">
+          <mxGeometry height="48" width="150" x="1205" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_e_spine_leaf1" edge="1" parent="s2_1" source="s2_spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.25;exitY=1;entryX=0.75;entryY=0;" target="s2_leaf1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_e_spine_leaf2" edge="1" parent="s2_1" source="s2_spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.75;exitY=1;entryX=0.25;entryY=0;" target="s2_leaf2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_e_leaf1_alp1" edge="1" parent="s2_1" source="s2_leaf1" style="endArrow=none;html=1;strokeColor=#6c8ebf;strokeWidth=2;entryX=0.5;entryY=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="340" y="560" as="sourcePoint" />
+            <mxPoint x="210" y="710" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s2_e_leaf1_alp2" edge="1" parent="s2_1" source="s2_leaf1" style="endArrow=none;html=1;strokeColor=#82b366;strokeWidth=2;entryX=0.5;entryY=0;exitX=0.5;exitY=0.98;exitDx=0;exitDy=0;exitPerimeter=0;" target="s2_alp2">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="410" y="570" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s2_e_leaf2_alp3" edge="1" parent="s2_1" source="s2_leaf2" style="endArrow=none;html=1;strokeColor=#d79b00;strokeWidth=2;entryX=0.5;entryY=0;" target="s2_alp3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1160" y="410" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s2_e_leaf2_alp5" edge="1" parent="s2_1" source="s2_leaf2" style="endArrow=none;html=1;strokeColor=#9673a6;strokeWidth=2;entryX=0.5;entryY=0;" target="s2_alp5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_legend_routes_anchor" parent="s2_1" style="endArrow=none;html=1;strokeColor=none;" vertex="1">
+          <mxGeometry x="80" y="910" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_Cmn-Uz8HW59QNkbMKJJD-1" parent="s2_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;forced-color-adjust: none; color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; white-space: pre;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;WEB tier · 10.1.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="180" x="115" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_Cmn-Uz8HW59QNkbMKJJD-2" parent="s2_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(27, 94, 32); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;DB tier · 10.1.200.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="440" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_Cmn-Uz8HW59QNkbMKJJD-3" parent="s2_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(230, 81, 0); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;APP tier · 10.2.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="885" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_Cmn-Uz8HW59QNkbMKJJD-4" parent="s2_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(74, 20, 140); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;MGT tier · 10.2.50.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="1205" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_Cmn-Uz8HW59QNkbMKJJD-13" parent="s2_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-2&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="1080" y="450" as="geometry" />
+        </mxCell>
+      
+
+        <mxCell id="s2_banner" value="SCENARIO 2 — DB Exfiltration (SID 9000002)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#b71c1c;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#b71c1c;align=center;verticalAlign=middle;" vertex="1" parent="s2_1">
+          <mxGeometry x="80" y="20" width="1340" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_caption" value="&lt;b&gt;SID 9000002 · DB outbound exfiltration&lt;/b&gt;&#10;Attack: Compromised DB tier opens a connection to external host (data egress). Per zero-trust policy DB must NEVER initiate outbound.&#10;Detection: Suricata fires SID 9000002 (DB → !lab-zones); LEAF-1 default-drop blocks the SYN." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#f9a825;strokeWidth=1;fontSize=11;align=left;verticalAlign=top;" vertex="1" parent="s2_1">
+          <mxGeometry x="80" y="80" width="1340" height="70" as="geometry" />
         </mxCell>
 
+        <mxCell id="s2_external" value="&lt;b&gt;External / Internet&lt;/b&gt;&lt;br&gt;(not allowed)" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#ffcdd2;strokeColor=#b71c1c;fontSize=10;fontStyle=1;" vertex="1" parent="s2_1">
+          <mxGeometry x="430" y="120" width="160" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="s2_atk" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0.5;exitY=0;entryX=0.5;entryY=1;curved=1;" edge="1" parent="s2_1" source="s2_alp2" target="s2_external">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="520" y="400" /><mxPoint x="510" y="260" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="s2_lbl" value="DB initiates outbound (exfiltration)" style="text;html=1;align=center;fontSize=10;fontColor=#d50000;fontStyle=1;fillColor=#fff;strokeColor=#d50000;rounded=1;strokeWidth=1;" vertex="1" parent="s2_1">
+          <mxGeometry x="540" y="350" width="250" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="3 · SID 9000030 WEB→APP burst" id="s3">
+    <mxGraphModel dx="1508" dy="835" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="s3_1" parent="0" />
+        <mxCell id="s3_title" parent="s3_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#1a237e;fillColor=none;strokeColor=none;" value="3 · SID 9000030 WEB→APP burst" vertex="1">
+          <mxGeometry height="32" width="900" x="285" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_spine" parent="s3_1" style="shape=mxgraph.cisco.routers.router;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="697.5" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_spine_lbl" parent="s3_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-SPINE&lt;/b&gt;&lt;br&gt;Route Reflector" vertex="1">
+          <mxGeometry height="48" width="120" x="677.5" y="312" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_Cmn-Uz8HW59QNkbMKJJD-10" edge="1" parent="s3_1" source="s3_leaf1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;dashed=1;startSize=8;endSize=8;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="450.00000000000006" y="529.78" as="sourcePoint" />
+            <mxPoint x="731.8" y="529.78" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s3_leaf1" parent="s3_1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="320" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_leaf1_lbl" parent="s3_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-1&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="320" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_Cmn-Uz8HW59QNkbMKJJD-11" edge="1" parent="s3_1" source="s3_leaf2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;entryX=0.369;entryY=0.624;entryDx=0;entryDy=0;entryPerimeter=0;dashed=1;startSize=8;endSize=8;" target="s3_ids">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="780" y="530" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s3_leaf2" parent="s3_1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="1080" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_ids" parent="s3_1" style="shape=mxgraph.cisco.security.firewall;html=1;pointerEvents=1;dashed=0;fillColor=#e57373;strokeColor=#b71c1c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="695" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_ids_lbl" parent="s3_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#b71c1c;strokeWidth=1;rounded=1;" value="&lt;b&gt;IDS-Suricata (in-path L3)&lt;/b&gt;&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="50" width="125" x="675" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_zone_web" parent="s3_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#0d47a1;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="80" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_alp1" parent="s3_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#6c8ebf;strokeColor=#0d47a1;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="160" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_alp1_lbl" parent="s3_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#6c8ebf;rounded=1;" value="&lt;b&gt;Alpine-Linux-1&lt;/b&gt;&#xa;10.1.100.10&#xa;nginx :8080" vertex="1">
+          <mxGeometry height="48" width="150" x="115" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_zone_db" parent="s3_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#1b5e20;" value="&lt;blockquote style=&quot;margin: 0 0 0 40px; border: none; padding: 0px;&quot;&gt;&lt;br&gt;&lt;/blockquote&gt;" vertex="1">
+          <mxGeometry height="200" width="240" x="400" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_alp2" parent="s3_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#1b5e20;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="480" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_alp2_lbl" parent="s3_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;rounded=1;" value="&lt;b&gt;Alpine-Linux-2&lt;/b&gt;&#xa;10.1.200.10&#xa;postgres :5432" vertex="1">
+          <mxGeometry height="48" width="150" x="445" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_zone_app" parent="s3_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#e65100;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="840" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_alp3" parent="s3_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#d79b00;strokeColor=#e65100;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="920" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_alp3_lbl" parent="s3_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#d79b00;rounded=1;" value="&lt;b&gt;Alpine-Linux-3&lt;/b&gt;&#xa;10.2.100.10&#xa;app worker" vertex="1">
+          <mxGeometry height="48" width="150" x="885" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_zone_mgt" parent="s3_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#4a148c;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="1160" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_alp5" parent="s3_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="1240" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_alp5_lbl" parent="s3_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;rounded=1;" value="&lt;b&gt;Alpine-Linux-5&lt;/b&gt;&#xa;10.2.50.10&#xa;ssh / mgmt jumpbox" vertex="1">
+          <mxGeometry height="48" width="150" x="1205" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_e_spine_leaf1" edge="1" parent="s3_1" source="s3_spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.25;exitY=1;entryX=0.75;entryY=0;" target="s3_leaf1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_e_spine_leaf2" edge="1" parent="s3_1" source="s3_spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.75;exitY=1;entryX=0.25;entryY=0;" target="s3_leaf2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_e_leaf1_alp1" edge="1" parent="s3_1" source="s3_leaf1" style="endArrow=none;html=1;strokeColor=#6c8ebf;strokeWidth=2;entryX=0.5;entryY=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="340" y="560" as="sourcePoint" />
+            <mxPoint x="210" y="710" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s3_e_leaf1_alp2" edge="1" parent="s3_1" source="s3_leaf1" style="endArrow=none;html=1;strokeColor=#82b366;strokeWidth=2;entryX=0.5;entryY=0;exitX=0.5;exitY=0.98;exitDx=0;exitDy=0;exitPerimeter=0;" target="s3_alp2">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="410" y="570" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s3_e_leaf2_alp3" edge="1" parent="s3_1" source="s3_leaf2" style="endArrow=none;html=1;strokeColor=#d79b00;strokeWidth=2;entryX=0.5;entryY=0;" target="s3_alp3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1160" y="410" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s3_e_leaf2_alp5" edge="1" parent="s3_1" source="s3_leaf2" style="endArrow=none;html=1;strokeColor=#9673a6;strokeWidth=2;entryX=0.5;entryY=0;" target="s3_alp5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_legend_routes_anchor" parent="s3_1" style="endArrow=none;html=1;strokeColor=none;" vertex="1">
+          <mxGeometry x="80" y="910" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_Cmn-Uz8HW59QNkbMKJJD-1" parent="s3_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;forced-color-adjust: none; color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; white-space: pre;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;WEB tier · 10.1.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="180" x="115" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_Cmn-Uz8HW59QNkbMKJJD-2" parent="s3_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(27, 94, 32); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;DB tier · 10.1.200.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="440" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_Cmn-Uz8HW59QNkbMKJJD-3" parent="s3_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(230, 81, 0); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;APP tier · 10.2.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="885" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_Cmn-Uz8HW59QNkbMKJJD-4" parent="s3_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(74, 20, 140); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;MGT tier · 10.2.50.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="1205" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_Cmn-Uz8HW59QNkbMKJJD-13" parent="s3_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-2&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="1080" y="450" as="geometry" />
+        </mxCell>
+      
+
+        <mxCell id="s3_banner" value="SCENARIO 3 — WEB→APP Burst (SID 9000030)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#b71c1c;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#b71c1c;align=center;verticalAlign=middle;" vertex="1" parent="s3_1">
+          <mxGeometry x="80" y="20" width="1340" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s3_caption" value="&lt;b&gt;SID 9000030 · WEB → APP abnormal connection rate&lt;/b&gt;&#10;Attack: Compromised WEB tier floods APP tier with TCP SYN at 200+/60s (vs baseline ~5/min for legitimate proxy traffic).&#10;Detection: Suricata threshold rule fires → agent issues targeted DROP src=10.1.100.10 dst=10.2.100.10:8080." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#f9a825;strokeWidth=1;fontSize=11;align=left;verticalAlign=top;" vertex="1" parent="s3_1">
+          <mxGeometry x="80" y="80" width="1340" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s3_a1" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0.5;exitY=0;entryX=0.5;entryY=1;curved=1;" edge="1" parent="s3_1" source="s3_alp1" target="s3_leaf1">
+          <mxGeometry relative="1" as="geometry"></mxGeometry>
+        </mxCell>
+        <mxCell id="s3_a2" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=1;exitY=0.5;entryX=0;entryY=0.5;curved=1;" edge="1" parent="s3_1" source="s3_leaf1" target="s3_ids">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="500" y="530" /><mxPoint x="700" y="530" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="s3_a3" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=1;exitY=0.5;entryX=0;entryY=0.5;curved=1;" edge="1" parent="s3_1" source="s3_ids" target="s3_leaf2">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="780" y="530" /><mxPoint x="1080" y="530" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="s3_a4" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0.5;exitY=1;entryX=0.5;entryY=0;curved=1;" edge="1" parent="s3_1" source="s3_leaf2" target="s3_alp3">
+          <mxGeometry relative="1" as="geometry"></mxGeometry>
+        </mxCell>
+        <mxCell id="s3_lbl" value="250 SYN WEB → APP:8080 / 30 s burst" style="text;html=1;align=center;fontSize=10;fontColor=#d50000;fontStyle=1;fillColor=#fff;strokeColor=#d50000;rounded=1;strokeWidth=1;" vertex="1" parent="s3_1">
+          <mxGeometry x="600" y="200" width="320" height="36" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="4 · SID 9000031 APP→DB burst" id="s4">
+    <mxGraphModel dx="1508" dy="835" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="s4_1" parent="0" />
+        <mxCell id="s4_title" parent="s4_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#1a237e;fillColor=none;strokeColor=none;" value="4 · SID 9000031 APP→DB burst" vertex="1">
+          <mxGeometry height="32" width="900" x="285" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_spine" parent="s4_1" style="shape=mxgraph.cisco.routers.router;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="697.5" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_spine_lbl" parent="s4_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-SPINE&lt;/b&gt;&lt;br&gt;Route Reflector" vertex="1">
+          <mxGeometry height="48" width="120" x="677.5" y="312" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_Cmn-Uz8HW59QNkbMKJJD-10" edge="1" parent="s4_1" source="s4_leaf1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;dashed=1;startSize=8;endSize=8;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="450.00000000000006" y="529.78" as="sourcePoint" />
+            <mxPoint x="731.8" y="529.78" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s4_leaf1" parent="s4_1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="320" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_leaf1_lbl" parent="s4_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-1&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="320" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_Cmn-Uz8HW59QNkbMKJJD-11" edge="1" parent="s4_1" source="s4_leaf2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;entryX=0.369;entryY=0.624;entryDx=0;entryDy=0;entryPerimeter=0;dashed=1;startSize=8;endSize=8;" target="s4_ids">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="780" y="530" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s4_leaf2" parent="s4_1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="1080" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_ids" parent="s4_1" style="shape=mxgraph.cisco.security.firewall;html=1;pointerEvents=1;dashed=0;fillColor=#e57373;strokeColor=#b71c1c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="695" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_ids_lbl" parent="s4_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#b71c1c;strokeWidth=1;rounded=1;" value="&lt;b&gt;IDS-Suricata (in-path L3)&lt;/b&gt;&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="50" width="125" x="675" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_zone_web" parent="s4_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#0d47a1;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="80" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_alp1" parent="s4_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#6c8ebf;strokeColor=#0d47a1;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="160" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_alp1_lbl" parent="s4_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#6c8ebf;rounded=1;" value="&lt;b&gt;Alpine-Linux-1&lt;/b&gt;&#xa;10.1.100.10&#xa;nginx :8080" vertex="1">
+          <mxGeometry height="48" width="150" x="115" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_zone_db" parent="s4_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#1b5e20;" value="&lt;blockquote style=&quot;margin: 0 0 0 40px; border: none; padding: 0px;&quot;&gt;&lt;br&gt;&lt;/blockquote&gt;" vertex="1">
+          <mxGeometry height="200" width="240" x="400" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_alp2" parent="s4_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#1b5e20;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="480" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_alp2_lbl" parent="s4_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;rounded=1;" value="&lt;b&gt;Alpine-Linux-2&lt;/b&gt;&#xa;10.1.200.10&#xa;postgres :5432" vertex="1">
+          <mxGeometry height="48" width="150" x="445" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_zone_app" parent="s4_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#e65100;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="840" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_alp3" parent="s4_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#d79b00;strokeColor=#e65100;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="920" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_alp3_lbl" parent="s4_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#d79b00;rounded=1;" value="&lt;b&gt;Alpine-Linux-3&lt;/b&gt;&#xa;10.2.100.10&#xa;app worker" vertex="1">
+          <mxGeometry height="48" width="150" x="885" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_zone_mgt" parent="s4_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#4a148c;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="1160" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_alp5" parent="s4_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="1240" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_alp5_lbl" parent="s4_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;rounded=1;" value="&lt;b&gt;Alpine-Linux-5&lt;/b&gt;&#xa;10.2.50.10&#xa;ssh / mgmt jumpbox" vertex="1">
+          <mxGeometry height="48" width="150" x="1205" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_e_spine_leaf1" edge="1" parent="s4_1" source="s4_spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.25;exitY=1;entryX=0.75;entryY=0;" target="s4_leaf1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_e_spine_leaf2" edge="1" parent="s4_1" source="s4_spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.75;exitY=1;entryX=0.25;entryY=0;" target="s4_leaf2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_e_leaf1_alp1" edge="1" parent="s4_1" source="s4_leaf1" style="endArrow=none;html=1;strokeColor=#6c8ebf;strokeWidth=2;entryX=0.5;entryY=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="340" y="560" as="sourcePoint" />
+            <mxPoint x="210" y="710" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s4_e_leaf1_alp2" edge="1" parent="s4_1" source="s4_leaf1" style="endArrow=none;html=1;strokeColor=#82b366;strokeWidth=2;entryX=0.5;entryY=0;exitX=0.5;exitY=0.98;exitDx=0;exitDy=0;exitPerimeter=0;" target="s4_alp2">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="410" y="570" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s4_e_leaf2_alp3" edge="1" parent="s4_1" source="s4_leaf2" style="endArrow=none;html=1;strokeColor=#d79b00;strokeWidth=2;entryX=0.5;entryY=0;" target="s4_alp3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1160" y="410" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s4_e_leaf2_alp5" edge="1" parent="s4_1" source="s4_leaf2" style="endArrow=none;html=1;strokeColor=#9673a6;strokeWidth=2;entryX=0.5;entryY=0;" target="s4_alp5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_legend_routes_anchor" parent="s4_1" style="endArrow=none;html=1;strokeColor=none;" vertex="1">
+          <mxGeometry x="80" y="910" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_Cmn-Uz8HW59QNkbMKJJD-1" parent="s4_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;forced-color-adjust: none; color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; white-space: pre;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;WEB tier · 10.1.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="180" x="115" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_Cmn-Uz8HW59QNkbMKJJD-2" parent="s4_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(27, 94, 32); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;DB tier · 10.1.200.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="440" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_Cmn-Uz8HW59QNkbMKJJD-3" parent="s4_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(230, 81, 0); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;APP tier · 10.2.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="885" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_Cmn-Uz8HW59QNkbMKJJD-4" parent="s4_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(74, 20, 140); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;MGT tier · 10.2.50.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="1205" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_Cmn-Uz8HW59QNkbMKJJD-13" parent="s4_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-2&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="1080" y="450" as="geometry" />
+        </mxCell>
+      
+
+        <mxCell id="s4_banner" value="SCENARIO 4 — APP→DB Burst (SID 9000031)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#b71c1c;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#b71c1c;align=center;verticalAlign=middle;" vertex="1" parent="s4_1">
+          <mxGeometry x="80" y="20" width="1340" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s4_caption" value="&lt;b&gt;SID 9000031 · APP → DB volume anomaly&lt;/b&gt;&#10;Attack: Compromised APP tier opens 100+ connections to DB:5432 in 60s — possible mass extraction.&#10;Detection: Suricata threshold fires → agent issues DROP src=10.2.100.10 dst=10.1.200.10:5432 (priority 50 overrides zt-app-db-allow)." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#f9a825;strokeWidth=1;fontSize=11;align=left;verticalAlign=top;" vertex="1" parent="s4_1">
+          <mxGeometry x="80" y="80" width="1340" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s4_a1" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0.5;exitY=0;entryX=0.5;entryY=1;curved=1;" edge="1" parent="s4_1" source="s4_alp3" target="s4_leaf2">
+          <mxGeometry relative="1" as="geometry"></mxGeometry>
+        </mxCell>
+        <mxCell id="s4_a2" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0;exitY=0.5;entryX=1;entryY=0.5;curved=1;" edge="1" parent="s4_1" source="s4_leaf2" target="s4_ids">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1060" y="530" /><mxPoint x="780" y="530" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="s4_a3" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0;exitY=0.5;entryX=1;entryY=0.5;curved=1;" edge="1" parent="s4_1" source="s4_ids" target="s4_leaf1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="700" y="530" /><mxPoint x="410" y="530" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="s4_a4" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0.5;exitY=1;entryX=0.5;entryY=0;curved=1;" edge="1" parent="s4_1" source="s4_leaf1" target="s4_alp2">
+          <mxGeometry relative="1" as="geometry"></mxGeometry>
+        </mxCell>
+        <mxCell id="s4_lbl" value="100 SYN APP → DB:5432 / 60 s burst" style="text;html=1;align=center;fontSize=10;fontColor=#d50000;fontStyle=1;fillColor=#fff;strokeColor=#d50000;rounded=1;strokeWidth=1;" vertex="1" parent="s4_1">
+          <mxGeometry x="600" y="200" width="320" height="36" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="5 · SID 9000032 DB→APP bulk reply ⚠" id="s5">
+    <mxGraphModel dx="1508" dy="835" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="s5_1" parent="0" />
+        <mxCell id="s5_title" parent="s5_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#1a237e;fillColor=none;strokeColor=none;" value="5 · SID 9000032 DB→APP bulk reply ⚠" vertex="1">
+          <mxGeometry height="32" width="900" x="285" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_spine" parent="s5_1" style="shape=mxgraph.cisco.routers.router;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="697.5" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_spine_lbl" parent="s5_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-SPINE&lt;/b&gt;&lt;br&gt;Route Reflector" vertex="1">
+          <mxGeometry height="48" width="120" x="677.5" y="312" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_Cmn-Uz8HW59QNkbMKJJD-10" edge="1" parent="s5_1" source="s5_leaf1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;dashed=1;startSize=8;endSize=8;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="450.00000000000006" y="529.78" as="sourcePoint" />
+            <mxPoint x="731.8" y="529.78" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s5_leaf1" parent="s5_1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="320" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_leaf1_lbl" parent="s5_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-1&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="320" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_Cmn-Uz8HW59QNkbMKJJD-11" edge="1" parent="s5_1" source="s5_leaf2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;entryX=0.369;entryY=0.624;entryDx=0;entryDy=0;entryPerimeter=0;dashed=1;startSize=8;endSize=8;" target="s5_ids">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="780" y="530" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s5_leaf2" parent="s5_1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="1080" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_ids" parent="s5_1" style="shape=mxgraph.cisco.security.firewall;html=1;pointerEvents=1;dashed=0;fillColor=#e57373;strokeColor=#b71c1c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="695" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_ids_lbl" parent="s5_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#b71c1c;strokeWidth=1;rounded=1;" value="&lt;b&gt;IDS-Suricata (in-path L3)&lt;/b&gt;&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="50" width="125" x="675" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_zone_web" parent="s5_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#0d47a1;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="80" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_alp1" parent="s5_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#6c8ebf;strokeColor=#0d47a1;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="160" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_alp1_lbl" parent="s5_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#6c8ebf;rounded=1;" value="&lt;b&gt;Alpine-Linux-1&lt;/b&gt;&#xa;10.1.100.10&#xa;nginx :8080" vertex="1">
+          <mxGeometry height="48" width="150" x="115" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_zone_db" parent="s5_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#1b5e20;" value="&lt;blockquote style=&quot;margin: 0 0 0 40px; border: none; padding: 0px;&quot;&gt;&lt;br&gt;&lt;/blockquote&gt;" vertex="1">
+          <mxGeometry height="200" width="240" x="400" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_alp2" parent="s5_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#1b5e20;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="480" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_alp2_lbl" parent="s5_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;rounded=1;" value="&lt;b&gt;Alpine-Linux-2&lt;/b&gt;&#xa;10.1.200.10&#xa;postgres :5432" vertex="1">
+          <mxGeometry height="48" width="150" x="445" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_zone_app" parent="s5_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#e65100;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="840" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_alp3" parent="s5_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#d79b00;strokeColor=#e65100;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="920" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_alp3_lbl" parent="s5_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#d79b00;rounded=1;" value="&lt;b&gt;Alpine-Linux-3&lt;/b&gt;&#xa;10.2.100.10&#xa;app worker" vertex="1">
+          <mxGeometry height="48" width="150" x="885" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_zone_mgt" parent="s5_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#4a148c;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="1160" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_alp5" parent="s5_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="1240" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_alp5_lbl" parent="s5_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;rounded=1;" value="&lt;b&gt;Alpine-Linux-5&lt;/b&gt;&#xa;10.2.50.10&#xa;ssh / mgmt jumpbox" vertex="1">
+          <mxGeometry height="48" width="150" x="1205" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_e_spine_leaf1" edge="1" parent="s5_1" source="s5_spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.25;exitY=1;entryX=0.75;entryY=0;" target="s5_leaf1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_e_spine_leaf2" edge="1" parent="s5_1" source="s5_spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.75;exitY=1;entryX=0.25;entryY=0;" target="s5_leaf2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_e_leaf1_alp1" edge="1" parent="s5_1" source="s5_leaf1" style="endArrow=none;html=1;strokeColor=#6c8ebf;strokeWidth=2;entryX=0.5;entryY=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="340" y="560" as="sourcePoint" />
+            <mxPoint x="210" y="710" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s5_e_leaf1_alp2" edge="1" parent="s5_1" source="s5_leaf1" style="endArrow=none;html=1;strokeColor=#82b366;strokeWidth=2;entryX=0.5;entryY=0;exitX=0.5;exitY=0.98;exitDx=0;exitDy=0;exitPerimeter=0;" target="s5_alp2">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="410" y="570" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s5_e_leaf2_alp3" edge="1" parent="s5_1" source="s5_leaf2" style="endArrow=none;html=1;strokeColor=#d79b00;strokeWidth=2;entryX=0.5;entryY=0;" target="s5_alp3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1160" y="410" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s5_e_leaf2_alp5" edge="1" parent="s5_1" source="s5_leaf2" style="endArrow=none;html=1;strokeColor=#9673a6;strokeWidth=2;entryX=0.5;entryY=0;" target="s5_alp5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_legend_routes_anchor" parent="s5_1" style="endArrow=none;html=1;strokeColor=none;" vertex="1">
+          <mxGeometry x="80" y="910" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_Cmn-Uz8HW59QNkbMKJJD-1" parent="s5_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;forced-color-adjust: none; color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; white-space: pre;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;WEB tier · 10.1.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="180" x="115" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_Cmn-Uz8HW59QNkbMKJJD-2" parent="s5_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(27, 94, 32); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;DB tier · 10.1.200.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="440" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_Cmn-Uz8HW59QNkbMKJJD-3" parent="s5_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(230, 81, 0); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;APP tier · 10.2.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="885" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_Cmn-Uz8HW59QNkbMKJJD-4" parent="s5_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(74, 20, 140); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;MGT tier · 10.2.50.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="1205" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_Cmn-Uz8HW59QNkbMKJJD-13" parent="s5_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-2&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="1080" y="450" as="geometry" />
+        </mxCell>
+      
+
+        <mxCell id="s5_banner" value="SCENARIO 5 — DB→APP Bulk Reply  ⚠ Known Limitation (SID 9000032)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#b71c1c;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#b71c1c;align=center;verticalAlign=middle;" vertex="1" parent="s5_1">
+          <mxGeometry x="80" y="20" width="1340" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_caption" value="&lt;b&gt;SID 9000032 · DB → APP large reply (asymmetric routing limitation)&lt;/b&gt;&#10;Attack: APP sends bulk SELECT JOIN — DB reply &gt;4 KB indicating bulk extraction. Rule monitors the REPLY direction.&#10;Status: ✗ NOT DETECTABLE in current topology — LEAF-1 routes 10.2/16 via SPINE (not Suricata), so DB→APP reply never reaches IDS. Documented as future-work routing fix." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#f9a825;strokeWidth=1;fontSize=11;align=left;verticalAlign=top;" vertex="1" parent="s5_1">
+          <mxGeometry x="80" y="80" width="1340" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s5_req1" style="endArrow=classic;html=1;strokeColor=#00897b;strokeWidth=3;exitX=0.5;exitY=0;entryX=0.5;entryY=1;curved=1;" edge="1" parent="s5_1" source="s5_alp3" target="s5_leaf2">
+          <mxGeometry relative="1" as="geometry"></mxGeometry>
+        </mxCell>
+        <mxCell id="s5_req2" style="endArrow=classic;html=1;strokeColor=#00897b;strokeWidth=3;exitX=0;exitY=0.5;entryX=1;entryY=0.5;curved=1;" edge="1" parent="s5_1" source="s5_leaf2" target="s5_ids">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1060" y="530" /><mxPoint x="780" y="530" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="s5_req3" style="endArrow=classic;html=1;strokeColor=#00897b;strokeWidth=3;exitX=0;exitY=0.5;entryX=1;entryY=0.5;curved=1;" edge="1" parent="s5_1" source="s5_ids" target="s5_leaf1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="700" y="530" /><mxPoint x="410" y="530" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="s5_req4" style="endArrow=classic;html=1;strokeColor=#00897b;strokeWidth=3;exitX=0.5;exitY=1;entryX=0.5;entryY=0;curved=1;" edge="1" parent="s5_1" source="s5_leaf1" target="s5_alp2">
+          <mxGeometry relative="1" as="geometry"></mxGeometry>
+        </mxCell>
+        <mxCell id="s5_reqlbl" value="① Request &quot;SELECT * JOIN&quot; APP→DB" style="text;html=1;align=center;fontSize=10;fontColor=#00897b;fontStyle=1;fillColor=#fff;strokeColor=#00897b;rounded=1;strokeWidth=1;" vertex="1" parent="s5_1">
+          <mxGeometry x="400" y="600" width="320" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="s5_rep1" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;dashed=1;dashPattern=8 4;exitX=0.5;exitY=0;entryX=0.5;entryY=1;curved=1;" edge="1" parent="s5_1" source="s5_alp2" target="s5_leaf1">
+          <mxGeometry relative="1" as="geometry"></mxGeometry>
+        </mxCell>
+        <mxCell id="s5_rep2" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;dashed=1;dashPattern=8 4;exitX=0.5;exitY=0;entryX=0.25;entryY=1;curved=1;" edge="1" parent="s5_1" source="s5_leaf1" target="s5_spine">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="365" y="420" /><mxPoint x="725" y="420" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="s5_rep3" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;dashed=1;dashPattern=8 4;exitX=0.75;exitY=1;entryX=0.5;entryY=0;curved=1;" edge="1" parent="s5_1" source="s5_spine" target="s5_leaf2">
+          <mxGeometry relative="1" as="geometry"></mxGeometry>
+        </mxCell>
+        <mxCell id="s5_rep4" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;dashed=1;dashPattern=8 4;exitX=0.5;exitY=1;entryX=0.5;entryY=0;curved=1;" edge="1" parent="s5_1" source="s5_leaf2" target="s5_alp3">
+          <mxGeometry relative="1" as="geometry"></mxGeometry>
+        </mxCell>
+        <mxCell id="s5_replbl" value="② Reply DB→APP (≥ 4 KB) bypasses IDS via SPINE&#10;⇒ SID 9000032 cannot fire (known limitation)" style="text;html=1;align=center;fontSize=10;fontColor=#d50000;fontStyle=1;fillColor=#fff;strokeColor=#d50000;rounded=1;strokeWidth=1;" vertex="1" parent="s5_1">
+          <mxGeometry x="740" y="300" width="360" height="50" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="6 · SID 9000033 APP→DB DROP TABLE" id="s6">
+    <mxGraphModel dx="1508" dy="835" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="s6_1" parent="0" />
+        <mxCell id="s6_title" parent="s6_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#1a237e;fillColor=none;strokeColor=none;" value="6 · SID 9000033 APP→DB DROP TABLE" vertex="1">
+          <mxGeometry height="32" width="900" x="285" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_spine" parent="s6_1" style="shape=mxgraph.cisco.routers.router;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="697.5" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_spine_lbl" parent="s6_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-SPINE&lt;/b&gt;&lt;br&gt;Route Reflector" vertex="1">
+          <mxGeometry height="48" width="120" x="677.5" y="312" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_Cmn-Uz8HW59QNkbMKJJD-10" edge="1" parent="s6_1" source="s6_leaf1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;dashed=1;startSize=8;endSize=8;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="450.00000000000006" y="529.78" as="sourcePoint" />
+            <mxPoint x="731.8" y="529.78" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s6_leaf1" parent="s6_1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="320" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_leaf1_lbl" parent="s6_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-1&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="320" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_Cmn-Uz8HW59QNkbMKJJD-11" edge="1" parent="s6_1" source="s6_leaf2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;entryX=0.369;entryY=0.624;entryDx=0;entryDy=0;entryPerimeter=0;dashed=1;startSize=8;endSize=8;" target="s6_ids">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="780" y="530" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s6_leaf2" parent="s6_1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="1080" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_ids" parent="s6_1" style="shape=mxgraph.cisco.security.firewall;html=1;pointerEvents=1;dashed=0;fillColor=#e57373;strokeColor=#b71c1c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="695" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_ids_lbl" parent="s6_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#b71c1c;strokeWidth=1;rounded=1;" value="&lt;b&gt;IDS-Suricata (in-path L3)&lt;/b&gt;&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="50" width="125" x="675" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_zone_web" parent="s6_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#0d47a1;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="80" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_alp1" parent="s6_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#6c8ebf;strokeColor=#0d47a1;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="160" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_alp1_lbl" parent="s6_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#6c8ebf;rounded=1;" value="&lt;b&gt;Alpine-Linux-1&lt;/b&gt;&#xa;10.1.100.10&#xa;nginx :8080" vertex="1">
+          <mxGeometry height="48" width="150" x="115" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_zone_db" parent="s6_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#1b5e20;" value="&lt;blockquote style=&quot;margin: 0 0 0 40px; border: none; padding: 0px;&quot;&gt;&lt;br&gt;&lt;/blockquote&gt;" vertex="1">
+          <mxGeometry height="200" width="240" x="400" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_alp2" parent="s6_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#1b5e20;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="480" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_alp2_lbl" parent="s6_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;rounded=1;" value="&lt;b&gt;Alpine-Linux-2&lt;/b&gt;&#xa;10.1.200.10&#xa;postgres :5432" vertex="1">
+          <mxGeometry height="48" width="150" x="445" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_zone_app" parent="s6_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#e65100;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="840" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_alp3" parent="s6_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#d79b00;strokeColor=#e65100;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="920" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_alp3_lbl" parent="s6_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#d79b00;rounded=1;" value="&lt;b&gt;Alpine-Linux-3&lt;/b&gt;&#xa;10.2.100.10&#xa;app worker" vertex="1">
+          <mxGeometry height="48" width="150" x="885" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_zone_mgt" parent="s6_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#4a148c;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="1160" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_alp5" parent="s6_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="1240" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_alp5_lbl" parent="s6_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;rounded=1;" value="&lt;b&gt;Alpine-Linux-5&lt;/b&gt;&#xa;10.2.50.10&#xa;ssh / mgmt jumpbox" vertex="1">
+          <mxGeometry height="48" width="150" x="1205" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_e_spine_leaf1" edge="1" parent="s6_1" source="s6_spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.25;exitY=1;entryX=0.75;entryY=0;" target="s6_leaf1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_e_spine_leaf2" edge="1" parent="s6_1" source="s6_spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.75;exitY=1;entryX=0.25;entryY=0;" target="s6_leaf2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_e_leaf1_alp1" edge="1" parent="s6_1" source="s6_leaf1" style="endArrow=none;html=1;strokeColor=#6c8ebf;strokeWidth=2;entryX=0.5;entryY=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="340" y="560" as="sourcePoint" />
+            <mxPoint x="210" y="710" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s6_e_leaf1_alp2" edge="1" parent="s6_1" source="s6_leaf1" style="endArrow=none;html=1;strokeColor=#82b366;strokeWidth=2;entryX=0.5;entryY=0;exitX=0.5;exitY=0.98;exitDx=0;exitDy=0;exitPerimeter=0;" target="s6_alp2">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="410" y="570" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s6_e_leaf2_alp3" edge="1" parent="s6_1" source="s6_leaf2" style="endArrow=none;html=1;strokeColor=#d79b00;strokeWidth=2;entryX=0.5;entryY=0;" target="s6_alp3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1160" y="410" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s6_e_leaf2_alp5" edge="1" parent="s6_1" source="s6_leaf2" style="endArrow=none;html=1;strokeColor=#9673a6;strokeWidth=2;entryX=0.5;entryY=0;" target="s6_alp5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_legend_routes_anchor" parent="s6_1" style="endArrow=none;html=1;strokeColor=none;" vertex="1">
+          <mxGeometry x="80" y="910" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_Cmn-Uz8HW59QNkbMKJJD-1" parent="s6_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;forced-color-adjust: none; color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; white-space: pre;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;WEB tier · 10.1.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="180" x="115" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_Cmn-Uz8HW59QNkbMKJJD-2" parent="s6_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(27, 94, 32); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;DB tier · 10.1.200.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="440" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_Cmn-Uz8HW59QNkbMKJJD-3" parent="s6_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(230, 81, 0); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;APP tier · 10.2.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="885" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_Cmn-Uz8HW59QNkbMKJJD-4" parent="s6_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(74, 20, 140); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;MGT tier · 10.2.50.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="1205" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_Cmn-Uz8HW59QNkbMKJJD-13" parent="s6_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-2&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="1080" y="450" as="geometry" />
+        </mxCell>
+      
+
+        <mxCell id="s6_banner" value="SCENARIO 6 — Destructive SQL (SID 9000033)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#b71c1c;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#b71c1c;align=center;verticalAlign=middle;" vertex="1" parent="s6_1">
+          <mxGeometry x="80" y="20" width="1340" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s6_caption" value="&lt;b&gt;SID 9000033 · Destructive SQL pattern (DROP TABLE / TRUNCATE)&lt;/b&gt;&#10;Attack: Compromised APP sends raw destructive SQL to DB:5432 via netcat — single-packet payload bypasses ORM.&#10;Detection: Suricata content match on forward direction. Requires stream.async-oneside:true since reply never reaches IDS." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#f9a825;strokeWidth=1;fontSize=11;align=left;verticalAlign=top;" vertex="1" parent="s6_1">
+          <mxGeometry x="80" y="80" width="1340" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s6_a1" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0.5;exitY=0;entryX=0.5;entryY=1;curved=1;" edge="1" parent="s6_1" source="s6_alp3" target="s6_leaf2">
+          <mxGeometry relative="1" as="geometry"></mxGeometry>
+        </mxCell>
+        <mxCell id="s6_a2" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0;exitY=0.5;entryX=1;entryY=0.5;curved=1;" edge="1" parent="s6_1" source="s6_leaf2" target="s6_ids">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1060" y="530" /><mxPoint x="780" y="530" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="s6_a3" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0;exitY=0.5;entryX=1;entryY=0.5;curved=1;" edge="1" parent="s6_1" source="s6_ids" target="s6_leaf1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="700" y="530" /><mxPoint x="410" y="530" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="s6_a4" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0.5;exitY=1;entryX=0.5;entryY=0;curved=1;" edge="1" parent="s6_1" source="s6_leaf1" target="s6_alp2">
+          <mxGeometry relative="1" as="geometry"></mxGeometry>
+        </mxCell>
+        <mxCell id="s6_lbl" value="Payload: &lt;code&gt;echo &quot;DROP TABLE users&quot; | nc DB 5432&lt;/code&gt;&#10;Requires Suricata async-oneside for content match on asymmetric flow" style="text;html=1;align=center;fontSize=10;fontColor=#d50000;fontStyle=1;fillColor=#fff;strokeColor=#d50000;rounded=1;strokeWidth=1;" vertex="1" parent="s6_1">
+          <mxGeometry x="540" y="200" width="440" height="50" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram name="7 · SID 9000035 Cross-tier SSH" id="s7">
+    <mxGraphModel dx="1508" dy="835" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="s7_1" parent="0" />
+        <mxCell id="s7_title" parent="s7_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#1a237e;fillColor=none;strokeColor=none;" value="7 · SID 9000035 Cross-tier SSH" vertex="1">
+          <mxGeometry height="32" width="900" x="285" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_spine" parent="s7_1" style="shape=mxgraph.cisco.routers.router;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="697.5" y="370" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_spine_lbl" parent="s7_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-SPINE&lt;/b&gt;&lt;br&gt;Route Reflector" vertex="1">
+          <mxGeometry height="48" width="120" x="677.5" y="312" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_Cmn-Uz8HW59QNkbMKJJD-10" edge="1" parent="s7_1" source="s7_leaf1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;dashed=1;startSize=8;endSize=8;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="450.00000000000006" y="529.78" as="sourcePoint" />
+            <mxPoint x="731.8" y="529.78" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s7_leaf1" parent="s7_1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="320" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_leaf1_lbl" parent="s7_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-1&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="320" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_Cmn-Uz8HW59QNkbMKJJD-11" edge="1" parent="s7_1" source="s7_leaf2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#B71C1C;entryX=0.369;entryY=0.624;entryDx=0;entryDy=0;entryPerimeter=0;dashed=1;startSize=8;endSize=8;" target="s7_ids">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="780" y="530" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s7_leaf2" parent="s7_1" style="shape=mxgraph.cisco.switches.workgroup_switch;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#33691e;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="60" width="90" x="1080" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_ids" parent="s7_1" style="shape=mxgraph.cisco.security.firewall;html=1;pointerEvents=1;dashed=0;fillColor=#e57373;strokeColor=#b71c1c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="695" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_ids_lbl" parent="s7_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#b71c1c;strokeWidth=1;rounded=1;" value="&lt;b&gt;IDS-Suricata (in-path L3)&lt;/b&gt;&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="50" width="125" x="675" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_zone_web" parent="s7_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#0d47a1;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="80" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_alp1" parent="s7_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#6c8ebf;strokeColor=#0d47a1;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="160" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_alp1_lbl" parent="s7_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#6c8ebf;rounded=1;" value="&lt;b&gt;Alpine-Linux-1&lt;/b&gt;&#xa;10.1.100.10&#xa;nginx :8080" vertex="1">
+          <mxGeometry height="48" width="150" x="115" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_zone_db" parent="s7_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#1b5e20;" value="&lt;blockquote style=&quot;margin: 0 0 0 40px; border: none; padding: 0px;&quot;&gt;&lt;br&gt;&lt;/blockquote&gt;" vertex="1">
+          <mxGeometry height="200" width="240" x="400" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_alp2" parent="s7_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#82b366;strokeColor=#1b5e20;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="480" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_alp2_lbl" parent="s7_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;rounded=1;" value="&lt;b&gt;Alpine-Linux-2&lt;/b&gt;&#xa;10.1.200.10&#xa;postgres :5432" vertex="1">
+          <mxGeometry height="48" width="150" x="445" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_zone_app" parent="s7_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#e65100;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="840" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_alp3" parent="s7_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#d79b00;strokeColor=#e65100;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="920" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_alp3_lbl" parent="s7_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#d79b00;rounded=1;" value="&lt;b&gt;Alpine-Linux-3&lt;/b&gt;&#xa;10.2.100.10&#xa;app worker" vertex="1">
+          <mxGeometry height="48" width="150" x="885" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_zone_mgt" parent="s7_1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;dashed=0;fontSize=12;fontStyle=1;verticalAlign=top;align=left;fontColor=#4a148c;" value="" vertex="1">
+          <mxGeometry height="200" width="240" x="1160" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_alp5" parent="s7_1" style="shape=mxgraph.cisco.servers.standard_host;html=1;pointerEvents=1;dashed=0;fillColor=#9673a6;strokeColor=#4a148c;strokeWidth=2;verticalLabelPosition=bottom;verticalAlign=top;align=center;outlineConnect=0;" value="" vertex="1">
+          <mxGeometry height="80" width="80" x="1240" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_alp5_lbl" parent="s7_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#9673a6;rounded=1;" value="&lt;b&gt;Alpine-Linux-5&lt;/b&gt;&#xa;10.2.50.10&#xa;ssh / mgmt jumpbox" vertex="1">
+          <mxGeometry height="48" width="150" x="1205" y="800" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_e_spine_leaf1" edge="1" parent="s7_1" source="s7_spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.25;exitY=1;entryX=0.75;entryY=0;" target="s7_leaf1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_e_spine_leaf2" edge="1" parent="s7_1" source="s7_spine" style="endArrow=none;html=1;strokeColor=#3949ab;strokeWidth=2;exitX=0.75;exitY=1;entryX=0.25;entryY=0;" target="s7_leaf2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_e_leaf1_alp1" edge="1" parent="s7_1" source="s7_leaf1" style="endArrow=none;html=1;strokeColor=#6c8ebf;strokeWidth=2;entryX=0.5;entryY=0;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="340" y="560" as="sourcePoint" />
+            <mxPoint x="210" y="710" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s7_e_leaf1_alp2" edge="1" parent="s7_1" source="s7_leaf1" style="endArrow=none;html=1;strokeColor=#82b366;strokeWidth=2;entryX=0.5;entryY=0;exitX=0.5;exitY=0.98;exitDx=0;exitDy=0;exitPerimeter=0;" target="s7_alp2">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="410" y="570" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s7_e_leaf2_alp3" edge="1" parent="s7_1" source="s7_leaf2" style="endArrow=none;html=1;strokeColor=#d79b00;strokeWidth=2;entryX=0.5;entryY=0;" target="s7_alp3">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1160" y="410" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="s7_e_leaf2_alp5" edge="1" parent="s7_1" source="s7_leaf2" style="endArrow=none;html=1;strokeColor=#9673a6;strokeWidth=2;entryX=0.5;entryY=0;" target="s7_alp5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_legend_routes_anchor" parent="s7_1" style="endArrow=none;html=1;strokeColor=none;" vertex="1">
+          <mxGeometry x="80" y="910" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_Cmn-Uz8HW59QNkbMKJJD-1" parent="s7_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;forced-color-adjust: none; color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; white-space: pre;&quot;&gt;&lt;span style=&quot;white-space: pre;&quot;&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;/span&gt;&lt;/span&gt;&lt;span style=&quot;color: rgb(13, 71, 161); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;WEB tier · 10.1.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="180" x="115" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_Cmn-Uz8HW59QNkbMKJJD-2" parent="s7_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(27, 94, 32); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;DB tier · 10.1.200.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="440" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_Cmn-Uz8HW59QNkbMKJJD-3" parent="s7_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(230, 81, 0); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;APP tier · 10.2.100.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="885" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_Cmn-Uz8HW59QNkbMKJJD-4" parent="s7_1" style="text;whiteSpace=wrap;html=1;" value="&lt;span style=&quot;color: rgb(74, 20, 140); font-family: Helvetica; font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-align: left; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; background-color: rgb(236, 236, 236); text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; display: inline !important; float: none;&quot;&gt;MGT tier · 10.2.50.0/24&lt;/span&gt;" vertex="1">
+          <mxGeometry height="40" width="160" x="1205" y="848" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_Cmn-Uz8HW59QNkbMKJJD-13" parent="s7_1" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#fff;strokeColor=#82b366;strokeWidth=1;rounded=1;" value="&lt;b&gt;SONIC-LEAF-2&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="100" x="1080" y="450" as="geometry" />
+        </mxCell>
+      
+
+        <mxCell id="s7_banner" value="SCENARIO 7 — Cross-tier SSH (SID 9000035)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffebee;strokeColor=#b71c1c;strokeWidth=2;fontSize=14;fontStyle=1;fontColor=#b71c1c;align=center;verticalAlign=middle;" vertex="1" parent="s7_1">
+          <mxGeometry x="80" y="20" width="1340" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="s7_caption" value="&lt;b&gt;SID 9000035 · Cross-tier SSH (lateral movement)&lt;/b&gt;&#10;Attack: APP host attempts SSH (port 22) to WEB and DB tiers — workload tiers should never SSH between themselves.&#10;Detection: Single-SYN match (no flow state needed); agent issues DROP + escalates host to &quot;suspicious&quot;." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff8e1;strokeColor=#f9a825;strokeWidth=1;fontSize=11;align=left;verticalAlign=top;" vertex="1" parent="s7_1">
+          <mxGeometry x="80" y="80" width="1340" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="s7_a1" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0.5;exitY=0;entryX=0.5;entryY=1;curved=1;" edge="1" parent="s7_1" source="s7_alp3" target="s7_leaf2">
+          <mxGeometry relative="1" as="geometry"></mxGeometry>
+        </mxCell>
+        <mxCell id="s7_a2" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0;exitY=0.5;entryX=1;entryY=0.5;curved=1;" edge="1" parent="s7_1" source="s7_leaf2" target="s7_ids">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="1060" y="530" /><mxPoint x="780" y="530" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="s7_a3" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0;exitY=0.5;entryX=1;entryY=0.5;curved=1;" edge="1" parent="s7_1" source="s7_ids" target="s7_leaf1">
+          <mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="700" y="530" /><mxPoint x="410" y="530" /></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="s7_a4" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;exitX=0.4;exitY=1;entryX=0.5;entryY=0;curved=1;" edge="1" parent="s7_1" source="s7_leaf1" target="s7_alp2">
+          <mxGeometry relative="1" as="geometry"></mxGeometry>
+        </mxCell>
+        <mxCell id="s7_b1" style="endArrow=classic;html=1;strokeColor=#d50000;strokeWidth=3;dashed=1;dashPattern=8 4;exitX=0.2;exitY=1;entryX=0.5;entryY=0;curved=1;" edge="1" parent="s7_1" source="s7_leaf1" target="s7_alp1">
+          <mxGeometry relative="1" as="geometry"></mxGeometry>
+        </mxCell>
+        <mxCell id="s7_lbl1" value="APP → DB:22  &amp;  APP → WEB:22 (lateral movement probes)" style="text;html=1;align=center;fontSize=10;fontColor=#d50000;fontStyle=1;fillColor=#fff;strokeColor=#d50000;rounded=1;strokeWidth=1;" vertex="1" parent="s7_1">
+          <mxGeometry x="540" y="200" width="440" height="36" as="geometry" />
+        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>
