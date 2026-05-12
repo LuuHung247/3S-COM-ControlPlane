@@ -1,9 +1,9 @@
 # Intelligence Layer — AI Security Agent
 
 > Reactive Policy Decision Engine cho Zero Trust Microsegmentation
-> **Version**: 0.5.0 — GraphRAG: Neo4j-backed KG + .md authoring + `query_kg` tool
-> **Status**: ✅ Production — port 8767, `AGENT_DRY_RUN=false`, 10/10 eval PASS (2026-05-09)
-> **Last updated**: 2026-05-09
+> **Version**: 0.6.0 — ZT-augmented behavioral detection on ALLOW paths
+> **Status**: ✅ Production — port 8767, `AGENT_DRY_RUN=false`, 11 SIDs (5 kept + 6 anomaly)
+> **Last updated**: 2026-05-11
 
 ---
 
@@ -134,7 +134,7 @@ typo / wrong enum / missing field aborts ETL fail-closed.
 | `leafs.md` | 2 SONiC leafs | `Leaf` |
 | `baselines.md` | 8 traffic flows + anomaly patterns + steady-state constants | `TrafficPattern` |
 | `policy-matrix.md` | 12 zone-pair verdicts | `(src, dst) → ALLOW/DENY` |
-| `sids.md` | 8 Suricata signatures | `SidDetection` |
+| `sids.md` | 11 Suricata signatures (2 DENY-path audit + 2 recon + 1 audit baseline + 6 ALLOW-path anomaly) | `SidDetection` |
 | `kill-chains.md` | 4 multi-stage adversary playbooks | `KillChain` (nested `KillChainStage`) |
 | `enforcement-plane.md` | SF REST contracts, gotchas, failure modes, RBAC | mixed |
 | `invariants.md` | NEVER_BLOCK CIDRs, allowed actions, comment prefixes | hard safety constants |
@@ -442,7 +442,7 @@ intelligence-layer/
 │       ├── leafs.md                    # 2 SONiC leafs
 │       ├── baselines.md                # 8 traffic flows + anomalous patterns
 │       ├── policy-matrix.md            # 12 zone-pair verdicts
-│       ├── sids.md                     # 8 Suricata signatures
+│       ├── sids.md                     # 11 Suricata signatures (after 2026-05-09 refactor)
 │       ├── kill-chains.md              # 4 multi-stage adversary playbooks (Neo4j-only, NOT injected)
 │       ├── enforcement-plane.md        # SF REST contract / gotchas / failure modes
 │       └── invariants.md               # NEVER_BLOCK + allowed actions + comment prefixes
@@ -568,7 +568,16 @@ intelligence-layer/
 - Semantic entropy L2+ (Shannon over decision-shape clusters)
 - Response cache Redis (60s TTL, ~30-60% hit rate in burst)
 
-#### v0.5.0 — GraphRAG: Neo4j durable KG + .md authoring + query_kg tool (CURRENT)
+#### v0.6.0 — ZT-augmented behavioral detection on ALLOW paths (CURRENT)
+- **SID inventory refactor**: removed 9000003/4/5 (DENY-path redundant với LEAF default-drop) + added 9000030–9000035 fire trên ALLOW paths
+- **Class D anomaly SIDs** (★ agent essential): rate burst (9000030/31), volume anomaly (9000032), destructive SQL (9000033), time-window probe (9000034), cross-tier SSH (9000035)
+- **Time-context injection**: SID 9000034 always-fire ở Suricata; agent prompt builder injects `current UTC hour + business window` (08-18 UTC) cho LLM evaluate off-hours
+- **Variable-reply db-mock**: pg-mock socat phát hiện `JOIN`/`SELECT *` trong input → reply payload 5KB (vs 100-byte banner thường) → trigger SID 9000032 `dsize>4096`
+- **Multi-mode APP attacker**: `/tmp/compromised-{burst,bulk,sql,ssh}` flags độc lập trigger từng SID — controlled từ MGT scenario controllers
+- **Parametric eval**: `eval_iid.py --preset {web-db-lateral, db-exfil, web-app-burst, app-db-burst, app-db-bulk, app-db-sql, app-mgt-ssh}` chạy IID campaign cho từng SID
+- **Frame thesis claim**: agent essentiality demonstrated qua Class D — LEAF accept (zt-app-db-allow), agent là layer duy nhất detect behavioral anomaly trong legitimate flow
+
+#### v0.5.0 — GraphRAG: Neo4j durable KG + .md authoring + query_kg tool
 - **Knowledge moves from `.py` constants to `knowledge/infra/*.md`** — humans edit markdown, parser validates via Pydantic, ETL pushes to Neo4j. Module-level dicts in `core/*.py` populated from parser at import (bootstrap), hot-swapped from Neo4j at lifespan. Single durable source of truth.
 - **Neo4j ETL extended** — pushes `Asset.services_json` (nested JSON), `Asset.expected_inbound/outbound_destinations`, `Asset.if_compromised_impact`, `STEADY_STATE_FLOWS_PER_MINUTE`/`MGT_AUDIT_ALERT_RATE_PER_MINUTE`, `ANOMALOUS_PATTERNS`, `KillChainStage` props (full), `FieldMapping`, `ApiEndpoint`, `Gotcha`, `FailureMode`, `NeverBlockEntry`, `KnowledgeMeta` singletons. 70 nodes / 28 edges (vs ~30 nodes pre-refactor).
 - **`neo4j_reader.py`** — Cypher → Pydantic rehydrate, inverse of ETL. Drop-in replacement for `knowledge_parser.parse_all()` shape. Used by `main.py` lifespan hot-swap.

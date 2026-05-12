@@ -176,18 +176,24 @@ async def revoke_decision(rule_id: str, request: Request) -> RevokeResponse:
 
 
 @router.get("/policy-history")
-async def policy_history(request: Request, limit: int = 100) -> list[dict]:
+async def policy_history(
+    request: Request,
+    limit: int = 100,
+    include_rejected: bool = True,
+) -> list[dict]:
     """
     Timeline of AI agent policy decisions with full intent details.
-    Includes both dry_run (would-have-enforced) and enforced outcomes.
-    Use this to audit what the agent decided and why.
+    Includes enforced + dry_run + (by default) rejected outcomes so the FE
+    can audit *all* decisions — including those blocked by L3/L4/L5 safety
+    gates. Pass include_rejected=false to hide rejected rows.
     """
     postgres = request.app.state.postgres
     all_decisions = await postgres.list_decisions_history(limit=limit)
     history = []
     for d in all_decisions:
         if d.get("outcome") not in ("enforced", "dry_run"):
-            continue
+            if not include_rejected:
+                continue
         sc = d.get("safety_checks") or {}
         history.append({
             "id": d["id"],
@@ -201,6 +207,12 @@ async def policy_history(request: Request, limit: int = 100) -> list[dict]:
             "block_dst": d.get("dst_ip"),
             "confidence": (sc.get("confidence") or {}).get("score") or d.get("confidence"),
             "latency_ms": round(d.get("latency_ms") or 0, 1),
+            "rejection_reason": d.get("rejection_reason") or "",
+            "notification": {
+                "title": d.get("notification_title") or "",
+                "body": d.get("notification_body") or "",
+                "severity": d.get("notification_severity") or "info",
+            } if d.get("notification_title") else None,
         })
     return history
 

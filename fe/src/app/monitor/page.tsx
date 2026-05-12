@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AgentNotificationFeed } from "@/components/AgentNotificationFeed";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface ViolationEvent {
@@ -550,6 +551,8 @@ export default function MonitorPage() {
           </span>
         </div>
       </div>
+
+      <AgentNotificationFeed />
     </main>
   );
 }

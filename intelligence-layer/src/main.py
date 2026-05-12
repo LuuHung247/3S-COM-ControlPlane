@@ -278,6 +278,10 @@ async def lifespan(app: FastAPI):
             "mitre_technique": intent.mitre_technique if intent else None,
             "mitre_tactic": intent.mitre_tactic if intent else None,
             "reasoning_completed_at": _dt.now(_tz.utc) if reasoning_done else None,
+            # V3 — SOC user notification (Stage 1 output)
+            "notification_title": intent.user_notification.title if intent else None,
+            "notification_body": intent.user_notification.body if intent else None,
+            "notification_severity": intent.user_notification.severity.value if intent else None,
         }
         await postgres.save_decision(decision_dict)
         await redis.cache_decision(decision.id, decision_dict)

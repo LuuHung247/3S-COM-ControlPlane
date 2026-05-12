@@ -58,6 +58,11 @@ class DecisionRecord(Base):
         sa.DateTime(timezone=True), nullable=True
     )
 
+    # V3 — SOC-facing user notification (rendered on FE Monitor feed + toast)
+    notification_title: Mapped[str | None] = mapped_column(sa.String(200), nullable=True)
+    notification_body: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    notification_severity: Mapped[str | None] = mapped_column(sa.String(20), nullable=True)
+
     # P2: pgvector embedding for semantic similarity search.
     # Defined as untyped column at ORM level to keep `pgvector` import optional;
     # the actual VECTOR(384) type is enforced by the migration in connect().
@@ -112,6 +117,9 @@ class DecisionHistoryRecord(Base):
     reasoning_completed_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
+    notification_title: Mapped[str | None] = mapped_column(sa.String(200), nullable=True)
+    notification_body: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    notification_severity: Mapped[str | None] = mapped_column(sa.String(20), nullable=True)
     # embedding column added via SQL migration (pgvector type)
 
 
@@ -176,6 +184,17 @@ class PostgresStore:
             await conn.execute(sa.text(
                 "ALTER TABLE decisions ADD COLUMN IF NOT EXISTS reasoning_completed_at TIMESTAMPTZ"
             ))
+            # V3 — SOC user notification columns (mirror on history table)
+            for tbl in ("decisions", "decisions_history"):
+                await conn.execute(sa.text(
+                    f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS notification_title VARCHAR(200)"
+                ))
+                await conn.execute(sa.text(
+                    f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS notification_body TEXT"
+                ))
+                await conn.execute(sa.text(
+                    f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS notification_severity VARCHAR(20)"
+                ))
             # P2: pgvector embedding column for semantic search over past decisions.
             # Index: HNSW (Hierarchical Navigable Small World) — outperforms IVFFlat
             # on small-to-medium corpora (< 100k vectors) and doesn't require ANALYZE.
@@ -287,6 +306,9 @@ class PostgresStore:
             mitre_technique=data.get("mitre_technique"),
             mitre_tactic=data.get("mitre_tactic"),
             reasoning_completed_at=data.get("reasoning_completed_at"),
+            notification_title=data.get("notification_title"),
+            notification_body=data.get("notification_body"),
+            notification_severity=data.get("notification_severity"),
         )
         async with AsyncSession(self._engine) as session:
             session.add(DecisionRecord(**common_fields))
@@ -505,4 +527,7 @@ def _record_to_dict(r: DecisionRecord) -> dict[str, Any]:
         "reasoning_loading": r.reasoning_completed_at is None and r.outcome in ("enforced", "dry_run"),
         "retrospective_notes": r.retrospective_notes,
         "labeled_at": r.labeled_at.isoformat() if r.labeled_at else None,
+        "notification_title": r.notification_title,
+        "notification_body": r.notification_body,
+        "notification_severity": r.notification_severity,
     }

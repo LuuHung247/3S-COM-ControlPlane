@@ -42,6 +42,25 @@ class RollbackPlan(BaseModel):
     monitor_seconds: int = 300
 
 
+class NotificationSeverity(str, Enum):
+    """SOC-facing severity tag for the user notification."""
+    INFO = "info"     # passive log / observation
+    WARN = "warn"     # suspicious activity, action taken
+    ALERT = "alert"   # active block, requires attention
+    CRITICAL = "critical"  # active block + escalation needed
+
+
+class UserNotification(BaseModel):
+    """Human-readable status the agent emits for SOC/network admin display.
+
+    Rendered in the FE Monitor tab as a feed + transient toast. Keep it concise
+    and operationally specific — names IPs/ports/rates, no jargon-free prose.
+    """
+    title: str = Field(default="", max_length=120)
+    body: str = Field(default="", max_length=400)
+    severity: NotificationSeverity = NotificationSeverity.INFO
+
+
 class PolicyIntent(BaseModel):
     """Structured output forced via LLM function calling (L1 Schema).
 
@@ -73,6 +92,9 @@ class PolicyIntent(BaseModel):
 
     # V2 — follow-up monitoring
     follow_up_actions: list[str] = Field(default_factory=list)
+
+    # V3 — SOC-facing human notification (rendered on FE Monitor feed + toast)
+    user_notification: UserNotification = Field(default_factory=UserNotification)
 
     @model_validator(mode="after")
     def _set_deterministic_rule_id(self) -> "PolicyIntent":

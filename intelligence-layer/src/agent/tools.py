@@ -221,8 +221,33 @@ POLICY_DECISION_SCHEMA: dict[str, Any] = {
             "minimum": 0.0, "maximum": 1.0,
             "description": "Calibrated confidence in this decision; gates enforcement at 0.85/0.70/0.50.",
         },
+        "notification_title": {
+            "type": "string",
+            "description": (
+                "SOC-facing title for FE Monitor display (≤120 chars). "
+                "Name the action + target. Example: 'DROP pushed: APP→DB rate burst'."
+            ),
+        },
+        "notification_body": {
+            "type": "string",
+            "description": (
+                "SOC-facing body for FE Monitor display (≤400 chars). Technical sentence(s). "
+                "Cite IP/port + numeric evidence (SID trigger vs baseline anomaly threshold). "
+                "Example: 'Blocked 10.2.100.10→10.1.200.10:5432 1800s. SID 9000031 fired at ≥100 SYN/60s "
+                "vs baseline anomaly_threshold >50/min and expected 2/min — consistent with compromised "
+                "app abusing DB grant.'"
+            ),
+        },
+        "notification_severity": {
+            "type": "string",
+            "enum": ["info", "warn", "alert", "critical"],
+            "description": (
+                "FE display tag: 'info' = log_only on P3/P4, 'warn' = log_only on P1/P2, "
+                "'alert' = DROP on P1/P2, 'critical' = DROP for cross-tier lateral or destructive content."
+            ),
+        },
     },
-    "required": ["action", "src_ip", "confidence"],
+    "required": ["action", "src_ip", "confidence", "notification_title", "notification_body", "notification_severity"],
 }
 
 

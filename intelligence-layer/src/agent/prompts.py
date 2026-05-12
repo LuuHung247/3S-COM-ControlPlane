@@ -1,7 +1,32 @@
 """System and user prompts for the LangGraph agent."""
+from datetime import datetime, timezone
 from ..models.alert import SuricataAlert
 from ..core.knowledge import get_sid_info
 from .safety.prompt_injection import sanitize_alert_fields
+
+
+# Business hours window — used to evaluate SID 9000034 (APP→DB time-window context).
+# Off-hours APP→DB activity is suspicious especially when paired with rate / volume anomalies.
+_BUSINESS_HOURS_UTC = (8, 18)  # 08:00–18:00 UTC
+
+
+def _time_context_for_alert(alert: SuricataAlert) -> str:
+    """Render time-of-day context string. Used for SID 9000034 reasoning + general framing.
+
+    Returns empty string when the SID is not time-sensitive — keeps prompt lean.
+    """
+    if alert.sid != 9000034:
+        return ""
+    now = datetime.now(timezone.utc)
+    in_window = _BUSINESS_HOURS_UTC[0] <= now.hour < _BUSINESS_HOURS_UTC[1]
+    return (
+        f"\n### Time-of-day context (SID 9000034 evaluation)\n"
+        f"- Current UTC time: {now.strftime('%H:%M')}  (hour={now.hour})\n"
+        f"- Business hours window: {_BUSINESS_HOURS_UTC[0]:02d}:00–{_BUSINESS_HOURS_UTC[1]:02d}:00 UTC\n"
+        f"- Off-hours: **{'NO — within business window' if in_window else 'YES — outside business window'}**\n"
+        f"- Decision guidance: in-window APP→DB is routine (log_only); off-hours warrants extra "
+        f"scrutiny especially if paired with rate burst (9000031), large reply (9000032), or destructive SQL (9000033)."
+    )
 
 _SYSTEM_TEMPLATE = """\
 You are the AI security agent for a production Zero Trust datacenter network. The
@@ -133,6 +158,16 @@ HARD RULES (CRITICAL):
 - Confidence reflects actual certainty (0.0-1.0). If baseline match suggests legitimate
   flow and evidence weak, lower confidence and choose log_only.
 - Comment under 80 chars, no newlines.
+- user_notification (for SOC operator display on FE):
+    * title: <=120 chars, name the action and target. Example:
+      "DROP pushed: APP→DB rate burst" or "Observed: MGT audit access".
+    * body: <=400 chars, technical sentence(s). Cite IP/port and the numeric
+      evidence (SID trigger threshold vs baseline anomaly_threshold). Mention
+      TTL if DROP. Example: "Blocked 10.2.100.10→10.1.200.10:5432 for 1800s.
+      Suricata SID 9000031 fired at ≥100 SYN/60s vs baseline anomaly_threshold
+      >50/min and expected 2/min — consistent with compromised app abusing DB grant."
+    * severity: 'info' for log_only on P3/P4, 'warn' for log_only on P1/P2,
+      'alert' for DROP on P1/P2, 'critical' if cross-tier lateral/destructive.
 """
 
 # V3: Stage 2 — REASONING TRACE (non-blocking, audit-only schema, fail-tolerant)
@@ -264,13 +299,18 @@ def build_policy_decision_prompt(
     alert_context: str = "",
     correlation: dict | None = None,
 ) -> str:
-    """V3 Stage 1 prompt — short, scalar-only output."""
+    """V3 Stage 1 prompt — short, scalar-only output.
+
+    Appends time-of-day context for SID 9000034 (always-fire APP→DB throttled probe) so
+    the agent can decide log_only vs DROP based on business hours window.
+    """
     sid_info = get_sid_info(alert.sid)
     history_str = "\n".join(
         f"  - SID {h.get('alert', {}).get('signature_id')} at {h.get('timestamp', '')}"
         for h in alert_history[:5]
     ) or "  No previous alerts from this IP"
     sig_clean, cat_clean, _ = sanitize_alert_fields(alert.signature, alert.category)
+    enriched_context = alert_context + _time_context_for_alert(alert)
     return _POLICY_DECISION_TEMPLATE.format(
         sid=alert.sid,
         severity=alert.severity,
@@ -283,7 +323,7 @@ def build_policy_decision_prompt(
         proto=alert.proto,
         category=cat_clean,
         sid_context=str(sid_info) if sid_info else "Unknown SID",
-        alert_context=alert_context,
+        alert_context=enriched_context,
         correlation_summary=_format_correlation(correlation),
         alert_history=history_str,
     )

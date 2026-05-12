@@ -14,19 +14,30 @@ mgt_audit_alert_rate_per_minute: 1
 
 ## Anomalous patterns (NOT in baseline — red flags)
 
-Flows matching any of these are NEVER seen in production and indicate intrusion:
+Two classes of anomalies the agent must reason about:
 
+**Class A — DENY-path violations** (LEAF already drops, but Suricata still alerts for audit):
 - Any flow originating from DB to anywhere — DB never initiates outbound by design.
 - WEB initiating to DB on any port — bypasses application tier (lateral movement).
-- APP initiating to WEB on any port — reverse direction, indicates APP compromise.
-- WEB or APP initiating to MGT on any port — escalation attempt toward management plane.
+- Workload-to-workload SSH (WEB/APP/DB → port 22) — only MGT may SSH into workloads.
+
+**Class B — ALLOW-path abuse** (LEAF accepts; only agent can detect — this is the agent's primary value-add):
+- WEB→APP connection rate above 200/min/src — baseline ~60/min; sustained burst suggests compromised web-tier weaponizing proxy.
+- APP→DB connection rate above 100/min/src — baseline ~60/min; suggests compromised application abusing DB grant for bulk extraction.
+- DB→APP reply payload exceeding 4KB repeated in short window — normal queries return ~100-byte banner; large payloads imply bulk SELECT / JOIN extraction.
+- Destructive SQL fragments ("DROP TABLE", "TRUNCATE") in APP→DB traffic — APP must never execute schema destruction; this is an incident-grade signal.
+- APP→DB activity in off-hours window (outside 08:00–18:00 UTC) — legitimate business traffic clusters during the day; off-hours activity warrants extra scrutiny especially when paired with rate or volume anomaly.
 
 ```yaml
 anomalous_patterns:
 - Any flow originating from DB to anywhere — DB never initiates outbound by design.
 - WEB initiating to DB on any port — bypasses application tier (lateral movement).
-- APP initiating to WEB on any port — reverse direction, indicates APP compromise.
-- WEB or APP initiating to MGT on any port — escalation attempt toward management plane.
+- Workload-to-workload SSH (WEB/APP/DB → port 22) — only MGT may SSH into workloads.
+- WEB->APP connection rate above 200/min/src — baseline ~60/min; sustained burst suggests compromised web-tier.
+- APP->DB connection rate above 100/min/src — baseline ~60/min; suggests compromised app abusing DB grant.
+- DB->APP reply payload exceeding 4KB repeated in short window — implies bulk SELECT extraction.
+- Destructive SQL fragments (DROP TABLE / TRUNCATE) in APP->DB traffic — incident-grade.
+- APP->DB activity in off-hours window (outside 08:00-18:00 UTC) — extra scrutiny especially with corroborating signal.
 ```
 
 ## Application traffic flows

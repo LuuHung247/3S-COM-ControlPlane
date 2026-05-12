@@ -145,11 +145,17 @@ class KnowledgeLoader:
         dst_ip: str = "",
         dst_port: int = 0,
         proto: str = "tcp",
+        sid: int | None = None,
         alert_history_summary: dict | None = None,
         investigation: dict | None = None,
         reputation: Any = None,
     ) -> str:
         """Per-alert micro-context — only what's relevant for this specific alert.
+
+        Renders the raw evidence (numbers, thresholds, baselines) the agent needs to
+        reason like a senior security engineer. We deliberately avoid editorializing
+        ("this is legitimate", "strong evidence against blocking") — the agent should
+        compare numbers and conclude, not be biased by canned wording.
 
         If `investigation` dict is provided (from tools.prefetch_investigation_context),
         renders structured tool output sections.
@@ -180,15 +186,41 @@ class KnowledgeLoader:
                     f"- Criticality: {dst_asset.criticality.value}"
                 )
 
-        # Baseline match — is this flow legitimate production traffic?
+        # SID trigger threshold — what condition Suricata observed to fire this SID.
+        # The agent should know the implicit fact: "SID fired ⇒ the threshold below was crossed".
+        if sid is not None:
+            det = threat_playbook.SID_DETECTIONS.get(sid)
+            if det:
+                parts.append(
+                    f"\n### SID {sid} trigger condition (observed on wire)\n"
+                    f"- Detection logic: {det.detection_logic}\n"
+                    f"- Severity (catalog): P{det.severity_p_level}\n"
+                    f"- MITRE: {det.mitre_tactic} / {det.mitre_technique}\n"
+                    f"- Implication: the threshold above was crossed on this flow during the Suricata window."
+                )
+
+        # Baseline match — present raw numbers, the agent compares against the SID trigger.
         if dst_ip and dst_port:
             match = baselines.match_baseline(src_ip, dst_ip, dst_port, proto)
             if match:
+                avg_per_min = match.expected_volume_per_hour / 60.0
                 parts.append(
-                    f"\n### ⚠ BASELINE MATCH: this flow matches known production pattern '{match.name}'\n"
-                    f"- {match.production_description}\n"
-                    f"- Cadence: {match.cadence}, criticality={match.criticality_to_business.value}\n"
-                    f"- This is LEGITIMATE traffic. Strong evidence against blocking unless other indicators (rate burst, off-pattern timing) suggest abuse."
+                    f"\n### Baseline path match: '{match.name}' (this flow path IS a known production pattern)\n"
+                    f"- Description: {match.production_description}\n"
+                    f"- Cadence: {match.cadence}\n"
+                    f"- Expected volume: {match.expected_volume_per_hour}/hr "
+                    f"(≈ {avg_per_min:.1f}/min average)\n"
+                    f"- Anomaly threshold (from baseline catalog): {match.burst_anomaly_threshold}\n"
+                    f"- Path criticality to business: {match.criticality_to_business.value}\n"
+                    f"- If this path is disrupted: {match.if_disrupted}\n"
+                    f"- Note: baseline-allowed paths can still host behavioral anomalies. "
+                    f"Compare the SID trigger condition above against the baseline anomaly threshold "
+                    f"to assess whether this firing is normal load or abuse.\n"
+                    f"- High-stakes call: proposing DROP on this baseline-ALLOW path means you are "
+                    f"declaring the system is in a degraded state — behavioural signal overrides "
+                    f"static policy. Weigh anomaly evidence against the 'If disrupted' impact above "
+                    f"before deciding. Confidence should reflect how convincingly the SID trigger "
+                    f"exceeds the baseline anomaly threshold."
                 )
             else:
                 parts.append(

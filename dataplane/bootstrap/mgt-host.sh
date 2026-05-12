@@ -77,6 +77,63 @@ echo "[scenario] restoring DB host"
 ssh root@10.1.200.10 'rm -f /tmp/compromised; echo "DB restored"'
 SC
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Anomaly scenarios (ALLOW-path abuse) — agent is the layer that must detect
+# ─────────────────────────────────────────────────────────────────────────────
+
+cat > /root/scenario/compromise-web-burst.sh <<'SC'
+#!/bin/sh
+# Compromised WEB host floods APP:8080 → SID 9000030 (WEB→APP rate spike)
+echo "[scenario] WEB burst mode active — high-rate WEB->APP:8080"
+ssh root@10.1.100.10 'touch /tmp/compromised-burst; echo "WEB burst armed"'
+echo "[scenario] expect SID 9000030 within 60s (threshold 200/min)"
+SC
+
+cat > /root/scenario/compromise-app-burst.sh <<'SC'
+#!/bin/sh
+# Compromised APP host floods DB:5432 → SID 9000031 (APP→DB volume anomaly)
+echo "[scenario] APP burst mode active — high-rate APP->DB:5432"
+ssh root@10.2.100.10 'touch /tmp/compromised-burst; echo "APP burst armed"'
+echo "[scenario] expect SID 9000031 within 60s (threshold 100/min)"
+SC
+
+cat > /root/scenario/compromise-app-bulk.sh <<'SC'
+#!/bin/sh
+# Compromised APP host runs bulk SELECT → SID 9000032 (DB reply >4KB)
+echo "[scenario] APP bulk mode active — heavy JOIN extraction"
+ssh root@10.2.100.10 'touch /tmp/compromised-bulk; echo "APP bulk armed"'
+echo "[scenario] expect SID 9000032 within 60s (DB reply size threshold)"
+SC
+
+cat > /root/scenario/compromise-app-sql.sh <<'SC'
+#!/bin/sh
+# Compromised APP host sends destructive SQL → SID 9000033 (DROP TABLE / TRUNCATE)
+echo "[scenario] APP SQL mode active — destructive patterns"
+ssh root@10.2.100.10 'touch /tmp/compromised-sql; echo "APP sql armed"'
+echo "[scenario] expect SID 9000033 within 60s (content match)"
+SC
+
+cat > /root/scenario/compromise-app-ssh.sh <<'SC'
+#!/bin/sh
+# Compromised APP host probes cross-tier SSH → SID 9000035 (lateral movement)
+echo "[scenario] APP SSH mode active — cross-tier SSH probe to WEB/DB:22"
+ssh root@10.2.100.10 'touch /tmp/compromised-ssh; echo "APP ssh armed"'
+echo "[scenario] expect SID 9000035 within 60s"
+SC
+
+cat > /root/scenario/restore-app.sh <<'SC'
+#!/bin/sh
+# Clear all APP compromise flags
+echo "[scenario] restoring APP host (all modes)"
+ssh root@10.2.100.10 'rm -f /tmp/compromised-burst /tmp/compromised-bulk /tmp/compromised-sql /tmp/compromised-ssh; echo "APP restored"'
+SC
+
+cat > /root/scenario/restore-web-burst.sh <<'SC'
+#!/bin/sh
+echo "[scenario] restoring WEB burst mode"
+ssh root@10.1.100.10 'rm -f /tmp/compromised-burst; echo "WEB burst restored"'
+SC
+
 cat > /root/scenario/status.sh <<'SC'
 #!/bin/sh
 echo "=== DCN Status ==="
@@ -101,8 +158,20 @@ echo
 echo "  Scenario scripts:"
 ls -1 /root/scenario/
 echo
-echo "  Usage:"
-echo "    sh /root/scenario/compromise-web.sh   # WEB bị pwn → lateral WEB→DB"
-echo "    sh /root/scenario/compromise-db.sh    # DB bị pwn → exfil DB→internet"
-echo "    sh /root/scenario/status.sh           # check compromise state"
-echo "    sh /root/scenario/restore-web.sh      # remove attacker persistence"
+echo "  Usage (legacy DENY-path scenarios):"
+echo "    sh /root/scenario/compromise-web.sh        # WEB pwn → lateral WEB→DB (SID 9000001)"
+echo "    sh /root/scenario/compromise-db.sh         # DB pwn  → exfil DB→internet (SID 9000002)"
+echo
+echo "  Usage (ALLOW-path anomaly scenarios — agent must detect):"
+echo "    sh /root/scenario/compromise-web-burst.sh  # WEB→APP rate flood (SID 9000030)"
+echo "    sh /root/scenario/compromise-app-burst.sh  # APP→DB rate flood  (SID 9000031)"
+echo "    sh /root/scenario/compromise-app-bulk.sh   # bulk SELECT → DB large reply (SID 9000032)"
+echo "    sh /root/scenario/compromise-app-sql.sh    # DROP TABLE / TRUNCATE patterns (SID 9000033)"
+echo "    sh /root/scenario/compromise-app-ssh.sh    # cross-tier SSH probe (SID 9000035)"
+echo
+echo "  Status + restore:"
+echo "    sh /root/scenario/status.sh                # check compromise state"
+echo "    sh /root/scenario/restore-web.sh           # legacy WEB restore"
+echo "    sh /root/scenario/restore-db.sh            # legacy DB restore"
+echo "    sh /root/scenario/restore-web-burst.sh     # WEB burst restore"
+echo "    sh /root/scenario/restore-app.sh           # APP all-mode restore"

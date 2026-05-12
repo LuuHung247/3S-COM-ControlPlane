@@ -299,3 +299,13 @@ html[data-theme="light"] .bg-black\/50 { background-color: rgba(31, 35, 40, 0.32
   color: var(--tc-green);
   animation: blink 1s step-end infinite;
 }
+
+/* Agent notification toast slide-in */
+@keyframes slide-in {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.animate-slide-in {
+  animation: slide-in 220ms ease-out;
+}

@@ -26,6 +26,10 @@ af-packet:
     cluster-type: cluster_flow
     defrag: yes
 default-log-dir: /var/log/suricata/
+stream:
+  midstream: true
+  midstream-policy: pass-flow
+  async-oneside: true
 outputs:
   - fast:
       enabled: yes

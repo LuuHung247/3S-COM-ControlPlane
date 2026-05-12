@@ -159,6 +159,7 @@ async def node_gather_context(
         dst_ip=alert.dest_ip,
         dst_port=alert.dest_port,
         proto=alert.proto.lower() if alert.proto else "tcp",
+        sid=alert.sid,
         alert_history_summary=ip_summary,
         investigation=investigation,
         reputation=reputation,
@@ -474,6 +475,19 @@ async def node_decide_policy(
     except ValueError:
         action = PolicyAction.LOG_ONLY
 
+    # V3 — user-facing notification (Stage 1 emits flat fields; we lift into nested object)
+    from ..models.decision import UserNotification, NotificationSeverity
+    try:
+        severity_str = (result.get("notification_severity") or "info").lower()
+        notif_severity = NotificationSeverity(severity_str) if severity_str in {s.value for s in NotificationSeverity} else NotificationSeverity.INFO
+    except Exception:
+        notif_severity = NotificationSeverity.INFO
+    user_notification = UserNotification(
+        title=(result.get("notification_title") or "")[:120],
+        body=(result.get("notification_body") or "")[:400],
+        severity=notif_severity,
+    )
+
     try:
         intent = PolicyIntent(
             action=action,
@@ -493,6 +507,7 @@ async def node_decide_policy(
             alternative_actions=[],
             rollback_plan=RollbackPlan(),
             follow_up_actions=[],
+            user_notification=user_notification,
         )
     except Exception as exc:
         return {

@@ -68,79 +68,171 @@ false_positive_scenarios:
 - DNS resolver call (legitimate but should not happen in this datacenter)
 ```
 
-## SID 9000003 — APP reverse call to WEB - lateral movement
+<!-- SIDs 9000003, 9000004, 9000005 removed in 2026-05-09 refactor:
+     all three fire on DENY paths that LEAF iptables zt-default-drop already blocks.
+     Agent rule would be redundant with no audit-trail upside beyond what SID 9000001 demonstrates.
+     Replaced by ALLOW-path anomaly SIDs 9000030-9000035 below where agent IS essential. -->
 
-**Severity P2**  ·  **MITRE**: TA0008 Lateral Movement / T1021 Remote Services  ·  **Response**: DROP src_ip  ·  **FP likelihood**: low
+## SID 9000030 — WEB→APP rate burst (ALLOW-path volumetric)
 
-Detection trigger: application tier initiating connection toward presentation tier — direction reversal from intended dataflow. APP should never call WEB. Indicator of APP tier compromise pivoting toward web frontend.
+**Severity P2**  ·  **MITRE**: TA0040 Impact / T1499 Endpoint DoS  ·  **Response**: DROP targeted (src+dst+port)  ·  **FP likelihood**: medium
 
-**Detection logic**: `TCP SYN from 10.2.100.0/24 to 10.1.100.0/24 dst_port in {80,443,22}`
+Detection trigger: WEB tier opens an abnormal number of TCP connections to APP:8080 within 60 seconds, exceeding 200/min/src (baseline ~60/min). LEAF iptables accepts these (matches `zt-web-app-allow`) — agent is the only layer that can detect rate-anomaly within a legitimate path. Indicator of compromised web-tier weaponizing the legit WEB→APP channel for floods or scraping.
+
+**Detection logic**: `tcp 10.1.100.0/24 any -> 10.2.100.0/24 8080 flags:S threshold count 200 in 60s by_src`
 
 ```yaml
-sid: 9000003
+sid: 9000030
 severity_p_level: 2
-signature_msg: APP reverse call to WEB - lateral movement
-production_description: 'Detection trigger: application tier initiating connection toward presentation
-  tier — direction reversal from intended dataflow. APP should never call WEB. Indicator of APP tier compromise
-  pivoting toward web frontend.'
-mitre_tactic: TA0008 Lateral Movement
-mitre_technique: T1021 Remote Services
-detection_logic: TCP SYN from 10.2.100.0/24 to 10.1.100.0/24 dst_port in {80,443,22}
+signature_msg: WEB->APP abnormal connection rate (compromised web-tier?)
+production_description: 'Detection trigger: web tier exceeds 200 SYN/min toward APP:8080 — baseline ~60/min.
+  Flow path itself is ALLOWED (zt-web-app-allow) so LEAF accepts. Agent must detect rate anomaly and push
+  targeted DROP for the abusive src — this is the canonical ALLOW-path defense scenario.'
+mitre_tactic: TA0040 Impact
+mitre_technique: T1499 Endpoint Denial of Service
+detection_logic: TCP SYN from 10.1.100.0/24 to 10.2.100.0/24 dst_port 8080 threshold 200/60s by_src
 uses_flags_s_workaround: true
-recommended_response: DROP src_ip
+recommended_response: DROP targeted (src+dst+port)
 default_ttl_seconds: 1800
-false_positive_likelihood: low
-false_positive_scenarios: []
+false_positive_likelihood: medium
+false_positive_scenarios:
+  - "Legitimate burst from new product launch / promotional traffic spike"
+  - "Health-check probe misconfiguration retrying aggressively"
 ```
 
-## SID 9000004 — WEB to MGT - unauthorized escalation attempt
+## SID 9000031 — APP→DB volume anomaly (ALLOW-path exfiltration signal)
 
-**Severity P2**  ·  **MITRE**: TA0008 Lateral Movement / T1021 Remote Services  ·  **Response**: DROP src_ip  ·  **FP likelihood**: low
+**Severity P2**  ·  **MITRE**: TA0010 Exfiltration / T1041 Exfil over C2  ·  **Response**: DROP targeted  ·  **FP likelihood**: medium
 
-Detection trigger: presentation tier initiating connection toward management plane on operational ports (SSH/RDP). Lateral movement from untrusted zone into privileged management zone. Strong indicator of WEB compromise attempting credential pivot or remote shell.
+Detection trigger: application tier opens >100 SYN/min toward DB:5432 against baseline ~60/min. Flow is ALLOWED (zt-app-db-allow) so LEAF accepts. Agent detects rate anomaly inside a legitimate path — primary signal for "compromised application server abusing its DB grant".
 
-**Detection logic**: `TCP SYN from 10.1.100.0/24 to 10.2.50.0/24 dst_port in {22,3389}`
+**Detection logic**: `tcp 10.2.100.0/24 any -> 10.1.200.0/24 5432 flags:S threshold count 100 in 60s by_src`
 
 ```yaml
-sid: 9000004
+sid: 9000031
 severity_p_level: 2
-signature_msg: WEB to MGT - unauthorized escalation attempt
-production_description: 'Detection trigger: presentation tier initiating connection toward management
-  plane on operational ports (SSH/RDP). Lateral movement from untrusted zone into privileged management
-  zone. Strong indicator of WEB compromise attempting credential pivot or remote shell.'
-mitre_tactic: TA0008 Lateral Movement
-mitre_technique: T1021 Remote Services
-detection_logic: TCP SYN from 10.1.100.0/24 to 10.2.50.0/24 dst_port in {22,3389}
+signature_msg: APP->DB volume anomaly (possible data exfiltration)
+production_description: 'Detection trigger: application tier exceeds 100 SYN/min toward DB:5432 — baseline
+  ~60/min. ALLOW path so LEAF accepts. Compromised app-01 abusing its DB grant for bulk extraction is the
+  textbook scenario where agent is essential.'
+mitre_tactic: TA0010 Exfiltration
+mitre_technique: T1041 Exfiltration Over C2 Channel
+detection_logic: TCP SYN from 10.2.100.0/24 to 10.1.200.0/24 dst_port 5432 threshold 100/60s by_src
 uses_flags_s_workaround: true
-recommended_response: DROP src_ip
+recommended_response: DROP targeted (src+dst+port)
 default_ttl_seconds: 1800
-false_positive_likelihood: low
-false_positive_scenarios: []
+false_positive_likelihood: medium
+false_positive_scenarios:
+  - "Legitimate batch job / migration window (should be pre-announced)"
+  - "Application bug retry-loop after DB transient error"
 ```
 
-## SID 9000005 — APP to MGT - unauthorized escalation attempt
+## SID 9000032 — DB→APP large reply payload (bulk extraction)
 
-**Severity P2**  ·  **MITRE**: TA0008 Lateral Movement / T1021 Remote Services  ·  **Response**: DROP src_ip  ·  **FP likelihood**: low
+**Severity P2**  ·  **MITRE**: TA0009 Collection / T1567 Exfil  ·  **Response**: DROP targeted  ·  **FP likelihood**: medium
 
-Detection trigger: application tier initiating connection toward management plane on operational ports. Same threat model as 9000004 but from APP tier — indicates deeper compromise reaching application layer.
+Detection trigger: DB-mock reply payload exceeds 4KB, repeated ≥10 times in 30s. Indicates bulk SELECT extracting many rows in a single session — exfiltration via the legitimate reply channel that LEAF cannot inspect.
 
-**Detection logic**: `TCP SYN from 10.2.100.0/24 to 10.2.50.0/24 dst_port in {22,3389}`
+**Detection logic**: `tcp 10.1.200.0/24 5432 -> 10.2.100.0/24 any flow:established,from_server dsize:>4096 threshold count 10 in 30s`
 
 ```yaml
-sid: 9000005
+sid: 9000032
 severity_p_level: 2
-signature_msg: APP to MGT - unauthorized escalation attempt
-production_description: 'Detection trigger: application tier initiating connection toward management plane
-  on operational ports. Same threat model as 9000004 but from APP tier — indicates deeper compromise reaching
-  application layer.'
-mitre_tactic: TA0008 Lateral Movement
-mitre_technique: T1021 Remote Services
-detection_logic: TCP SYN from 10.2.100.0/24 to 10.2.50.0/24 dst_port in {22,3389}
-uses_flags_s_workaround: true
-recommended_response: DROP src_ip
+signature_msg: DB large reply payload (possible bulk SELECT)
+production_description: 'Detection trigger: DB returns reply >4KB repeatedly. Normal vanilla query reply
+  is ~100 bytes (PG_OK banner). Sustained large replies imply bulk SELECT or JOIN extraction — agent must
+  evaluate against business intent.'
+mitre_tactic: TA0009 Collection
+mitre_technique: T1567 Exfiltration to Cloud Storage (adapted to internal DB extraction)
+detection_logic: TCP from DB:5432 to APP flow:from_server dsize>4096 threshold 10/30s
+uses_flags_s_workaround: false
+recommended_response: DROP targeted (src+dst+port)
 default_ttl_seconds: 1800
+false_positive_likelihood: medium
+false_positive_scenarios:
+  - "Pre-announced reporting / analytics export window"
+  - "Legitimate full-table refresh from APP cache warmup"
+```
+
+## SID 9000033 — Destructive SQL pattern (DROP TABLE / TRUNCATE)
+
+**Severity P1**  ·  **MITRE**: TA0040 Impact / T1485 Data Destruction  ·  **Response**: DROP targeted + escalate  ·  **FP likelihood**: low
+
+Detection trigger: APP→DB traffic contains DROP TABLE or TRUNCATE SQL fragments. APP tier should never execute schema-destructive operations — only DBA via MGT plane has that authority. Strong indicator of compromise or insider sabotage.
+
+**Detection logic**: `tcp 10.2.100.0/24 any -> 10.1.200.0/24 5432 flow:to_server content:"DROP TABLE" OR content:"TRUNCATE"`
+
+```yaml
+sid: 9000033
+severity_p_level: 1
+signature_msg: Destructive SQL pattern (DROP TABLE / TRUNCATE)
+production_description: 'Detection trigger: APP tier sends destructive SQL toward DB. APP role is supposed
+  to execute CRUD via prepared statements, never schema-destructive commands. Any DROP/TRUNCATE from APP
+  is incident-grade — block immediately and escalate to SOC.'
+mitre_tactic: TA0040 Impact
+mitre_technique: T1485 Data Destruction
+detection_logic: TCP from APP:any to DB:5432 flow:to_server content match "DROP TABLE" or "TRUNCATE"
+uses_flags_s_workaround: false
+recommended_response: DROP targeted (src+dst+port) + escalate
+default_ttl_seconds: 3600
 false_positive_likelihood: low
-false_positive_scenarios: []
+false_positive_scenarios:
+  - "Pre-announced schema migration script ran from APP (should run from MGT instead)"
+  - "Application contains literal SQL string DROP TABLE inside non-query context (rare)"
+```
+
+## SID 9000034 — APP→DB time-window context (agent evaluates off-hours)
+
+**Severity P3**  ·  **MITRE**: TA0001 Initial Access / T1078 Valid Accounts  ·  **Response**: agent-evaluated  ·  **FP likelihood**: high (in business hours)
+
+Detection trigger: throttled to 1 fire/5min per source — always-fire SID by design. Suricata cannot evaluate time-of-day natively, so this SID acts as a periodic context probe. Agent reasoning evaluates current hour against business window (08:00–18:00 UTC). Off-hours APP→DB activity is suspicious especially when paired with other anomalies (rate / volume).
+
+**Detection logic**: `tcp 10.2.100.0/24 any -> 10.1.200.0/24 5432 flags:S threshold 1/300s by_src`
+
+```yaml
+sid: 9000034
+severity_p_level: 3
+signature_msg: APP->DB access for time-window analysis
+production_description: 'Detection trigger: throttled fire 1/5min as an always-on probe. Time-of-day check
+  happens in the agent prompt context, not in Suricata. Fires in business hours = log_only; fires off-hours
+  with corroborating signal (rate burst, large reply) = strong suspicion of exfiltration.'
+mitre_tactic: TA0001 Initial Access
+mitre_technique: T1078 Valid Accounts (off-hours abuse)
+detection_logic: TCP SYN APP→DB:5432 throttle 1/300s by_src; agent does time-of-day evaluation
+uses_flags_s_workaround: true
+recommended_response: agent-evaluated (log_only in business hours, DROP off-hours with corroboration)
+default_ttl_seconds: 900
+false_positive_likelihood: high
+false_positive_scenarios:
+  - "Routine business-hours operation — agent expected to ignore in 08-18 UTC window"
+  - "Pre-announced overnight batch — should be paired with operator approval"
+```
+
+## SID 9000035 — Cross-tier SSH attempt (lateral movement vector)
+
+**Severity P1**  ·  **MITRE**: TA0008 Lateral Movement / T1021.004 SSH  ·  **Response**: DROP targeted + flag host  ·  **FP likelihood**: low
+
+Detection trigger: workload-to-workload TCP/22 connection attempt (WEB↔APP↔DB on port 22). Only MGT plane is authorized to SSH into workload hosts. Any SSH initiated by web-01 / app-01 / db-01 toward a peer workload indicates compromise pivot.
+
+**Detection logic**: `tcp [10.1.100.0/24,10.2.100.0/24] any -> [10.1.100.0/24,10.2.100.0/24,10.1.200.0/24] 22 flags:S`
+
+```yaml
+sid: 9000035
+severity_p_level: 1
+signature_msg: SSH attempt between workload tiers (lateral movement)
+production_description: 'Detection trigger: workload host (WEB/APP/DB) initiates SSH toward another workload.
+  Only MGT plane SSHes into workload hosts per policy. Cross-tier workload SSH is a textbook lateral movement
+  indicator — block immediately and consider full host isolation.'
+mitre_tactic: TA0008 Lateral Movement
+mitre_technique: T1021.004 Remote Services - SSH
+detection_logic: TCP SYN from {WEB,APP} to {WEB,APP,DB}:22 flags:S
+uses_flags_s_workaround: true
+recommended_response: DROP targeted (src+dst+port) + flag src host as suspicious
+default_ttl_seconds: 3600
+false_positive_likelihood: low
+false_positive_scenarios:
+  - "Mistaken admin operation using wrong jump host (should always use MGT)"
+  - "Misconfigured backup tool attempting SSH from data tier (should be removed)"
 ```
 
 ## SID 9000010 — ICMP ping sweep - reconnaissance

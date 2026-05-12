@@ -87,9 +87,9 @@ def validate_intent(
     if src_zone is None:
         result.fail(f"L3: src_ip {intent.src_ip} not in any known zone")
 
-    # L3: Policy conflict
+    # L3: Policy conflict (passes SID so SID-catalogued DROP can override ALLOW path)
     if intent.dst_ip:
-        conflict = detect_conflict(intent.src_ip, intent.dst_ip, intent.action.value)
+        conflict = detect_conflict(intent.src_ip, intent.dst_ip, intent.action.value, sid=sid)
         if conflict:
             result.fail(f"L3: {conflict}")
 
