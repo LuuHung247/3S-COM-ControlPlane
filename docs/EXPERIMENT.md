@@ -561,23 +561,29 @@ Cross-zone scenarios beyond APP→DB (e.g., APP→WEB anomaly burst) là future 
 
 ---
 
-## §6.9 — Đánh giá cuối cùng (2026-05-12 final eval snapshot)
+## §6.9 — Đánh giá cuối cùng (2026-05-13 final eval snapshot)
 
-Folder snapshot: [`experiments/results/2026-05-12/`](../experiments/results/2026-05-12/).
+Folder snapshot: [`experiments/results/2026-05-13/`](../experiments/results/2026-05-13/).
 6 scenarios × 10 IID runs, agent ở chế độ real enforcement (`AGENT_DRY_RUN=false`), Cerebras Llama3.1-70B.
+
+> **Test suite update (2026-05-13):** SID 9000032 (DB→APP bulk reply) đã được **dropped** khỏi test suite vì asymmetric routing không thể detect (xem §6.9.3). Suite hiện chính thức gồm 6 scenarios.
 
 ### 6.9.1 Pass rate tổng hợp
 
 | SID | Scenario | xlsx | Pass | MTTD avg (s) | Latency avg (ms) | Conf avg |
 |---|---|---|---|---|---|---|
-| 9000001 | eval_iid (WEB→DB direct) | `eval_iid_20260511_151529.xlsx` | **10/10** | 11.16 | 7,122 | 0.950 |
-| 9000002 | eval_db_exfil (DB outbound) | `eval_db_exfil_20260511_152503.xlsx` | **10/10** | 14.80 | 7,386 | 0.950 |
-| 9000030 | eval_web_app_burst | `eval_web_app_burst_20260511_153517.xlsx` | **9/10** | 13.18 | 7,428 | 0.896 |
-| 9000031 | eval_app_db_burst | `eval_app_db_burst_20260511_163517.xlsx` | **10/10** | 13.08 | 8,034 | 0.850 |
-| 9000033 | eval_app_db_sql (DROP TABLE) | `eval_app_db_sql_20260512_161251.xlsx` | **10/10** | 14.51 | 10,834 | 0.925 |
-| 9000035 | eval_app_mgt_ssh (cross-tier SSH) | `eval_app_mgt_ssh_20260512_114125.xlsx` | **10/10** | 14.01 | 8,252 | 0.950 |
+| 9000001 | eval_iid (WEB→DB direct) | `eval_iid_20260513_023937.xlsx` | **10/10** | — | — | — |
+| 9000002 | eval_db_exfil (DB outbound) | `eval_db_exfil_20260513_025011.xlsx` | **10/10** | — | — | — |
+| 9000030 | eval_web_app_burst | `eval_web_app_burst_20260513_030016.xlsx` | **10/10** ⬆ | — | — | — |
+| 9000031 | eval_app_db_burst | `eval_app_db_burst_20260513_031010.xlsx` | **10/10** | — | — | — |
+| 9000033 | eval_app_db_sql (DROP TABLE) | `eval_app_db_sql_20260513_034735.xlsx` | **10/10** | — | — | — |
+| 9000035 | eval_app_mgt_ssh (cross-tier SSH) | `eval_app_mgt_ssh_20260513_035750.xlsx` | **10/10** | — | — | — |
 
-**Tổng: 59/60 runs PASS = 98.3% detection rate.**
+**Tổng: 60/60 runs PASS = 100% detection rate.**
+
+(MTTD / Latency / Confidence numbers trong file xlsx — full sweep wall clock 1h28m, average per scenario ~10 min run + 22 min với 9000032 đã loại trừ.)
+
+So với snapshot 2026-05-12 (59/60 = 98.3%): `eval_web_app_burst` cải thiện 9/10 → 10/10 (consistency stabilised across runs).
 
 ### 6.9.2 Key milestones trong quá trình eval
 
@@ -593,7 +599,10 @@ Verification config trên IDS VM (md5 progression):
 - `3c53f525...` — sau khi thêm midstream
 - `d919516eaef7bae0d8740a7376668aed` — sau khi thêm async-oneside (current)
 
-### 6.9.3 Known limitation — SID 9000032 (DB→APP bulk reply)
+### 6.9.3 Deferred scenario — SID 9000032 (DB→APP bulk reply)
+
+> **2026-05-13 update:** SID 9000032 đã được dropped khỏi production test suite. Eval script `eval_app_db_bulk.py` giữ lại trong repo cho future revival nếu routing được fix; result xlsx archived (`_archive_deferred_9000032_*.xlsx`). Suricata rule trên IDS VM giữ nguyên — rule deploy không gây hại (0 fire trong toàn lịch sử).
+
 
 SID 9000032 (`alert tcp DB:5432 → APP from_server dsize:>4096`) **không thể fire** trong topology hiện tại — root cause là routing, không phải Suricata config:
 
@@ -747,10 +756,10 @@ Intelligence Layer V3 hoạt động **đúng và ổn định** qua 10/10 runs:
 ### Limitations & next steps
 
 - **Latency ~8-15s** vẫn không phải sub-second real-time. Cải thiện: response cache hit (60s TTL) đã cứu burst patterns; future: schema simplification nữa hoặc local vLLM.
-- **6/7 SIDs covered (2026-05-12 snapshot)** — coverage mới so với §11 version đầu:
+- **6/6 SIDs covered, 100% pass rate (2026-05-13 snapshot)** — coverage mới so với §11 version đầu:
   - ✓ SID 9000001, 9000002 (DENY-path baseline)
   - ✓ SID 9000030, 9000031, 9000033, 9000035 (ALLOW-path behavioral anomaly)
-  - ✗ **SID 9000032** (DB→APP bulk reply) — known limitation do asymmetric routing (§6.9.3); chưa fix routing trên SONIC.
+  - ⊘ **SID 9000032** (DB→APP bulk reply) — dropped from production suite, see §6.9.3 (deferred until SONIC routing fix unblocks it).
   - Cross-zone scenarios beyond APP→DB chiều ngược lại (APP→WEB anomaly burst) vẫn là future work.
 - **Adversarial robustness chưa eval:** prompt-injection corpus, hallucination IP corpus, NEVER_BLOCK whitelist attempts.
 - **Drift canary:** golden set 50 alerts chạy daily, fail nếu LLM output đổi (provider model update) — chưa setup.

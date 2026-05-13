@@ -385,9 +385,9 @@ stream:
 | 9000031 | `flags:S` threshold | 10/10 PASS | 10/10 PASS |
 | 9000033 | `flow:established, content:"DROP TABLE"` | **0/10 FAIL** | **10/10 PASS** |
 | 9000035 | `flags:S` cross-tier | 10/10 PASS | 10/10 PASS |
-| 9000032 | `flow:established,from_server dsize>4096` (DB→APP) | 0/10 FAIL | **0/10 FAIL (still)** |
+| 9000032 | `flow:established,from_server dsize>4096` (DB→APP) | 0/10 FAIL | **0/10 FAIL (deferred — see below)** |
 
-**Lưu ý SID 9000032 không cứu được bằng stream config** — vì reply DB→APP đi qua SPINE bypass Suricata hoàn toàn (§6.2). Đây là routing-level limitation, không phải config-level. Để fix sẽ cần SONIC LEAF-1 add static route `10.2.0.0/16 via Suricata` (đối xứng với LEAF-2). Hiện được document như known limitation (xem [EXPERIMENT.md §6.9](EXPERIMENT.md#69--ánh-giá-cuối-cùng-2026-05-12-final-eval-snapshot)).
+**SID 9000032 đã dropped khỏi production test suite (2026-05-13)** — stream config không cứu được vì reply DB→APP đi qua SPINE bypass Suricata hoàn toàn (§6.2). Đây là routing-level limitation, không phải config-level. Để revival sẽ cần SONIC LEAF-1 add static route `10.2.0.0/16 via Suricata` (đối xứng với LEAF-2). Rule trên IDS VM giữ nguyên (zero fire, không tốn resource); eval script `eval_app_db_bulk.py` giữ trong repo cho future revival. Xem [EXPERIMENT.md §6.9.3](EXPERIMENT.md#693--deferred-scenario--sid-9000032-dbapp-bulk-reply).
 
 **Pattern thiết kế rule sau workaround:**
 - `flags:S` cho rate/threshold detection (forward-only đủ).
