@@ -325,6 +325,7 @@ async def lifespan(app: FastAPI):
         ids_agent_url=settings.ids_agent_url,
         on_alert=on_alert,
         events_store=events_store,
+        redis=redis,
     )
     await consumer.start()
 

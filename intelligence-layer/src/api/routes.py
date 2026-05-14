@@ -225,6 +225,42 @@ async def admin_reset(request: Request) -> dict:
     return {"ok": True, "reset": ["rate_limiter"]}
 
 
+# ─── Agent trigger toggle ──────────────────────────────────────────────────
+# Lets operator pause/resume agent decision making without restarting the
+# container. Flows still ingest to EventsStore; only the agent dispatch is
+# skipped while disabled.
+_AGENT_TRIGGER_KEY = "agent:trigger:enabled"
+
+
+async def _get_trigger_state(request: Request) -> bool:
+    redis = request.app.state.redis
+    val = await redis.client.get(_AGENT_TRIGGER_KEY)
+    if val is None:
+        # default: enabled
+        return True
+    return val in (b"1", "1", "true", b"true")
+
+
+async def _set_trigger_state(request: Request, enabled: bool) -> None:
+    redis = request.app.state.redis
+    await redis.client.set(_AGENT_TRIGGER_KEY, "1" if enabled else "0")
+
+
+@router.get("/admin/agent/trigger")
+async def admin_agent_trigger_state(request: Request) -> dict:
+    enabled = await _get_trigger_state(request)
+    return {"enabled": enabled}
+
+
+@router.post("/admin/agent/trigger")
+async def admin_agent_trigger_set(request: Request) -> dict:
+    """POST {"enabled": true|false} — toggle agent decision pipeline."""
+    body = await request.json()
+    enabled = bool(body.get("enabled", True))
+    await _set_trigger_state(request, enabled)
+    return {"enabled": enabled, "ok": True}
+
+
 @router.get("/events")
 async def get_events(
     request: Request,

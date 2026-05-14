@@ -124,6 +124,41 @@ export default function MonitorPage() {
   const [mounted, setMounted]   = useState(false);
   const [autoFollow, setAutoFollow] = useState(true);     // auto-scroll to top on new events
   const [pendingNew, setPendingNew] = useState(0);        // count of events arrived while paused
+  const [agentTrigger, setAgentTrigger] = useState<boolean | null>(null);   // null = unknown
+
+  // Fetch agent trigger state on mount, refresh every 10s
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const res = await fetch("/api/intel/admin/trigger", { cache: "no-store" });
+        const data = await res.json();
+        if (!cancelled && typeof data.enabled === "boolean") setAgentTrigger(data.enabled);
+      } catch {
+        if (!cancelled) setAgentTrigger(null);
+      }
+    };
+    refresh();
+    const id = window.setInterval(refresh, 10_000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, []);
+
+  const toggleAgent = async () => {
+    if (agentTrigger === null) return;
+    const next = !agentTrigger;
+    setAgentTrigger(next);                       // optimistic
+    try {
+      const res = await fetch("/api/intel/admin/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      });
+      const data = await res.json();
+      if (typeof data.enabled === "boolean") setAgentTrigger(data.enabled);
+    } catch {
+      setAgentTrigger(!next);                    // rollback
+    }
+  };
   const topRef      = useRef<HTMLDivElement>(null);
   const scrollRef   = useRef<HTMLDivElement>(null);
 
@@ -353,8 +388,34 @@ export default function MonitorPage() {
               {lastUpdate.toLocaleTimeString("vi-VN", { hour12: false })}
             </span>
           )}
-          <span className="ml-auto text-xs text-tc-text-dim font-mono hidden sm:block">
-            SSE real-time · alerts + flows · auto-reconnect
+          {mounted && (
+            <button
+              onClick={toggleAgent}
+              disabled={agentTrigger === null}
+              title={
+                agentTrigger === null
+                  ? "Agent state unknown (intel offline?)"
+                  : agentTrigger
+                    ? "Click to PAUSE agent (flows still ingest, no decisions)"
+                    : "Click to RESUME agent (decisions will fire on next event)"
+              }
+              className={`ml-auto flex items-center gap-2 rounded-full px-3 py-1 text-xs font-mono border transition-all ${
+                agentTrigger === null
+                  ? "bg-tc-card text-tc-text-dim border-tc-border cursor-not-allowed"
+                  : agentTrigger
+                    ? "bg-tc-green/10 text-tc-green border-tc-green/30 hover:bg-tc-green/20"
+                    : "bg-amber-500/10 text-amber-400 border-amber-500/40 hover:bg-amber-500/20"
+              }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                agentTrigger === null ? "bg-tc-text-dim"
+                : agentTrigger ? "bg-tc-green animate-pulse"
+                : "bg-amber-400"
+              }`} />
+              Agent: {agentTrigger === null ? "?" : agentTrigger ? "ON" : "OFF"}
+            </button>
+          )}
+          <span className="text-xs text-tc-text-dim font-mono hidden sm:block">
+            SSE real-time · flows · auto-reconnect
           </span>
         </div>
 

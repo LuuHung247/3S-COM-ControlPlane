@@ -3,6 +3,10 @@
 Also mirrors all alert + flow events to EventsStore (Redis DB 1) so the frontend
 Monitor page can hydrate from server-side buffer instead of Suricata's transient
 3-min window.
+
+Agent trigger flag (Redis key `agent:trigger:enabled`) gates whether new events
+are dispatched to the decision pipeline. Disabling the flag still ingests events
+into EventsStore for FE display — only agent dispatch is paused.
 """
 import asyncio
 import json
@@ -12,10 +16,12 @@ import httpx
 
 from ..models.alert import SuricataAlert
 from ..storage.events_store import EventsStore
+from ..storage.redis import RedisStore
 
 log = structlog.get_logger()
 
 _HANDSHAKE_TYPES = {"connected", "heartbeat"}
+_AGENT_TRIGGER_KEY = "agent:trigger:enabled"
 
 
 class SSEConsumer:
@@ -24,6 +30,7 @@ class SSEConsumer:
         ids_agent_url: str,
         on_alert,  # Callable[[SuricataAlert], Awaitable[None]]
         events_store: EventsStore | None = None,
+        redis: RedisStore | None = None,
         flow_poll_interval: float = 5.0,
         reconnect_delay_base: float = 3.0,
         reconnect_delay_max: float = 60.0,
@@ -33,6 +40,7 @@ class SSEConsumer:
         self._flows_url = f"{ids_agent_url}/flows"
         self._on_alert = on_alert
         self._events_store = events_store
+        self._redis = redis
         self._flow_poll_interval = flow_poll_interval
         self._flow_poll_seen: set[str] = set()  # de-dup ring of recent flow keys
         self._reconnect_delay_base = reconnect_delay_base
@@ -40,6 +48,18 @@ class SSEConsumer:
         self._running = False
         self._task: asyncio.Task | None = None
         self._flow_task: asyncio.Task | None = None
+
+    async def _trigger_enabled(self) -> bool:
+        """Fast Redis-backed check; default True if Redis unavailable."""
+        if self._redis is None:
+            return True
+        try:
+            val = await self._redis.client.get(_AGENT_TRIGGER_KEY)
+        except Exception:
+            return True
+        if val is None:
+            return True
+        return val in (b"1", "1", b"true", "true")
 
     async def start(self) -> None:
         self._running = True
@@ -112,6 +132,10 @@ class SSEConsumer:
                             log.warning("events_store_push_violation_failed", error=str(exc))
 
                     alert = SuricataAlert.from_raw(data)
+                    if not await self._trigger_enabled():
+                        log.info("agent_trigger_disabled_skip_dispatch",
+                                 sid=alert.signature_id, src_ip=alert.src_ip)
+                        continue
                     try:
                         await self._on_alert(alert)
                     except Exception as exc:
