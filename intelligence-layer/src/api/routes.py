@@ -263,12 +263,15 @@ async def admin_flow_batch_status(request: Request) -> dict:
         buffer_size = await fw.buffer_size()
     except Exception:
         buffer_size = 0
+    dispatcher = getattr(request.app.state, "flow_batch_dispatcher", None)
+    last_window = (dispatcher.last_window_stats if dispatcher else {})
     return {
         "enabled": True,
         "window_seconds": fw._window_seconds,
         "buffer_size": buffer_size,
         "window_start": fw._window_start_iso,
         "agent_trigger_enabled": await _get_trigger_state(request),
+        "last_window": last_window,
     }
 
 

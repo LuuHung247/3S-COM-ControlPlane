@@ -46,6 +46,16 @@ class FlowBatchDispatcher:
         self._ip_to_zone = ip_to_zone
         self._suspect_threshold = suspect_threshold
 
+        # Stats snapshot of the most recent window, surfaced via /admin/flow-batch/status
+        self.last_window_stats: dict = {
+            "flows_in_window": 0,
+            "ip_pairs_total": 0,
+            "ip_pairs_suspect": 0,
+            "dispatched": 0,
+            "agent_calls_skipped": 0,
+            "window_end": "",
+        }
+
     async def _trigger_enabled(self) -> bool:
         if self._redis is None:
             return True
@@ -88,12 +98,23 @@ class FlowBatchDispatcher:
             top_score=max((s for _, s in scored), default=0),
         )
 
+        # Always update window stats (even on empty/skipped windows)
+        self.last_window_stats = {
+            "flows_in_window": len(flows),
+            "ip_pairs_total": len(aggregated),
+            "ip_pairs_suspect": len(suspects),
+            "dispatched": 0,
+            "agent_calls_skipped": 0,
+            "window_end": window_end,
+        }
+
         if not suspects:
             return
 
         # 3. Toggle gate — token economy control
         enabled = await self._trigger_enabled()
         if not enabled:
+            self.last_window_stats["agent_calls_skipped"] = len(suspects)
             log.info(
                 "flow_batch_agent_disabled_skip_dispatch",
                 suspects_skipped=len(suspects),
@@ -101,10 +122,12 @@ class FlowBatchDispatcher:
             return
 
         # 4. Dispatch each suspect IP-pair as a synthetic alert
+        dispatched = 0
         for pair, score in suspects:
             try:
                 synth = _build_synthetic_alert(pair, score)
                 await self._on_alert(synth)
+                dispatched += 1
             except Exception as exc:
                 log.error(
                     "flow_batch_dispatch_error",
@@ -112,6 +135,7 @@ class FlowBatchDispatcher:
                     dst=pair.dest_ip,
                     error=str(exc),
                 )
+        self.last_window_stats["dispatched"] = dispatched
 
 
 def _build_synthetic_alert(pair: AggregatedIPPair, score: int) -> SuricataAlert:

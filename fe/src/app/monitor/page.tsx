@@ -204,6 +204,66 @@ export default function MonitorPage() {
     return remaining;
   })();
 
+  // Extra last-window stats for the counter row
+  const [lastWindow, setLastWindow] = useState<{
+    flowsInWindow: number;
+    ipPairsTotal: number;
+    ipPairsSuspect: number;
+    dispatched: number;
+    skipped: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const res = await fetch("/api/intel/admin/flow-batch", { cache: "no-store" });
+        const d = await res.json();
+        const lw = d.last_window || {};
+        if (!cancelled) {
+          setLastWindow({
+            flowsInWindow: lw.flows_in_window ?? 0,
+            ipPairsTotal: lw.ip_pairs_total ?? 0,
+            ipPairsSuspect: lw.ip_pairs_suspect ?? 0,
+            dispatched: lw.dispatched ?? 0,
+            skipped: lw.agent_calls_skipped ?? 0,
+          });
+        }
+      } catch {
+        // ignore
+      }
+    };
+    refresh();
+    const id = window.setInterval(refresh, 5000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, []);
+
+  // Decisions count (this session) — count entries with batch SID range (9900xxx)
+  const [decisionsCount, setDecisionsCount] = useState<number>(0);
+  const [activeRulesCount, setActiveRulesCount] = useState<number>(0);
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const [decRes, rulRes] = await Promise.all([
+          fetch("/api/intel/decisions", { cache: "no-store" }),
+          fetch("/api/ids/rules", { cache: "no-store" }),
+        ]);
+        const decs = await decRes.json().catch(() => []);
+        const rules = await rulRes.json().catch(() => []);
+        if (!cancelled) {
+          setDecisionsCount(Array.isArray(decs) ? decs.length : (decs.count ?? 0));
+          setActiveRulesCount(Array.isArray(rules) ? rules.length : (rules.count ?? 0));
+        }
+      } catch {
+        // ignore
+      }
+    };
+    refresh();
+    const id = window.setInterval(refresh, 5000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, []);
+
   useEffect(() => { setMounted(true); }, []);
 
   // Load history on mount from server-side Redis buffer (7-day window).
@@ -542,16 +602,41 @@ export default function MonitorPage() {
           </div>
         </div>
 
-        {/* Violation Stats */}
-        <div className="grid grid-cols-5 gap-2 mb-4">
+        {/* Flow-log mode metrics (replaces SID priority counters) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
           {[
-            { label: "Violations", value: stats.total, color: "text-white" },
-            { label: "P1 Critical", value: stats.p1,  color: "text-red-400" },
-            { label: "P2 High",     value: stats.p2,  color: "text-orange-400" },
-            { label: "P3 Info",     value: stats.p3,  color: "text-yellow-400" },
-            { label: "P4 Audit",    value: stats.p4,  color: "text-tc-text-dim" },
+            {
+              label: "Flows / window",
+              value: lastWindow?.flowsInWindow ?? 0,
+              color: "text-tc-green",
+              hint: "Suricata eve.json flows captured in last 2-min window",
+            },
+            {
+              label: "Suspects",
+              value: lastWindow?.ipPairsSuspect ?? 0,
+              color: (lastWindow?.ipPairsSuspect ?? 0) > 0 ? "text-amber-400" : "text-white",
+              hint: "IP-pairs scored ≥2 by pre-filter (forward to agent)",
+            },
+            {
+              label: agentTrigger === false ? "Skipped (paused)" : "Dispatched",
+              value: agentTrigger === false
+                ? (lastWindow?.skipped ?? 0)
+                : (lastWindow?.dispatched ?? 0),
+              color: agentTrigger === false ? "text-amber-400" : "text-tc-green",
+              hint: agentTrigger === false
+                ? "LLM calls skipped because agent toggle is OFF (0 tokens)"
+                : "Stage 1 LLM calls fired in last window",
+            },
+            {
+              label: "Active rules",
+              value: activeRulesCount,
+              color: "text-white",
+              hint: "Currently active SF rules on LEAFs",
+            },
           ].map(s => (
-            <div key={s.label} className="rounded-lg border border-tc-border bg-tc-card px-3 py-2 text-center">
+            <div key={s.label}
+              title={s.hint}
+              className="rounded-lg border border-tc-border bg-tc-card px-3 py-2 text-center cursor-help">
               <div className={`text-lg font-bold font-mono ${s.color}`}>{s.value}</div>
               <div className="text-xs text-tc-text-dim mt-0.5">{s.label}</div>
             </div>
@@ -571,17 +656,7 @@ export default function MonitorPage() {
                 }`}>{z}</button>
             ))}
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-tc-text-dim font-mono">P:</span>
-            {([0,1,2,3,4] as Priority[]).map(p => (
-              <button key={p} onClick={() => setFilterPriority(p)}
-                className={`px-2.5 py-1 rounded text-xs font-mono border transition-all ${
-                  filterPriority === p
-                    ? "bg-tc-green text-black border-tc-green font-bold"
-                    : "border-tc-border text-tc-text-dim hover:border-tc-green/30"
-                }`}>{p === 0 ? "ALL" : `P${p}`}</button>
-            ))}
-          </div>
+          {/* Priority filter removed for pure flow-log mode — flows don't carry SID priority */}
           <button onClick={() => setShowFlows(f => !f)}
             className={`px-2.5 py-1 rounded text-xs font-mono border transition-all ml-auto ${
               showFlows
