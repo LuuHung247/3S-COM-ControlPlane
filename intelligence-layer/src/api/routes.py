@@ -252,6 +252,26 @@ async def admin_agent_trigger_state(request: Request) -> dict:
     return {"enabled": enabled}
 
 
+@router.get("/admin/flow-batch/status")
+async def admin_flow_batch_status(request: Request) -> dict:
+    """Snapshot of the current flow batch window: timer, buffer size, last fire stats.
+    Used by FE Monitor panel to show "next batch in: 87s · 42 flows buffered"."""
+    fw = getattr(request.app.state, "flow_window", None)
+    if fw is None:
+        return {"enabled": False, "reason": "flow_window not initialized"}
+    try:
+        buffer_size = await fw.buffer_size()
+    except Exception:
+        buffer_size = 0
+    return {
+        "enabled": True,
+        "window_seconds": fw._window_seconds,
+        "buffer_size": buffer_size,
+        "window_start": fw._window_start_iso,
+        "agent_trigger_enabled": await _get_trigger_state(request),
+    }
+
+
 @router.post("/admin/agent/trigger")
 async def admin_agent_trigger_set(request: Request) -> dict:
     """POST {"enabled": true|false} — toggle agent decision pipeline."""

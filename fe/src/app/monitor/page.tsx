@@ -162,6 +162,48 @@ export default function MonitorPage() {
   const topRef      = useRef<HTMLDivElement>(null);
   const scrollRef   = useRef<HTMLDivElement>(null);
 
+  // Flow batch window status — countdown + buffered flow count
+  const [batchStatus, setBatchStatus] = useState<{
+    enabled: boolean;
+    windowSeconds: number;
+    bufferSize: number;
+    windowStart: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const res = await fetch("/api/intel/admin/flow-batch", { cache: "no-store" });
+        const d = await res.json();
+        if (!cancelled && d.enabled) {
+          setBatchStatus({
+            enabled: true,
+            windowSeconds: d.window_seconds ?? 120,
+            bufferSize: d.buffer_size ?? 0,
+            windowStart: d.window_start ?? "",
+          });
+        } else if (!cancelled) {
+          setBatchStatus(null);
+        }
+      } catch {
+        if (!cancelled) setBatchStatus(null);
+      }
+    };
+    refresh();
+    const id = window.setInterval(refresh, 3000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, []);
+
+  // Compute seconds remaining in current window
+  const batchCountdown = (() => {
+    if (!batchStatus || !batchStatus.windowStart) return null;
+    const start = new Date(batchStatus.windowStart).getTime();
+    const end = start + batchStatus.windowSeconds * 1000;
+    const remaining = Math.max(0, Math.round((end - Date.now()) / 1000));
+    return remaining;
+  })();
+
   useEffect(() => { setMounted(true); }, []);
 
   // Load history on mount from server-side Redis buffer (7-day window).
@@ -415,9 +457,57 @@ export default function MonitorPage() {
             </button>
           )}
           <span className="text-xs text-tc-text-dim font-mono hidden sm:block">
-            SSE real-time · flows · auto-reconnect
+            Pure flow-log mode · NetVigil-aligned · 2-min window
           </span>
         </div>
+
+        {/* Flow Batch Status — replaces SID-based alert panel for pure-log mode */}
+        {mounted && batchStatus && (
+          <div className="mb-5 rounded-lg border border-tc-border bg-tc-card p-3">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono text-tc-text-dim uppercase tracking-wider">
+                  Flow batch window
+                </span>
+                <span className="text-xs font-mono text-tc-green font-bold">
+                  {batchStatus.windowSeconds}s
+                </span>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-xs font-mono text-tc-text-dim">
+                  Buffered:{" "}
+                  <span className="text-white font-bold">{batchStatus.bufferSize}</span>{" "}
+                  <span className="text-tc-text-dim/60">flows</span>
+                </div>
+                <div className="text-xs font-mono text-tc-text-dim">
+                  Next batch in:{" "}
+                  <span className={`font-bold ${
+                    batchCountdown !== null && batchCountdown <= 10
+                      ? "text-amber-400 animate-pulse"
+                      : "text-white"
+                  }`}>
+                    {batchCountdown !== null ? `${batchCountdown}s` : "—"}
+                  </span>
+                </div>
+                {agentTrigger === false && (
+                  <span className="text-xs font-mono text-amber-400">
+                    Agent paused — flows ingest, decisions skipped
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="mt-2 h-1 rounded-full bg-tc-darker overflow-hidden">
+              <div
+                className="h-full bg-tc-green transition-all"
+                style={{
+                  width: batchCountdown !== null
+                    ? `${100 - (batchCountdown / batchStatus.windowSeconds) * 100}%`
+                    : "0%",
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Service Health */}
         <div className="mb-5">
@@ -425,7 +515,7 @@ export default function MonitorPage() {
             <span className="text-xs font-mono text-tc-text-dim uppercase tracking-wider">Nodes</span>
             <span className="text-xs font-mono text-tc-green font-bold">{monitoredCount}/4 monitored</span>
             <span className="text-xs text-tc-text-dim/60 font-mono normal-case">
-              passive IDS · Suricata flow records · 3 min window
+              passive IDS · Suricata eve.json flow logs · 2 min batch window
             </span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
