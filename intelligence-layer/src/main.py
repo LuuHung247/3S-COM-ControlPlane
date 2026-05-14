@@ -333,6 +333,8 @@ async def lifespan(app: FastAPI):
         on_alert=on_alert,
         redis=redis,
         ip_to_zone=_ip_to_zone,
+        fast_llm=fast_llm,
+        events_store=events_store,
     )
     flow_window = FlowWindow(
         window_seconds=int(getattr(settings, "flow_window_seconds", 120)),
