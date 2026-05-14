@@ -1,72 +1,84 @@
-<mxfile host="65bd71144e">
-    <diagram name="3-Tier Architecture Overview" id="zt-overview">
-        <mxGraphModel dx="478" dy="303" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
-            <root>
-                <mxCell id="0"/>
-                <mxCell id="1" parent="0"/>
-                <mxCell id="ui" value="Operator Dashboard&#xa;(Live Monitor UI)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontSize=12;fontStyle=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
-                    <mxGeometry x="180" y="70" width="260" height="60" as="geometry"/>
-                </mxCell>
-                <mxCell id="orch_band" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;" parent="1" vertex="1">
-                    <mxGeometry x="40" y="170" width="540" height="350" as="geometry"/>
-                </mxCell>
-                <mxCell id="orch_lbl" value="Orchestration Layer" style="text;html=1;fontSize=13;fontStyle=1;align=left;verticalAlign=top;spacingTop=8;spacingLeft=12;" parent="1" vertex="1">
-                    <mxGeometry x="50" y="178" width="280" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="ids_agent" value="ids-agent&#xa;(proxy + live monitor stream)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#23445d;strokeWidth=2;fontSize=13;fontStyle=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
-                    <mxGeometry x="80" y="215" width="460" height="80" as="geometry"/>
-                </mxCell>
-                <mxCell id="onap" value="ONAP SDNC" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bac8e0;strokeColor=#23445d;strokeWidth=2;fontSize=13;fontStyle=1;align=left;verticalAlign=top;spacingTop=8;spacingLeft=15;" parent="1" vertex="1">
-                    <mxGeometry x="80" y="340" width="460" height="160" as="geometry"/>
-                </mxCell>
-                <mxCell id="pep" value="Secure Framework&#xa;(Policy Enforcement Point)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#23445d;strokeWidth=2;fontSize=13;fontStyle=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
-                    <mxGeometry x="115" y="385" width="390" height="95" as="geometry"/>
-                </mxCell>
-                <mxCell id="forward_rule" value="forward rule&#xa;(REST)" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#23445d;fontSize=11;fontStyle=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="ids_agent" target="pep" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="monitor_stream" value="alert + flow stream&#xa;(SSE)" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#666666;fontSize=11;fontStyle=2;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" parent="1" source="ids_agent" target="ui" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="intel_band" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;" parent="1" vertex="1">
-                    <mxGeometry x="610" y="170" width="450" height="350" as="geometry"/>
-                </mxCell>
-                <mxCell id="intel_lbl" value="Intelligence Layer" style="text;html=1;fontSize=13;fontStyle=1;align=left;verticalAlign=top;spacingTop=8;spacingLeft=12;" parent="1" vertex="1">
-                    <mxGeometry x="620" y="178" width="280" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="agent" value="AI Agent (LLM)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#3a6629;strokeWidth=2;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
-                    <mxGeometry x="660" y="260" width="350" height="200" as="geometry"/>
-                </mxCell>
-                <mxCell id="agent_proxy" value="alert stream (SSE)&#xa;rule push (REST)" style="endArrow=classic;startArrow=classic;html=1;strokeWidth=2;strokeColor=#0066cc;fontSize=11;fontStyle=2;fontColor=#0066cc;exitX=1;exitY=0.5;entryX=0;entryY=0.3;" parent="1" source="ids_agent" target="agent" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="data_band" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;" parent="1" vertex="1">
-                    <mxGeometry x="40" y="610" width="1020" height="200" as="geometry"/>
-                </mxCell>
-                <mxCell id="data_lbl" value="Data Plane" style="text;html=1;fontSize=13;fontStyle=1;align=left;verticalAlign=top;spacingTop=8;spacingLeft=12;" parent="1" vertex="1">
-                    <mxGeometry x="50" y="618" width="280" height="22" as="geometry"/>
-                </mxCell>
-                <mxCell id="fabric" value="Spine-Leaf Fabric (SONiC)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#c47000;strokeWidth=2;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
-                    <mxGeometry x="120" y="670" width="500" height="110" as="geometry"/>
-                </mxCell>
-                <mxCell id="ids" value="IDS (Suricata)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#c47000;strokeWidth=2;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
-                    <mxGeometry x="720" y="670" width="260" height="110" as="geometry"/>
-                </mxCell>
-                <mxCell id="tap" value="tap-mirror&#xa;(passive monitor)" style="endArrow=open;html=1;dashed=1;strokeWidth=1.5;strokeColor=#9673a6;fontSize=11;fontStyle=2;fontColor=#9673a6;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="fabric" target="ids" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-                <mxCell id="flow_alert_up" value="alert (SSE)" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#0066cc;fontSize=12;fontStyle=1;fontColor=#0066cc;exitX=0.5;exitY=0;entryX=0.7;entryY=1;" parent="1" source="ids" target="ids_agent" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="850" y="555"/>
-                            <mxPoint x="402" y="555"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="flow_push_down" value="rule push&#xa;(gNMI mTLS)" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#cc0000;fontSize=12;fontStyle=1;fontColor=#cc0000;exitX=0.5;exitY=1;entryX=0.4;entryY=0;" parent="1" source="pep" target="fabric" edge="1">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
-            </root>
-        </mxGraphModel>
-    </diagram>
+<mxfile host="app.diagrams.net">
+  <diagram name="3-Tier Architecture Overview" id="zt-overview">
+    <mxGraphModel grid="1" page="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="ui" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontSize=12;fontStyle=1;align=center;verticalAlign=middle;" value="Operator Dashboard&#xa;(Live Monitor UI)" vertex="1">
+          <mxGeometry height="60" width="210" x="110" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="orch_band" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="360" width="370" x="40" y="156" as="geometry" />
+        </mxCell>
+        <mxCell id="orch_lbl" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=left;verticalAlign=top;spacingTop=8;spacingLeft=12;" value="Orchestration Layer" vertex="1">
+          <mxGeometry height="22" width="280" x="55" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="ids_agent" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#23445d;strokeWidth=2;fontSize=13;fontStyle=1;align=center;verticalAlign=middle;" value="ids-agent&#xa;(proxy + live monitor stream)" vertex="1">
+          <mxGeometry height="80" width="210" x="112.5" y="201" as="geometry" />
+        </mxCell>
+        <mxCell id="onap" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bac8e0;strokeColor=#23445d;strokeWidth=2;fontSize=13;fontStyle=1;align=left;verticalAlign=top;spacingTop=8;spacingLeft=15;" value="ONAP SDNC" vertex="1">
+          <mxGeometry height="160" width="280" x="80" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="pep" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#23445d;strokeWidth=2;fontSize=13;fontStyle=1;align=center;verticalAlign=middle;" value="Secure Framework&#xa;(Policy Enforcement Point)" vertex="1">
+          <mxGeometry height="95" width="205" x="115" y="385" as="geometry" />
+        </mxCell>
+        <mxCell id="forward_rule" edge="1" parent="1" source="ids_agent" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#23445d;fontSize=11;fontStyle=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="pep" value="forward rule&#xa;(REST)">
+          <mxGeometry relative="1" x="-0.4423" y="3" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="monitor_stream" edge="1" parent="1" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#666666;fontSize=11;fontStyle=2;entryX=0.511;entryY=1.014;entryDx=0;entryDy=0;entryPerimeter=0;" target="ui" value="alert + flow stream&#xa;(SSE)">
+          <mxGeometry relative="1" x="0.4176" y="-13" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points" />
+            <mxPoint x="217.36" y="201" as="sourcePoint" />
+            <mxPoint x="217.36" y="96" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="intel_band" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="170" width="240" x="480" y="156" as="geometry" />
+        </mxCell>
+        <mxCell id="intel_lbl" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=left;verticalAlign=top;spacingTop=8;spacingLeft=12;" value="Intelligence Layer" vertex="1">
+          <mxGeometry height="22" width="280" x="480" y="156" as="geometry" />
+        </mxCell>
+        <mxCell id="agent" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#3a6629;strokeWidth=2;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;" value="AI Agent (LLM)" vertex="1">
+          <mxGeometry height="70" width="150" x="520" y="206" as="geometry" />
+        </mxCell>
+        <mxCell id="agent_proxy" edge="1" parent="1" source="ids_agent" style="endArrow=classic;startArrow=classic;html=1;strokeWidth=2;strokeColor=#0066cc;fontSize=11;fontStyle=2;fontColor=#0066cc;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="agent" value="alert stream (SSE)&#xa;rule push (REST)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="330" y="240.41" as="sourcePoint" />
+            <mxPoint x="560" y="240" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="data_band" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="190" width="680" x="40" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="data_lbl" parent="1" style="text;html=1;fontSize=13;fontStyle=1;align=left;verticalAlign=top;spacingTop=8;spacingLeft=12;" value="Data Plane" vertex="1">
+          <mxGeometry height="22" width="280" x="50" y="618" as="geometry" />
+        </mxCell>
+        <mxCell id="fabric" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#c47000;strokeWidth=2;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;" value="Spine-Leaf Fabric (SONiC)" vertex="1">
+          <mxGeometry height="110" width="200" x="115" y="660" as="geometry" />
+        </mxCell>
+        <mxCell id="ids" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#c47000;strokeWidth=2;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;" value="IDS (Suricata)" vertex="1">
+          <mxGeometry height="110" width="160" x="480" y="660" as="geometry" />
+        </mxCell>
+        <mxCell id="tap" edge="1" parent="1" source="fabric" style="endArrow=open;html=1;dashed=1;strokeWidth=1.5;strokeColor=#9673a6;fontSize=11;fontStyle=2;fontColor=#9673a6;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="ids" value="tap-mirror&#xa;(passive monitor)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="flow_alert_up" edge="1" parent="1" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#0066cc;fontSize=12;fontStyle=1;fontColor=#0066cc;exitX=0.5;exitY=0;entryX=1;entryY=0.75;entryDx=0;entryDy=0;" target="ids_agent" value="alert (SSE)">
+          <mxGeometry relative="1" x="-0.1441" y="1" as="geometry">
+            <mxPoint as="offset" />
+            <mxPoint x="565" y="659.9999999999998" as="sourcePoint" />
+            <mxPoint x="305.58" y="260" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="flow_push_down" edge="1" parent="1" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#cc0000;fontSize=12;fontStyle=1;fontColor=#cc0000;entryX=0.4;entryY=0;" value="rule push&#xa;(gNMI mTLS)">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="214.40999999999997" y="480" as="sourcePoint" />
+            <mxPoint x="214.40999999999997" y="657.9999999999998" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
 </mxfile>
