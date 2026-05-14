@@ -21,12 +21,29 @@ Neo4j, not these files (the files are the *authoring* layer; Neo4j is the *runti
 | `zones.md` | 4 trust zones | `Zone` |
 | `assets.md` | 4 workload hosts | `Asset` (with nested `Service`) |
 | `leafs.md` | 2 SONiC leafs | `Leaf` |
-| `baselines.md` | Application + management traffic flows + anomalous patterns | `TrafficPattern` + constants |
+| `baselines.md` | Application + management traffic flows + anomalous patterns + statistical bounds + time-of-day multipliers | `TrafficPattern` + constants |
 | `policy-matrix.md` | 12 zone-pair verdicts | `(src_zone, dst_zone) → ALLOW/DENY` |
-| `sids.md` | 8 Suricata signatures | `SidDetection` |
+| `sids.md` | Suricata SID inventory (legacy reference — kept for backward compat after pure-log refactor) | `SidDetection` |
+| `threat-patterns.md` | **8 threat classes / 20 flow-keyed patterns** covering Yatesbury benchmark + lab scenarios. Primary entry point in pure-log mode. Includes detection-difficulty tiers + NetVigil paper insights. | `ThreatPattern` |
+| `severity-scoring.md` | Deterministic point-based severity rubric, action mapping, confidence calibration, hard overrides | `SeverityRubric` |
+| `flow-features.md` | Feature extraction protocol (9 features per IP pair × 2-min window) following NetVigil Table 2; unseen-port tracking; aggregation rationale | `FlowFeatureSet` |
 | `kill-chains.md` | 4 multi-stage adversary playbooks | `KillChain` (with nested `KillChainStage`) |
 | `enforcement-plane.md` | SF REST endpoint contracts, gotchas, failure modes, RBAC | mixed |
 | `invariants.md` | NEVER_BLOCK CIDRs, allowed actions, comment prefixes | hard safety constants |
+
+## Pure-log mode (2026-05-14 onward)
+
+The agent now operates without spoon-feeding Suricata SID alerts. Instead it
+consumes raw `eve.json type:flow` events and reasons from:
+
+1. **`threat-patterns.md`** — match flow signature → identify threat class
+2. **`baselines.md`** — compare observed rate against statistical bounds
+3. **`severity-scoring.md`** — quantitative scoring → P-level + action
+4. **`policy-matrix.md`** — verify zone-pair verdict (hard policy gate)
+5. **`invariants.md`** — apply hard overrides (NEVER_BLOCK, allowed actions)
+
+`sids.md` remains as legacy reference for historical traces; new flow events
+do not require SID-to-action lookup.
 
 ## Workflow
 
