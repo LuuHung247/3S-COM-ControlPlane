@@ -16,6 +16,8 @@ from .storage.neo4j_kg import Neo4jKG
 from .core.knowledge_loader import KnowledgeLoader
 from .pipeline.gate import AlertGate
 from .pipeline.consumer import SSEConsumer
+from .pipeline.flow_window import FlowWindow
+from .pipeline.flow_batch_dispatcher import FlowBatchDispatcher
 from .agent.llm.factory import get_llm_client
 from .agent.safety.rate_limiter import RateLimiter
 from .agent.safety.circuit_breaker import CircuitBreaker
@@ -321,11 +323,31 @@ async def lifespan(app: FastAPI):
             bg_set.add(task)
             task.add_done_callback(bg_set.discard)
 
+    # Flow batch pipeline (pure-log mode, NetVigil-aligned window dispatch)
+    try:
+        from .core.topology import ip_to_zone as _ip_to_zone
+    except Exception:
+        _ip_to_zone = lambda _ip: ""
+
+    flow_batch_dispatcher = FlowBatchDispatcher(
+        on_alert=on_alert,
+        redis=redis,
+        ip_to_zone=_ip_to_zone,
+    )
+    flow_window = FlowWindow(
+        window_seconds=int(getattr(settings, "flow_window_seconds", 120)),
+        on_window_close=flow_batch_dispatcher.on_window_close,
+    )
+    await flow_window.start()
+    app.state.flow_window = flow_window
+    app.state.flow_batch_dispatcher = flow_batch_dispatcher
+
     consumer = SSEConsumer(
         ids_agent_url=settings.ids_agent_url,
         on_alert=on_alert,
         events_store=events_store,
         redis=redis,
+        flow_window=flow_window,
     )
     await consumer.start()
 

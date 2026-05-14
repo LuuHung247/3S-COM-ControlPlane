@@ -15,8 +15,10 @@ import structlog
 import httpx
 
 from ..models.alert import SuricataAlert
+from ..models.flow import SuricataFlowEvent
 from ..storage.events_store import EventsStore
 from ..storage.redis import RedisStore
+from .flow_window import FlowWindow
 
 log = structlog.get_logger()
 
@@ -31,6 +33,7 @@ class SSEConsumer:
         on_alert,  # Callable[[SuricataAlert], Awaitable[None]]
         events_store: EventsStore | None = None,
         redis: RedisStore | None = None,
+        flow_window: FlowWindow | None = None,
         flow_poll_interval: float = 5.0,
         reconnect_delay_base: float = 3.0,
         reconnect_delay_max: float = 60.0,
@@ -41,6 +44,7 @@ class SSEConsumer:
         self._on_alert = on_alert
         self._events_store = events_store
         self._redis = redis
+        self._flow_window = flow_window      # if set, push flow events to window buffer
         self._flow_poll_interval = flow_poll_interval
         self._flow_poll_seen: set[str] = set()  # de-dup ring of recent flow keys
         self._reconnect_delay_base = reconnect_delay_base
@@ -112,13 +116,20 @@ class SSEConsumer:
                     if data.get("type") in _HANDSHAKE_TYPES:
                         continue
 
-                    # Mirror flow events to EventsStore (no agent dispatch)
+                    # Flow events: mirror to EventsStore AND push to FlowWindow buffer
+                    # (FlowWindow will batch-dispatch to agent on window close, gated by
+                    # the trigger flag — see FlowBatchDispatcher).
                     if data.get("event_type") == "flow":
                         if self._events_store is not None:
                             try:
                                 await self._events_store.push_flow(data)
                             except Exception as exc:
                                 log.warning("events_store_push_flow_failed", error=str(exc))
+                        if self._flow_window is not None:
+                            try:
+                                await self._flow_window.push(SuricataFlowEvent.from_raw(data))
+                            except Exception as exc:
+                                log.warning("flow_window_push_failed", error=str(exc))
                         continue
 
                     if "alert" not in data or "src_ip" not in data:
@@ -162,7 +173,7 @@ class SSEConsumer:
                 return
 
     async def _ingest_flow_batch(self, flows: list) -> None:
-        if self._events_store is None:
+        if self._events_store is None and self._flow_window is None:
             return
         for f in flows:
             if not isinstance(f, dict):
@@ -178,9 +189,14 @@ class SSEConsumer:
             self._flow_poll_seen.add(k)
             # Bound dedup ring to last 500 flow keys
             if len(self._flow_poll_seen) > 500:
-                # Drop ~half (Python set has no FIFO; arbitrary drop is acceptable)
                 self._flow_poll_seen = set(list(self._flow_poll_seen)[-250:])
-            try:
-                await self._events_store.push_flow(f)
-            except Exception as exc:
-                log.warning("events_store_push_flow_failed", error=str(exc))
+            if self._events_store is not None:
+                try:
+                    await self._events_store.push_flow(f)
+                except Exception as exc:
+                    log.warning("events_store_push_flow_failed", error=str(exc))
+            if self._flow_window is not None:
+                try:
+                    await self._flow_window.push(SuricataFlowEvent.from_raw(f))
+                except Exception as exc:
+                    log.warning("flow_window_push_failed", error=str(exc))
