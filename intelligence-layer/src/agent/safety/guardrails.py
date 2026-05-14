@@ -13,9 +13,17 @@ NEVER_BLOCK: list[str] = [
     "10.2.50.1/32",        # LEAF-2 SVI MGT gateway
 ]
 
-# Only DROP is allowed for agent-enforced rules.
-# ACCEPT/RETURN would be policy expansion, which intelligence-layer never does.
-ALLOWED_AGENT_ACTIONS: frozenset[str] = frozenset({"DROP"})
+# Agent-allowed actions:
+#   DROP     — push enforce rule (P1/P2 threat-grade decisions)
+#   log_only — record decision in audit trail, NO rule pushed (P3/P4 baseline observations)
+# ACCEPT/RETURN/REJECT are policy expansion — escalate to operator (OU=sdnc).
+# Source-of-truth: knowledge/infra/invariants.md → loaded via core.invariants.
+try:
+    from ...core.invariants import ALLOWED_AGENT_ACTIONS as _KG_ALLOWED
+    ALLOWED_AGENT_ACTIONS: frozenset[str] = frozenset(_KG_ALLOWED)
+except Exception:
+    # Fail-closed fallback: if KG load failed, allow only DROP (legacy behavior).
+    ALLOWED_AGENT_ACTIONS = frozenset({"DROP"})
 
 _NEVER_BLOCK_NETS = [ipaddress.ip_network(cidr, strict=False) for cidr in NEVER_BLOCK]
 

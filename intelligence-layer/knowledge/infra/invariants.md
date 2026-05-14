@@ -46,11 +46,15 @@ never_block:
 
 ## Allowed agent actions
 
-Frozen set: **DROP**. Agent role can ONLY push DROP rules. ACCEPT/RETURN must escalate to operator (OU=sdnc).
+Allowed set: **{DROP, log_only}**. Agent role can push DROP rules for enforce-grade
+decisions (P1/P2), or `log_only` for low-signal alerts (P3/P4) which records the
+decision in audit trail without pushing any rule to SF/iptables.
+ACCEPT/RETURN/REJECT must escalate to operator (OU=sdnc); these are NOT in the set.
 
 ```yaml
 allowed_agent_actions:
 - DROP
+- log_only
 ```
 
 ## Comment provenance prefixes
