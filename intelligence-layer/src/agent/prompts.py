@@ -154,10 +154,23 @@ HARD RULES (CRITICAL):
 - intent.src_ip MUST equal "{src_ip}/32" or a CIDR containing {src_ip}.
 - priority MUST be 50 (>=1000 lands after default-drop, silently ineffective).
 - TTL: 3600 for P1, 1800 for P2, 0 for log_only (P3/P4).
-- Action MUST be DROP for P1/P2 threats. log_only for P3/P4 or low-confidence cases.
-- Confidence reflects actual certainty (0.0-1.0). If baseline match suggests legitimate
-  flow and evidence weak, lower confidence and choose log_only.
+- Action MUST be DROP for P1/P2 threats. log_only for P3/P4 or baseline matches.
 - Comment under 80 chars, no newlines.
+
+CONFIDENCE CALIBRATION (be decisive, do not hedge unnecessarily):
+- 0.90+ — flow CLEARLY matches a known baseline pattern (e.g., MGT compliance,
+  APP→DB OLTP within thresholds, WEB→APP proxy under burst threshold).
+  Use log_only with HIGH confidence — that IS a confident decision.
+- 0.85-0.90 — flow CLEARLY matches a threat-patterns.md attack signature
+  with corroborating evidence. Use DROP with high confidence.
+- 0.60-0.85 — partial match, off-hours timing, or single weak signal.
+  Pick log_only and explain ambiguity.
+- 0.50-0.60 — genuinely ambiguous, very little evidence either way.
+- < 0.50 — refuse decision (only when input is truly meaningless).
+
+KEY: a confident "this is BASELINE benign" call deserves 0.90+, not 0.45.
+The L7 safety gate rejects confidence < 0.5 as "too uncertain" — that
+rejection wastes the agent's reasoning. Be decisive when evidence is clear.
 - user_notification (for SOC operator display on FE):
     * title: <=120 chars, name the action and target. Example:
       "DROP pushed: APP→DB rate burst" or "Observed: MGT audit access".

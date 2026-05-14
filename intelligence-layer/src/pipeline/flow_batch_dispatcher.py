@@ -250,18 +250,28 @@ def _build_synthetic_alert(
     """Convert an aggregated IP-pair into a SuricataAlert-shaped record so
     the existing Stage 1 pipeline can consume it.
 
-    SID = 9900000 + score_bucket. Severity inferred from heuristic score:
-      score >= 5 → P1
-      score 3-4  → P2
-      score 2    → P3
-      score 0-1  (LLaMA-only) → P3 (lean toward log_only unless GLM disagrees)
+    SID = 9900000 + score_bucket. Severity inferred from heuristic score +
+    LLaMA classification:
+      score >= 6 OR llama=SUSPECT_content → P1
+      score 4-5 OR llama=SUSPECT_lateral/exfil/scan/burst/c2 → P2
+      score 2-3 → P3
+      score 0-1 (LLaMA only)  → P4
+
+    Lower default severity so LLaMA's NORMAL judgment + clear baselines
+    can confidently land at log_only without forcing DROP semantics.
     """
-    if score >= 5:
+    llama_label = (llama_cls or {}).get("label", "")
+    high_signal_labels = {"SUSPECT_content", "SUSPECT_lateral", "SUSPECT_exfil"}
+    mid_signal_labels = {"SUSPECT_burst", "SUSPECT_scan", "SUSPECT_c2_beacon"}
+
+    if score >= 6 or llama_label == "SUSPECT_content":
         severity = 1
-    elif score >= 3:
+    elif score >= 4 or llama_label in high_signal_labels:
         severity = 2
-    else:
+    elif score >= 2 or llama_label in mid_signal_labels:
         severity = 3
+    else:
+        severity = 4
 
     sid = _SYNTHETIC_SID_BASE + min(score, 99)
 
