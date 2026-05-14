@@ -131,6 +131,69 @@ def parse_enforcement_plane() -> dict[str, Any]:
     return out
 
 
+def parse_threat_patterns() -> dict[str, Any]:
+    """Parse threat-patterns.md → list[ThreatPattern] + difficulty tiers + insights.
+
+    Returns: {patterns, detection_difficulty_tiers, insights}
+    """
+    from .threat_patterns import ThreatPattern
+    blocks = _yaml_blocks(KNOWLEDGE_DIR / "threat-patterns.md")
+    patterns: list[ThreatPattern] = []
+    difficulty_tiers: dict[str, Any] = {}
+    insights: list[dict[str, Any]] = []
+    for b in blocks:
+        if not isinstance(b, dict):
+            continue
+        if "id" in b and "threat_class" in b and "flow_signature" in b:
+            patterns.append(ThreatPattern(**b))
+        elif "detection_difficulty_tiers" in b:
+            difficulty_tiers = b["detection_difficulty_tiers"]
+        elif "insights" in b:
+            insights = list(b["insights"])
+    if not patterns:
+        raise ValueError("threat-patterns.md has no pattern blocks")
+    return {
+        "patterns": patterns,
+        "detection_difficulty_tiers": difficulty_tiers,
+        "insights": insights,
+    }
+
+
+def parse_severity_scoring() -> "SeverityRubric":
+    """Parse severity-scoring.md → SeverityRubric (5 YAML blocks merged)."""
+    from .severity_scoring import SeverityRubric
+    blocks = _yaml_blocks(KNOWLEDGE_DIR / "severity-scoring.md")
+    merged: dict[str, Any] = {}
+    for b in blocks:
+        if not isinstance(b, dict):
+            continue
+        merged.update(b)
+    expected = {"signal_table", "severity_mapping", "action_rules",
+                "confidence_calibration", "hard_overrides"}
+    missing = expected - merged.keys()
+    if missing:
+        raise ValueError(f"severity-scoring.md missing blocks: {missing}")
+    return SeverityRubric(**{k: merged[k] for k in expected})
+
+
+def parse_flow_features() -> "FlowFeatureSet":
+    """Parse flow-features.md → FlowFeatureSet."""
+    from .flow_features import FlowFeatureSet
+    blocks = _yaml_blocks(KNOWLEDGE_DIR / "flow-features.md")
+    merged: dict[str, Any] = {}
+    for b in blocks:
+        if not isinstance(b, dict):
+            continue
+        merged.update(b)
+    return FlowFeatureSet(
+        features_per_ip_pair=merged.get("features_per_ip_pair", []),
+        detection_window=merged.get("detection_window", {}),
+        unseen_port_policy=merged.get("policy", []),
+        aggregation_tradeoff=merged.get("aggregation_tradeoff", {}),
+        feature_to_pattern_map=merged.get("feature_to_pattern_map", {}),
+    )
+
+
 def parse_invariants() -> dict[str, Any]:
     """Returns {never_block_cidrs, never_block_rationale, allowed_agent_actions,
     protected_comment_prefixes, agent_comment_prefix, agent_priority_min/max}."""
@@ -173,4 +236,7 @@ def parse_all() -> dict[str, Any]:
         "kill_chains": parse_kill_chains(),
         "enforcement_plane": parse_enforcement_plane(),
         "invariants": parse_invariants(),
+        "threat_patterns": parse_threat_patterns(),
+        "severity_scoring": parse_severity_scoring(),
+        "flow_features": parse_flow_features(),
     }

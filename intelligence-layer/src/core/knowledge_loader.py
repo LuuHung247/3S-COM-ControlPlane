@@ -21,6 +21,9 @@ from . import baselines
 from . import threat_playbook
 from . import enforcement_plane
 from . import invariants
+from . import threat_patterns
+from . import severity_scoring
+from . import flow_features
 
 log = structlog.get_logger()
 
@@ -59,6 +62,12 @@ class KnowledgeLoader:
                 "",
                 threat_playbook.render_for_prompt(),
                 "",
+                threat_patterns.render_for_prompt(),
+                "",
+                severity_scoring.render_for_prompt(),
+                "",
+                flow_features.render_for_prompt(),
+                "",
                 enforcement_plane.render_for_prompt(),
                 "",
                 invariants.render_for_prompt(),
@@ -77,6 +86,16 @@ class KnowledgeLoader:
         Conditional: zones+assets involved, this SID's detail + matching kill chains,
         baselines involving these IPs.
         """
+        # Look up zones for alert-scoped pattern slicing (best-effort).
+        src_zone = ""
+        dst_zone = ""
+        try:
+            from .topology import ip_to_zone
+            src_zone = ip_to_zone(src_ip) or ""
+            dst_zone = ip_to_zone(dst_ip) or ""
+        except Exception:
+            pass
+
         parts = [
             "# DATACENTER ZERO TRUST OPERATIONS RUNBOOK (alert-scoped)",
             "",
@@ -88,6 +107,12 @@ class KnowledgeLoader:
             baselines.render_for_alert(src_ip, dst_ip),
             "",
             threat_playbook.render_for_alert(sid),
+            "",
+            threat_patterns.render_for_alert(src_zone, dst_zone),
+            "",
+            severity_scoring.render_for_prompt(),
+            "",
+            flow_features.render_for_prompt(),
             "",
             enforcement_plane.render_summary(),
             "",

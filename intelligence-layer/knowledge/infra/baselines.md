@@ -10,6 +10,82 @@ behaviour or intrusion.
 ```yaml
 steady_state_flows_per_minute: 120
 mgt_audit_alert_rate_per_minute: 1
+business_hours_utc: "08:00-18:00"
+off_hours_utc: "18:00-08:00"
+```
+
+## Statistical bounds per flow type (used by pure-log severity scoring)
+
+Each canonical east-west flow has explicit mean / p95 / anomaly threshold.
+The agent compares observed rate against these bounds to compute
+`rate_above_3x_baseline` and `rate_above_10x_baseline` signals
+(see `severity-scoring.md`).
+
+```yaml
+flow_baselines:
+  WEB_to_APP_8080:
+    mean_rate_per_minute_business_hours: 60
+    mean_rate_per_minute_off_hours: 10
+    p95_rate_per_minute: 120
+    anomaly_threshold_3x: 180         # >3x mean during business hours
+    anomaly_threshold_10x: 600        # >10x mean — almost certainly attack
+    typical_dsize_bytes: 800
+    time_distribution: business_hours_peaked
+
+  APP_to_DB_5432:
+    mean_rate_per_minute_business_hours: 60
+    mean_rate_per_minute_off_hours: 5
+    p95_rate_per_minute: 100
+    anomaly_threshold_3x: 180
+    anomaly_threshold_10x: 600
+    typical_dsize_bytes_request: 200
+    typical_dsize_bytes_reply: 100
+    reply_payload_anomaly_threshold_bytes: 4096
+    time_distribution: business_hours_peaked
+
+  APP_to_DB_5432_off_hours_strict:
+    note: Off-hours window has stricter threshold
+    mean_rate_per_minute: 5
+    anomaly_threshold_3x: 15          # off-hours stricter — 3x of 5
+    anomaly_threshold_10x: 50
+
+  MGT_to_workload_22_ssh:
+    mean_rate_per_minute: 0.5         # ~1 per 2 min (rotating dst)
+    p95_rate_per_minute: 5            # bursts during compliance scan
+    anomaly_threshold_3x: 15
+    note: MGT in NEVER_BLOCK — high rate triggers alert but NEVER DROP
+
+  MGT_to_workload_healthcheck:
+    mean_rate_per_minute: 3           # web/app/db health probe each ~1/min
+    p95_rate_per_minute: 6
+    anomaly_threshold_3x: 9
+    note: Predictable health-probe cadence; deviation likely config change
+
+  external_outbound_workload:
+    mean_rate_per_minute: 0           # NOT permitted by policy
+    anomaly_threshold_for_any: 1      # ANY external outbound from workload = anomaly
+    note: |
+      Workload hosts must not initiate to external. DB never. WEB/APP only
+      via designated proxy (currently no proxy configured ⇒ any external
+      outbound is incident-grade).
+```
+
+## Time-of-day variation
+
+Legitimate user-driven traffic clusters during business hours. The agent
+adjusts severity based on observation timestamp.
+
+```yaml
+time_of_day_multipliers:
+  business_hours_08_18_utc:
+    severity_multiplier: 1.0   # baseline
+    legitimate_burst_likelihood: medium
+  off_hours_22_06_utc:
+    severity_multiplier: 1.5   # off-hours activity inherently more suspicious
+    legitimate_burst_likelihood: low
+  weekend:
+    severity_multiplier: 1.3
+    legitimate_burst_likelihood: low (except scheduled maintenance windows)
 ```
 
 ## Anomalous patterns (NOT in baseline — red flags)
