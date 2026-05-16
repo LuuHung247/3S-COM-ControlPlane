@@ -70,6 +70,24 @@ SCENARIO_RESTORE = "restore-web.sh"
 EXPECTED_OUTCOME = "enforced"          # 'enforced' (DROP pushed) or 'log_only' (P3/P4)
 POLL_INTERVAL = 10   # seconds — keep Suricata IDS API load low (re-reads 100MB eve.json per request)
 
+# ── Mode: "rule" (legacy — Suricata fires original SID immediately) or
+# ──       "batch" (flow-log mode — agent decisions arrive after 2-min window close
+#                   with synthetic SID 9900xxx).
+# Auto-detected from env; rule mode is backward-compatible default.
+EVAL_MODE = os.getenv("EVAL_MODE", "batch").strip().lower()
+SYNTHETIC_SID_MIN = 9900000
+SYNTHETIC_SID_MAX = 9900099
+
+
+def _sid_matches_target(sid: int) -> bool:
+    """In rule mode, decision SID must equal TARGET_SID exactly.
+    In batch mode, also accept the synthetic batch-SID range (9900xxx)."""
+    if sid == TARGET_SID:
+        return True
+    if EVAL_MODE == "batch" and SYNTHETIC_SID_MIN <= sid <= SYNTHETIC_SID_MAX:
+        return True
+    return False
+
 # Catalog of preset scenarios — pass via --preset to set ATTACKER_IP, TARGET_SID, etc. in one go.
 SCENARIO_PRESETS = {
     "web-db-lateral": {
@@ -112,6 +130,77 @@ SCENARIO_PRESETS = {
         "attacker_ip": "10.2.100.10", "target_sid": 9000035,
         "target_dst_ip": "10.1.200.10", "target_dst_port": 22,
         "trigger": "compromise-app-ssh.sh", "restore": "restore-app.sh",
+        "expected_outcome": "enforced",
+    },
+
+    # ── Yatesbury benchmark scenarios (NetVigil NSDI'24) ──────────────────────
+    # Coverage of the paper's 14 attacks (Table 3) using lab's 4 Alpine VMs.
+    # Each preset assumes a matching `compromise-<name>.sh` + `restore-<name>.sh`
+    # exists on the relevant Alpine host (see dataplane spec).
+    # In batch mode the agent fires synthetic SID 9900xxx (no original SID).
+
+    "yates-vertical-scan": {
+        # Single attacker scans many ports of a single victim. Maps to LLaMA
+        # SUSPECT_scan + threat-patterns C1 vertical_port_scan.
+        "attacker_ip": "10.2.100.10", "target_sid": 9900007,    # synthetic — batch
+        "target_dst_ip": "10.1.200.10", "target_dst_port": 0,
+        "trigger": "compromise-vertical-scan.sh", "restore": "restore-app.sh",
+        "expected_outcome": "log_only",
+    },
+    "yates-syn-flood-dos": {
+        # APP host hping3 -S --flood → DB:5432. High-rate SYN, no ACK.
+        # threat-patterns E1 syn_flood_dos.
+        "attacker_ip": "10.2.100.10", "target_sid": 9900020,
+        "target_dst_ip": "10.1.200.10", "target_dst_port": 5432,
+        "trigger": "compromise-syn-flood.sh", "restore": "restore-app.sh",
+        "expected_outcome": "enforced",
+    },
+    "yates-syn-flood-ddos": {
+        # Multiple attackers (APP + WEB) coordinated SYN flood. Group-level
+        # graph reasoning required. threat-patterns E2 syn_flood_ddos.
+        "attacker_ip": "10.2.100.10", "target_sid": 9900015,
+        "target_dst_ip": "10.1.200.10", "target_dst_port": 5432,
+        "trigger": "compromise-syn-ddos.sh", "restore": "restore-app.sh",
+        "expected_outcome": "enforced",
+    },
+    "yates-udp-ddos": {
+        # UDP flood from multiple sources to DB (paper's UDP DDoS).
+        # threat-patterns E3 udp_ddos.
+        "attacker_ip": "10.2.100.10", "target_sid": 9900015,
+        "target_dst_ip": "10.1.200.10", "target_dst_port": 53,
+        "trigger": "compromise-udp-ddos.sh", "restore": "restore-app.sh",
+        "expected_outcome": "enforced",
+    },
+    "yates-distributed-scan": {
+        # 2+ Alpine attackers each scan few ports on many targets (low-and-slow).
+        # threat-patterns C3 distributed_port_scan.
+        "attacker_ip": "10.2.100.10", "target_sid": 9900010,
+        "target_dst_ip": "10.1.200.10", "target_dst_port": 0,
+        "trigger": "compromise-distributed-scan.sh", "restore": "restore-app.sh",
+        "expected_outcome": "log_only",
+    },
+    "yates-infection-monkey": {
+        # Multi-stage chain: scan → ssh probe → lateral hop. Agent must catch
+        # at least one stage. threat-patterns G1 infection_monkey_chain.
+        "attacker_ip": "10.2.100.10", "target_sid": 9900015,
+        "target_dst_ip": "10.1.200.10", "target_dst_port": 22,
+        "trigger": "compromise-infection-monkey.sh", "restore": "restore-app.sh",
+        "expected_outcome": "enforced",
+    },
+    "yates-c2-beacon": {
+        # APP periodic small outbound to external (NAT2) — C&C heartbeat.
+        # threat-patterns D1 c2_beacon.
+        "attacker_ip": "10.2.100.10", "target_sid": 9900010,
+        "target_dst_ip": "8.8.8.8", "target_dst_port": 443,
+        "trigger": "compromise-c2-beacon.sh", "restore": "restore-app.sh",
+        "expected_outcome": "enforced",
+    },
+    "yates-unauth-db": {
+        # WEB host direct query to DB:5432 with stolen creds (bypass APP).
+        # threat-patterns A1 cross_zone_violation_web_to_db.
+        "attacker_ip": "10.1.100.10", "target_sid": 9900015,
+        "target_dst_ip": "10.1.200.10", "target_dst_port": 5432,
+        "trigger": "compromise-unauth-db.sh", "restore": "restore-web.sh",
         "expected_outcome": "enforced",
     },
 }
@@ -199,9 +288,8 @@ def _alert_ts(alert: dict) -> float:
 
 def first_p1_alert(alerts: list) -> Optional[dict]:
     for a in alerts:
-        if a.get("alert", {}).get("signature_id") == TARGET_SID:
-            return a
-        if a.get("signature_id") == TARGET_SID:
+        sid_a = a.get("alert", {}).get("signature_id") or a.get("signature_id") or 0
+        if _sid_matches_target(int(sid_a)):
             return a
     return None
 
@@ -219,7 +307,11 @@ def get_decisions_since(since_ts: float, limit: int = 50) -> list:
             ).timestamp()
         except Exception:
             created = 0.0
-        if created >= since_ts and d.get("alert_sid") == TARGET_SID:
+        if created >= since_ts and _sid_matches_target(int(d.get("alert_sid", 0) or 0)):
+            # In batch mode, also constrain to attacks targeting this scenario's IP-pair
+            if EVAL_MODE == "batch":
+                if d.get("source_ip") and ATTACKER_IP and d.get("source_ip") != ATTACKER_IP:
+                    continue
             out.append(d)
     return out
 
@@ -668,7 +760,10 @@ RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results"
 
 # ── Configuration (edit here, no CLI args) ──────────────────────────────────
 RUNS = 10                                 # number of i.i.d. trials
-DURATION_SECONDS = 120                    # per-run timeout in seconds
+# In rule mode, decisions arrive ~15s after attack (Suricata fires SID directly).
+# In batch mode, the agent waits for the 2-min window to close before reasoning,
+# so worst-case latency is ~2:30 (one full window + agent + safety + SF push).
+DURATION_SECONDS = 240 if EVAL_MODE == "batch" else 120
 PAUSE_BETWEEN_RUNS_SECONDS = 10           # cool-down between iterations
 DRY_CHECK_ONLY = False                    # True = preflight only, no attack
 
@@ -696,6 +791,7 @@ def _render_header(output_path: str) -> None:
     cfg = Table.grid(padding=(0, 2))
     cfg.add_column(style="dim")
     cfg.add_column(style="bold")
+    cfg.add_row("mode",           EVAL_MODE + (" (synthetic SID 9900xxx accepted)" if EVAL_MODE == "batch" else ""))
     cfg.add_row("scenario",       SCENARIO_TRIGGER)
     cfg.add_row("target SID",     str(TARGET_SID))
     cfg.add_row("attacker IP",    ATTACKER_IP)
