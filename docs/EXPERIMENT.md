@@ -634,6 +634,121 @@ Thesis lựa chọn **B3** cho version hiện tại — 6/7 scenarios đạt 98.
 
 ---
 
+## §6.10 — Pure flow-log mode (2026-05-14 paradigm shift)
+
+Sau snapshot 2026-05-13, kiến trúc evaluation chuyển sang **pure flow-log mode** —
+loại bỏ hoàn toàn Suricata SID alerts, agent reason trực tiếp trên raw flow events
+giống cách NetVigil (NSDI'24) làm. Đây là thay đổi paradigm để đạt được:
+
+1. **Apples-to-apples comparison** với paper NetVigil — cùng input (NSG flow logs),
+   metric tương đương (AUC, TPR, FPR).
+2. **Zero-day capability** — agent reasons từ behavioral patterns + KG, không
+   phụ thuộc rule pre-encoding attack signature.
+3. **Honest reasoning** — agent không còn được "spoon-fed" SID priority; phải
+   tự match flow vào threat-patterns + apply severity rubric.
+
+### 6.10.1 Pipeline 3-tier mới
+
+```
+Suricata eve.json type:flow (rule file stub, KO fire alert)
+       ↓ SSE consumer
+FlowWindow buffer (2-min window, NetVigil-aligned)
+       ↓ window close
+FlowAggregator — 9 NetVigil features per IP-pair
+  (tx/rx packets · tx/rx bytes · tcp/udp flow count
+   · unique dst ports · app_protos · flow states)
+       ↓
+[Tier 1a] Python heuristic suspect_score()        — $0, catches obvious
+[Tier 1b] LLaMA-3.1-8b batch classifier            — 1 call/window, ~$0.0001
+                                                     (NORMAL vs SUSPECT_*)
+       ↓ union(heuristic, llama)
+[Tier 2]  GLM-4.7 Stage 1 với full KG context     — ~$0.001 each
+       ↓
+Safety validators L1-L9 → enforce DROP / log_only audit / reject
+       ↓
+Window summary published to EventsStore (FE alive signal)
+```
+
+Toggle Redis flag `agent:trigger:enabled` gates **cả LLaMA và GLM** — pause
+toàn pipeline khi cần kiểm soát token cost (eg trong demo, baseline operation).
+
+### 6.10.2 KG enrichment cho pure flow-log mode
+
+3 file knowledge mới + 1 file enhanced:
+
+| File | Mục đích |
+|---|---|
+| `knowledge/infra/threat-patterns.md` (22 KB) | 20 flow-keyed threat patterns × 8 classes (policy violation, behavioral, recon, C&C, DoS, content, multi-stage, audit) — covers Yatesbury 14 + lab 6 scenarios. Mỗi pattern có flow_signature, severity, MITRE, recommended_action. |
+| `knowledge/infra/severity-scoring.md` (8 KB) | Point-based severity rubric, signal table, P-level mapping, action rules, confidence calibration heuristics, hard overrides. |
+| `knowledge/infra/flow-features.md` (6 KB) | Feature extraction protocol (9 features per IP-pair × 2-min window) per NetVigil Table 2. |
+| `knowledge/infra/baselines.md` (enhanced) | Statistical bounds (mean/p95/3x/10x) + time-of-day multipliers per flow type. |
+
+Render vào Tier 1 prompt qua `knowledge_loader.py` → ~10,700 tokens system
+prompt cho mỗi Stage 1 call.
+
+### 6.10.3 Synthetic SID mapping (batch mode)
+
+Vì không có Suricata SID, dispatcher build synthetic `SuricataAlert` cho mỗi
+suspect IP-pair với SID range `9900000-9900099`:
+
+```
+SID = 9900000 + heuristic_score                   # 9900003 = score 3
+severity:
+  score >= 6 OR llama=SUSPECT_content        → P1
+  score 4-5 OR llama=lateral/exfil           → P2
+  score 2-3 OR llama=burst/scan/c2           → P3
+  score 0-1 (LLaMA-only, weak signal)        → P4
+```
+
+Eval (`eval_iid.py`) updated để accept synthetic SID range trong batch mode
++ timeout bumped to 240s (đủ 1 window cycle).
+
+### 6.10.4 Yatesbury benchmark alignment (8 scenarios mới)
+
+Map paper's Table 3 attacks → lab's 4-Alpine fabric:
+
+| Paper scenario | Lab eval | Preset key | Yatesbury AUC ref |
+|---|---|---|---|
+| Vertical port scan | `eval_yates_vertical_scan.py` | `yates-vertical-scan` | 0.98 |
+| SYN flood DoS | `eval_yates_syn_flood_dos.py` | `yates-syn-flood-dos` | 1.00 |
+| SYN flood DDoS | `eval_yates_syn_flood_ddos.py` | `yates-syn-flood-ddos` | 1.00 |
+| UDP DDoS | `eval_yates_udp_ddos.py` | `yates-udp-ddos` | 1.00 |
+| Distributed scan | `eval_yates_distributed_scan.py` | `yates-distributed-scan` | 0.99 |
+| Infection Monkey 1/2/3 | `eval_yates_infection_monkey.py` | `yates-infection-monkey` | 1.00 |
+| C&C communication | `eval_yates_c2_beacon.py` | `yates-c2-beacon` | 0.93 |
+| Unauthorized DB access | `eval_yates_unauth_db.py` | `yates-unauth-db` | 0.80 |
+
+`run_yatesbury_sweep.sh` chạy hết 8 scenarios back-to-back trong batch mode
+(~2h45 wall clock). Dataplane scripts spec ở
+[`experiments/DATAPLANE_YATESBURY_SPEC.md`](../experiments/DATAPLANE_YATESBURY_SPEC.md).
+
+### 6.10.5 Methodology — IID runs vs paper trace mode
+
+**Quan trọng — khác paradigm:**
+
+| | Paper (NetVigil/Yatesbury) | Mình hiện tại |
+|---|---|---|
+| Mỗi scenario | 1 trace dài 1-2h | 10 discrete IID runs (~2 min mỗi run) |
+| Đơn vị đo | (src_ip, dst_ip, 2-min window) → label 0/1 | per-run pass/fail |
+| Metric chính | AUC, TPR, FPR | Pass rate (10/10), MTTD avg |
+| Total/scenario | ~60-120 min | ~21 min |
+| Claim | Anomaly detection accuracy | Closed-loop response correctness |
+
+→ **Complementary metrics**, không thay thế. Trace-mode `eval_trace.py` là
+future work để có direct AUC comparison; hiện tại scope coverage 14 scenarios
++ closed-loop pass rate + MTTD đã đủ thesis-grade.
+
+### 6.10.6 Lessons learned từ paradigm shift
+
+| Issue | Fix commit |
+|---|---|
+| L4 safety reject log_only (chỉ allow DROP) | `68118e1` — invariants.md allowed_agent_actions += log_only |
+| Agent confidence ~0.45 trên baseline → L7 reject | `b7129d6` — prompt calibration rubric (baseline match → 0.90+) |
+| Synthetic severity = P2 → force DROP semantics | `b7129d6` — lower default severity, P3 cho score 2-3 |
+| LLaMA output JSON-as-string parsing failure | `cb93d67` — defensive ast.literal_eval fallback |
+
+---
+
 ## 10. Cách chạy lại
 
 ### Prerequisites

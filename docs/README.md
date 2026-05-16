@@ -1,5 +1,22 @@
 # 3S-NOS Secure Framework — Agent-IDS
 
+> **Docs map** (read order for thesis defense):
+> - [`PAPER-COMPARISON.md`](PAPER-COMPARISON.md) — NetVigil (NSDI'24) vs this thesis, side-by-side
+> - [`EXPERIMENT.md`](EXPERIMENT.md) — Methodology, scenarios, results (§6.10 = pure flow-log mode)
+> - [`INTELLIGENCE-LAYER.md`](INTELLIGENCE-LAYER.md) — Agent pipeline (§13 = 3-tier batch architecture)
+> - [`DATAPLANE.md`](DATAPLANE.md) — Topology, Suricata, microseg (§7.3 = post flow-log switch)
+> - [`Secure-Framework.md`](Secure-Framework.md) — SDNC↔SF↔LEAF enforcement path
+> - [`PORTS-AND-UIS.md`](PORTS-AND-UIS.md) — Service ports, UI URLs, ops cheatsheet
+> - [`network-topology.drawio`](network-topology.drawio) — GNS3 lab topology (8 tabs: base + 7 attack scenarios)
+> - [`architecture.drawio`](architecture.drawio) — Logical layered architecture
+>
+> **Current state (2026-05-14):** pipeline runs in **pure flow-log mode** —
+> Suricata rule file is a stub, agent consumes raw flow events directly,
+> reasons through a 3-tier triage (heuristic → LLaMA-3.1-8b → GLM-4.7)
+> over a curated KG (`threat-patterns` + `severity-scoring` + `flow-features`).
+> Yatesbury benchmark alignment in progress (8 paper-aligned scenarios
+> beside the original 6 lab scenarios).
+
 ## Tổng quan
 
 **Secure Framework (SF)** là adapter zero-trust micro-segmentation, đóng vai trò trung gian giữa ONAP SDNC và các SONiC LEAF switch trong mạng 3S-NOS.

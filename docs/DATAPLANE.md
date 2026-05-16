@@ -433,6 +433,111 @@ Phân thành 4 lớp theo vai trò agent. **Class D là 6 SIDs mới** firing tr
 
 > Note: SID 9000006 (APP→DB direct) đã removed vì APP→DB là **allowed path** trong policy matrix (5.1) — fire SID này sẽ tạo ~120 FP alerts/giờ trên baseline `application-to-database-oltp`.
 
+### 7.3 Pure flow-log mode (2026-05-14 — current state)
+
+**Switch overview:** Rules file (`/etc/suricata/rules/zt-lab.rules`) reduced to
+a stub — Suricata no longer fires any SID alert. Only `eve.json type:flow` +
+`netflow` + `dns` + `http` events are emitted. Intelligence Layer consumes
+flows directly, batches them every 2 minutes, and reasons against the KG
+(threat-patterns + severity-scoring + flow-features) instead of pre-classified
+SID alerts.
+
+**Why:** match NetVigil paper (NSDI'24) input shape — flow logs only, no
+DPI/rule-based pre-classification — for apples-to-apples evaluation; force
+the LLM agent to actually reason instead of rubber-stamping a SID priority.
+
+#### 7.3.1 Stub rule file
+
+```
+# Zero Trust Lab — Suricata rules
+# DISABLED 2026-05-14: switched to pure flow-log mode.
+# Agent consumes eve.json type:flow directly (no alert pre-classification).
+# Original 11 SIDs (9000001..9000035) preserved in git history.
+# Backup of last rule version saved at .../zt-lab.rules.bak.20260513
+```
+
+→ Suricata startup log: `Warning: detect: 1 rule files specified, but no rules
+were loaded!` — **EXPECTED**, not an error. `Info: 0 signatures processed.`
+
+#### 7.3.2 Suricata yaml outputs (suricata-zt.yaml)
+
+```yaml
+outputs:
+  - eve-log:
+      enabled: yes
+      types:
+        - alert      # kept but empty (no rules → no alerts)
+        - flow       # ★ critical — agent input source (NetVigil-aligned)
+        - netflow    # byte/packet stats per direction
+        - dns        # detect DNS tunneling pattern
+        - http       # log HTTP request header
+stream:
+  midstream: true                # treat asymmetric flows as established
+  midstream-policy: pass-flow
+  async-oneside: true            # inspect segments without ACK from opposite side
+```
+
+#### 7.3.3 Verification post-deploy
+
+```sh
+# event_type distribution — should show flow/netflow/dns/http, NO alert
+tail -200 /var/log/suricata/eve.json | python3 -c "
+import sys, json
+from collections import Counter
+c = Counter()
+for line in sys.stdin:
+    try: c[json.loads(line).get('event_type')] += 1
+    except: pass
+print(c)
+"
+# Expect: Counter({'flow': N, 'netflow': M, 'dns': K, ...}) — NO 'alert' key
+```
+
+#### 7.3.4 Yatesbury compromise scripts (8 new scenarios)
+
+Spec: [`experiments/DATAPLANE_YATESBURY_SPEC.md`](../experiments/DATAPLANE_YATESBURY_SPEC.md)
+
+Each scenario requires a `compromise-<key>.sh` + `restore-*.sh` pair on
+the appropriate Alpine host:
+
+| Scenario | Host | Tools needed |
+|---|---|---|
+| Vertical port scan | APP | nmap |
+| SYN flood DoS | APP | hping3 |
+| SYN flood DDoS | APP + WEB | hping3 (coordinated) |
+| UDP DDoS | APP + WEB | hping3 -2 |
+| Distributed scan | APP + WEB | nmap (low-and-slow) |
+| Infection Monkey | APP | nmap + nc + ssh |
+| C&C beacon | APP | curl (periodic outbound to NAT2) |
+| Unauthorized DB access | WEB | psql client |
+
+Bootstrap dependencies for Alpine hosts:
+```sh
+apk add --no-cache hping3 nmap nmap-scripts netcat-openbsd curl postgresql-client
+```
+
+Trigger pattern unchanged (touch flag file → cron picks up → run attack →
+auto-restore after 60-90s).
+
+#### 7.3.5 Reboot recovery
+
+After dataplane VM reboot, redeploy bundle (Alpine ISO tmpfs has no persistence):
+
+```sh
+# On gns3vm host
+sshpass -p <pwd> ssh dis@10.10.6.238
+# Or for IDS VM:
+ssh root@192.168.122.205   # if SSH up post-reboot
+cd /tmp/ids-vm
+sh ./redeploy.sh           # apk add python3 + install + rc-update + start
+```
+
+Verify after redeploy:
+```sh
+rc-service suricata-zt status && rc-service ids-api status
+curl -s http://192.168.122.205:8765/health
+```
+
 ---
 
 ## 7A. IDS-Suricata VM — Deploy & Architecture

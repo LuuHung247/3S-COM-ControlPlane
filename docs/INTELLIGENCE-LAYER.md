@@ -538,6 +538,155 @@ intelligence-layer/
 
 ---
 
+## 13. Pure flow-log mode pipeline (2026-05-14 — current production)
+
+Sau khi switch Suricata sang flow-log only (rule file stub), agent reasoning
+chuyển từ **per-alert** sang **window batch** matching NetVigil paradigm.
+
+### 13.1 Pipeline overview (3-tier triage)
+
+```
+Suricata eve.json type:flow events
+       │
+       ▼ SSE consumer (src/pipeline/consumer.py)
+FlowWindow buffer  (window_seconds=120 default, NetVigil-aligned)
+       │
+       ▼ window close
+FlowAggregator (src/pipeline/flow_aggregator.py)
+   • Group flows by (src_ip, dest_ip) IP-pair
+   • Compute 9 NetVigil Table 2 features per pair
+   • Output: list[AggregatedIPPair]
+       │
+       ▼
+[Tier 1a] suspect_score() — Python rule-based, $0/call
+   • Cross-zone DB/MGT destination       → +2
+   • Admin port from non-MGT             → +2
+   • Fan-out > 5 unique dst ports         → +2
+   • DB initiating outbound              → +3
+   • Flow count > 10                      → +1
+   ⇒ score ≥ 2: heuristic_suspect
+       │
+       ▼
+[Toggle gate] Redis flag `agent:trigger:enabled`
+   OFF → skip both LLaMA + GLM (0 tokens, log skip event)
+   ON  ↓
+       │
+[Tier 1b] LLaMA-3.1-8b batch classifier — 1 call/window, ~$0.0001
+   (src/pipeline/llama_batch_classifier.py)
+   Input: list of IP-pairs with feature summary
+   Output schema: classifications[{pair_id, label, confidence, reason}]
+   Labels: NORMAL · SUSPECT_{scan, exfil, burst, c2_beacon, lateral,
+                              content, other}
+   ⇒ SUSPECT_* labels: llama_suspect
+       │
+       ▼ union(heuristic_suspect ∪ llama_suspect)
+       │
+[Tier 2] GLM-4.7 Stage 1 — per suspect IP-pair, ~$0.001 each
+   • Full Tier-1 system prompt (~10,700 tokens including threat-patterns,
+     severity-scoring, flow-features, baselines, invariants)
+   • Synthetic alert SID 9900xxx (= 9900000 + score) + flow_features payload
+   • Reasoning: match threat-patterns.md → apply severity-scoring.md →
+                output POLICY_DECISION (action, src_ip, ttl, confidence)
+       │
+       ▼
+Safety validators L1-L9 (src/agent/safety/validators.py)
+       │
+       ▼
+Decision → SF push (DROP) OR audit-only (log_only)
+       │
+       ▼ also published as event
+window_summary → EventsStore (Redis DB1) — FE alive signal
+```
+
+### 13.2 KG extensions for flow-log mode
+
+3 new knowledge files + 1 enhanced (`knowledge/infra/`):
+
+- **`threat-patterns.md`** — 20 flow-keyed patterns × 8 classes
+  (`policy_violation`, `behavioral_anomaly`, `reconnaissance`,
+   `command_and_control`, `dos`, `content_attack`,
+   `lateral_movement_chain`, `audit`). Covers Yatesbury 14 + lab 6.
+- **`severity-scoring.md`** — deterministic point-based rubric:
+  signal table → P-level mapping → action rules → confidence calibration
+  heuristics → hard overrides (NEVER_BLOCK, L7 gate).
+- **`flow-features.md`** — NetVigil Table 2 feature catalog
+  (9 features × 2-min window per IP-pair), unseen-port tracking,
+  aggregation rationale, feature→pattern map.
+- **`baselines.md`** — added statistical bounds per flow type
+  (mean / p95 / 3x / 10x threshold) + time-of-day multipliers.
+
+Renderers in `core/{threat_patterns,severity_scoring,flow_features}.py`
+called from `KnowledgeLoader.render_static_core()` Tier 1.
+
+### 13.3 Agent trigger toggle — operator-controllable token gate
+
+- Redis key `agent:trigger:enabled` (default true)
+- Endpoint `GET/POST /admin/agent/trigger` (src/api/routes.py)
+- FE Monitor button (Agent: ON green / OFF amber) with 10s state polling
+- `SSEConsumer._trigger_enabled()` + `FlowBatchDispatcher._trigger_enabled()`
+  both check before dispatching to Stage 2
+- When OFF: flows still ingest to EventsStore, window still fires, but
+  Tier 1b (LLaMA) and Tier 2 (GLM) are short-circuited → 0 tokens spent.
+
+### 13.4 Synthetic alert mapping (Stage 1 input)
+
+In flow-log mode there is no Suricata SID — dispatcher builds a synthetic
+`SuricataAlert` per suspect pair so the existing Stage 1 pipeline + safety
+remain unchanged:
+
+```python
+SID    = 9900000 + min(heuristic_score, 99)
+severity:
+  score >= 6 OR llama=SUSPECT_content     → 1 (P1)
+  score 4-5 OR llama=lateral/exfil/scan   → 2 (P2)
+  score 2-3 OR llama=burst/c2/other       → 3 (P3)
+  score 0-1 (LLaMA-only weak)             → 4 (P4)
+alert.signature  = "FLOW_BATCH suspect (score=N) ZONE→ZONE flows=X..."
+alert.flow_features = AggregatedIPPair.model_dump()
+alert.llama_classification = {label, confidence, reason}
+alert.suspect_score = N
+```
+
+### 13.5 Confidence calibration (post b7129d6 fix)
+
+Pre-fix issue: agent reasoned correctly on baseline flows but reported
+`confidence ≈ 0.45` → L7 gate (< 0.5) rejected the otherwise-correct
+log_only decision → FE showed REJECTED next to actual attacks.
+
+Fix: explicit calibration table in Stage 1 prompt:
+
+| Total signal points | P-level | Action | Notify | Confidence range |
+|---|---|---|---|---|
+| ≥ 8 | P1 | DROP | critical | 0.90–0.98 |
+| 5–7 | P2 | DROP | alert | 0.80–0.92 |
+| 3–4 | P3 | log_only | warn | 0.60–0.80 |
+| 1–2 | P4 | log_only | info | 0.40–0.60 |
+| 0 (baseline) | — | log_only/none | info | **0.95+** (decisive) |
+
+Plus directive: "*A confident 'this is BASELINE benign' call deserves 0.90+,
+not 0.45. The L7 safety gate rejects confidence < 0.5 as 'too uncertain' —
+that rejection wastes the agent's reasoning. Be decisive when evidence is
+clear.*"
+
+Verified post-fix: ~60% of baseline batches now reach `decision=benign`
+confidence 0.95 (was 0% before).
+
+### 13.6 Files reference (post-2026-05-14)
+
+| File | Purpose |
+|---|---|
+| `src/pipeline/flow_window.py` | Window buffer + asyncio timer, fires `on_window_close` callback every N seconds |
+| `src/pipeline/flow_aggregator.py` | IP-pair aggregation + `suspect_score()` heuristic |
+| `src/pipeline/llama_batch_classifier.py` | LLaMA-3.1-8b batch classifier (1 call/window), robust JSON/python-repr parsing |
+| `src/pipeline/flow_batch_dispatcher.py` | Window-close handler — aggregator → toggle → LLaMA → union → synthetic alert → on_alert |
+| `src/models/flow.py` | `SuricataFlowEvent` + `AggregatedIPPair` Pydantic models |
+| `src/core/threat_patterns.py` | ThreatPattern Pydantic + catalog + renderer |
+| `src/core/severity_scoring.py` | SeverityRubric + scoring helpers + renderer |
+| `src/core/flow_features.py` | FlowFeatureSet + renderer |
+| `src/api/routes.py` | `/admin/agent/trigger`, `/admin/flow-batch/status` |
+
+---
+
 ## 12. Roadmap
 
 ### Đã làm
