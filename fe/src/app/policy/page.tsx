@@ -470,7 +470,7 @@ export default function PolicyPage() {
                           ? "border-red-600/60 text-red-400 bg-red-900/25"
                           : "border-yellow-600/40 text-yellow-400 bg-yellow-900/15"
                       }`}>
-                        {d.decision === "enforced" ? "⚡ ENFORCED" : "◎ DRY-RUN"}
+                        {d.decision === "enforced" ? "⚡ ENFORCED" : "◎ LOG-ONLY"}
                       </span>
 
                       <span className="text-xs font-mono text-white">#{d.alert_sid}</span>
@@ -515,7 +515,7 @@ export default function PolicyPage() {
                         <span className={`px-2 py-0.5 rounded border text-xs font-mono font-bold ${
                           d.decision === "enforced" ? "border-red-600/60 text-red-400" : "border-yellow-600/40 text-yellow-400"
                         }`}>
-                          {d.decision === "enforced" ? "ENFORCED" : "DRY-RUN"}
+                          {d.decision === "enforced" ? "ENFORCED" : "LOG-ONLY"}
                         </span>
                       </div>
                       <div className="text-xs font-mono text-white">SID #{d.alert_sid} · {d.attacker_ip}</div>

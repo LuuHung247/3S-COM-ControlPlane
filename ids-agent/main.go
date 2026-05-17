@@ -399,9 +399,16 @@ func unblockHandler(w http.ResponseWriter, r *http.Request) {
 //   - Exponential backoff between reconnect attempts, capped at 30s.
 
 const (
-	sseStallTimeout  = 30 * time.Second
-	sseMaxBackoff    = 30 * time.Second
-	sseInitialBackoff = time.Second
+	sseStallTimeout     = 30 * time.Second
+	sseMaxBackoff       = 30 * time.Second
+	sseInitialBackoff   = time.Second
+	// Force re-Dial periodically — defends against the case where Suricata's
+	// `: hb` keeps coming but the broadcast list on upstream IDS API was
+	// silently reset (TCP connection alive but no alerts delivered). Caught
+	// in production: ids-api `sse_clients=0` while local side believed
+	// connection healthy. Watchdog alone (30s stall) cannot detect this
+	// because heartbeats reset the timer.
+	sseMaxConnectionAge = 4 * time.Minute
 )
 
 func runBridge() {
@@ -447,6 +454,7 @@ func consumeSSE() error {
 	var lastSignalNs atomic.Int64
 	lastSignalNs.Store(time.Now().UnixNano())
 
+	connectedAt := time.Now()
 	go func() {
 		t := time.NewTicker(5 * time.Second)
 		defer t.Stop()
@@ -455,8 +463,16 @@ func consumeSSE() error {
 			case <-ctx.Done():
 				return
 			case <-t.C:
+				// Watchdog 1: stall (no upstream signal for sseStallTimeout)
 				if time.Since(time.Unix(0, lastSignalNs.Load())) > sseStallTimeout {
 					log.Printf("SSE upstream silent > %s — forcing reconnect", sseStallTimeout)
+					cancel()
+					return
+				}
+				// Watchdog 2: max connection age — guards against silent upstream
+				// broadcast-list reset where heartbeats keep flowing but alerts don't.
+				if time.Since(connectedAt) > sseMaxConnectionAge {
+					log.Printf("SSE upstream connection age > %s — forcing reconnect", sseMaxConnectionAge)
 					cancel()
 					return
 				}

@@ -1,0 +1,132 @@
+[
+  {
+    "name": "01_zt_web_db_lateral",
+    "passed": true,
+    "outcome": "enforced",
+    "mttd_s": 37.2,
+    "m1_s": 8.84,
+    "m2_ms": 2147.2,
+    "confidence": 0.95,
+    "checks": "5/5"
+  },
+  {
+    "name": "03_zt_web_app_burst",
+    "passed": true,
+    "outcome": "enforced",
+    "mttd_s": 5.3,
+    "m1_s": 7.08,
+    "m2_ms": 5823.9,
+    "confidence": 0.88,
+    "checks": "5/5"
+  },
+  {
+    "name": "04_zt_app_db_burst",
+    "passed": true,
+    "outcome": "enforced",
+    "mttd_s": 10.4,
+    "m1_s": 6.92,
+    "m2_ms": 877.6,
+    "confidence": 0.88,
+    "checks": "5/5"
+  },
+  {
+    "name": "05_zt_app_db_sql",
+    "passed": true,
+    "outcome": "enforced",
+    "mttd_s": 23.5,
+    "m1_s": 6.84,
+    "m2_ms": 8119.9,
+    "confidence": 0.95,
+    "checks": "5/5"
+  },
+  {
+    "name": "06_zt_app_mgt_ssh",
+    "passed": true,
+    "outcome": "enforced",
+    "mttd_s": 9.9,
+    "m1_s": 10.86,
+    "m2_ms": 7407.1,
+    "confidence": 0.92,
+    "checks": "5/5"
+  },
+  {
+    "name": "07_yates_vertical_scan",
+    "passed": true,
+    "outcome": "enforced",
+    "mttd_s": 36.9,
+    "m1_s": 8.38,
+    "m2_ms": 2961.9,
+    "confidence": 0.85,
+    "checks": "5/5"
+  },
+  {
+    "name": "08_yates_syn_flood_dos",
+    "passed": true,
+    "outcome": "enforced",
+    "mttd_s": 59.8,
+    "m1_s": 8.24,
+    "m2_ms": 380.0,
+    "confidence": 0.87,
+    "checks": "5/5"
+  },
+  {
+    "name": "09_yates_syn_flood_ddos",
+    "passed": false,
+    "outcome": "benign",
+    "mttd_s": 20.7,
+    "m1_s": 6.86,
+    "m2_ms": null,
+    "confidence": 0.75,
+    "checks": "3/5"
+  },
+  {
+    "name": "10_yates_udp_ddos",
+    "passed": false,
+    "outcome": "none",
+    "mttd_s": null,
+    "m1_s": null,
+    "m2_ms": null,
+    "confidence": null,
+    "checks": "1/5"
+  },
+  {
+    "name": "11_yates_distributed_scan",
+    "passed": true,
+    "outcome": "enforced",
+    "mttd_s": 48.0,
+    "m1_s": 16.15,
+    "m2_ms": 4303.6,
+    "confidence": 0.88,
+    "checks": "5/5"
+  },
+  {
+    "name": "12_yates_infection_monkey",
+    "passed": true,
+    "outcome": "enforced",
+    "mttd_s": 17.9,
+    "m1_s": 7.55,
+    "m2_ms": 2709.7,
+    "confidence": 0.88,
+    "checks": "5/5"
+  },
+  {
+    "name": "13_yates_c2_beacon",
+    "passed": true,
+    "outcome": "enforced",
+    "mttd_s": 96.6,
+    "m1_s": 16.33,
+    "m2_ms": 5743.8,
+    "confidence": 0.85,
+    "checks": "5/5"
+  },
+  {
+    "name": "14_yates_unauth_db",
+    "passed": true,
+    "outcome": "enforced",
+    "mttd_s": 38.0,
+    "m1_s": 6.61,
+    "m2_ms": 3715.1,
+    "confidence": 0.95,
+    "checks": "5/5"
+  }
+]

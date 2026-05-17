@@ -28,7 +28,10 @@ cat > /usr/local/bin/app-server.py <<'PY'
 #!/usr/bin/env python3
 """APP tier API — connects to DB for orders and data queries."""
 import socket, time
-from http.server import HTTPServer, BaseHTTPRequestHandler
+# ThreadingHTTPServer — single-threaded HTTPServer hangs when query_db() blocks
+# on DB socket; accept loop stalls → backlog fills → SYN drops → APP looks dead.
+# Threads are cheap here (low rps, short-lived); keeps accept loop free.
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 DB_HOST, DB_PORT = "10.1.200.10", 5432
 
@@ -60,7 +63,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.reply(404, "not found")
     def log_message(self, *a, **k): pass
 
-HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 PY
 chmod +x /usr/local/bin/app-server.py
 
@@ -76,13 +79,30 @@ error_log="/var/log/app-server.log"
 OPENRC
 chmod +x /etc/init.d/app-server
 
-# --- baseline noise (legitimate traffic) ---
+# --- baseline traffic (legitimate, periodic) ---
+# Two separate scripts so DENY-path noise can be toggled independently of the
+# legit ALLOW-path query that keeps DB service status="up" on FE Monitor.
+#
+# baseline-query.sh: APP → DB:5432 (zt-app-db-allow) — KEEP in cron, this is
+#   the legit application query pattern + supplies DB heartbeat for FE.
+# baseline-noise.sh: APP → WEB:80 (DENY per policy) — kept available but NOT
+#   in cron by default (was flooding SID 9000003 alerts every minute, no
+#   incident value once LEAF zt-default-drop counter is the enforcement signal).
+
+cat > /usr/local/bin/baseline-query.sh <<'QUERY'
+#!/bin/sh
+# Legit application query — generates flow APP→DB:5432 → ids-api flow-inference
+# marks db-mock:5432 status=up → FE Monitor sees DB node alive.
+echo "SELECT count(*) FROM sessions" | nc -w 2 10.1.200.10 5432 >> /var/log/baseline-query.log 2>&1
+QUERY
+chmod +x /usr/local/bin/baseline-query.sh
+
 cat > /usr/local/bin/baseline-noise.sh <<'NOISE'
 #!/bin/sh
-# APP→DB (ALLOW per policy) — normal application flow
-echo "SELECT count(*) FROM sessions" | nc -w 2 10.1.200.10 5432 >> /var/log/noise.log 2>&1
-# APP→WEB (DENY per policy — LEAF drops silently, no Suricata alert for this)
-curl -sf --max-time 2 http://10.1.100.10/health >> /var/log/noise.log 2>&1
+# DENY-path demo — APP→WEB:80, LEAF zt-default-drop blocks. Off by default
+# (was generating SID 9000003 every minute, cluttering agent decision log).
+# Enable only when actively demonstrating DENY-path enforcement.
+curl -sf --max-time 2 http://10.1.100.10/health >> /var/log/baseline-noise.log 2>&1
 NOISE
 chmod +x /usr/local/bin/baseline-noise.sh
 
@@ -128,9 +148,12 @@ fi
 ATTACKER
 chmod +x /usr/local/bin/attacker-app.sh
 
-# Cron: baseline noise every minute + attacker poll every minute (with 30s offset)
+# Cron: legit baseline query (APP→DB, supplies DB heartbeat) + attacker poll.
+# baseline-noise (APP→WEB DENY) intentionally NOT in cron — enable manually
+# when actively demonstrating DENY-path enforcement.
 cat > /etc/crontabs/root <<'CRON'
-* * * * * /usr/local/bin/baseline-noise.sh
+* * * * * /usr/local/bin/baseline-query.sh
+* * * * * sleep 30; /usr/local/bin/baseline-query.sh
 * * * * * /usr/local/bin/attacker-app.sh
 * * * * * sleep 30; /usr/local/bin/attacker-app.sh
 CRON

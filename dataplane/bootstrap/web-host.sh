@@ -82,9 +82,20 @@ ATTACKER
 chmod +x /usr/local/bin/attacker-web.sh
 
 # Cron: run every 90s (cron min resolution = 1min, so run twice with sleep offset)
+# Baseline shopper — simulate user browsing flow WEB → APP:8080 each cron tick.
+# Without this WEB host is silent on Monitor (FE marks zone offline). Matches
+# zt-web-app-allow path on LEAF; legitimate traffic, not attack.
+cat > /usr/local/bin/baseline-shopper.sh <<'SHOPPER'
+#!/bin/sh
+curl -sf --max-time 3 http://10.2.100.10:8080/health >> /var/log/baseline-shopper.log 2>&1
+SHOPPER
+chmod +x /usr/local/bin/baseline-shopper.sh
+
 cat > /etc/crontabs/root <<'CRON'
 * * * * * /usr/local/bin/attacker-web.sh
 * * * * * sleep 45; /usr/local/bin/attacker-web.sh
+* * * * * /usr/local/bin/baseline-shopper.sh
+* * * * * sleep 30; /usr/local/bin/baseline-shopper.sh
 CRON
 
 rc-update add crond default 2>&1 | tail -1

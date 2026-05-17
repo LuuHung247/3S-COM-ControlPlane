@@ -16,15 +16,16 @@ class SidDetection(BaseModel):
     sid: int
     severity_p_level: int             # 1=critical, 2=high, 3=info-recon, 4=audit
     signature_msg: str
-    production_description: str
+    production_description: str = ""
     mitre_tactic: str
     mitre_technique: str
     detection_logic: str              # match criteria, threshold
-    uses_flags_s_workaround: bool     # asymmetric capture caveat
+    uses_flags_s_workaround: bool = False  # asymmetric capture caveat
     recommended_response: str         # "DROP src_ip" | "log_only" | "escalate"
     default_ttl_seconds: int          # 0 = log_only
     false_positive_likelihood: str    # "low" | "medium" | "high"
-    false_positive_scenarios: list[str]
+    false_positive_scenarios: list[str] = []
+    kg_pattern_id: str = ""           # link to threat-patterns.md entry
 
 
 class KillChainStage(BaseModel):

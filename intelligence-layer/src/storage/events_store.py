@@ -135,6 +135,43 @@ class EventsStore:
         except Exception as exc:
             return {"error": str(exc)}
 
+    async def purge_noise(self, lab_prefixes: tuple[str, ...] = ("10.1.", "10.2.")) -> dict[str, int]:
+        """Drop flow entries whose src_ip AND dest_ip are outside lab CIDR."""
+        removed = 0
+        kept = 0
+        try:
+            raw_items = await self.client.zrange(KEY_FLOWS, 0, -1)
+            to_remove: list[str] = []
+            for item in raw_items:
+                try:
+                    ev = json.loads(item)
+                except json.JSONDecodeError:
+                    to_remove.append(item)
+                    continue
+                src = ev.get("src_ip") or ""
+                dst = ev.get("dest_ip") or ""
+                if src.startswith(lab_prefixes) or dst.startswith(lab_prefixes):
+                    kept += 1
+                else:
+                    to_remove.append(item)
+            if to_remove:
+                removed = await self.client.zrem(KEY_FLOWS, *to_remove)
+        except Exception as exc:
+            return {"error": str(exc)}
+        return {"removed": removed, "kept": kept}
+
+    async def clear(self, kind: str = "flow") -> dict[str, int]:
+        """Nuclear delete of entire sorted set. kind ∈ {flow, violation, all}."""
+        out: dict[str, int] = {}
+        try:
+            if kind in ("flow", "all"):
+                out["flows_deleted"] = await self.client.delete(KEY_FLOWS)
+            if kind in ("violation", "all"):
+                out["violations_deleted"] = await self.client.delete(KEY_VIOLATIONS)
+        except Exception as exc:
+            return {"error": str(exc)}
+        return out
+
     async def prune(self) -> dict[str, int]:
         """Force prune both sets — used by background cleanup coroutine."""
         try:

@@ -260,6 +260,25 @@ async def events_stats(request: Request) -> dict:
     return await store.stats()
 
 
+@router.post("/admin/events/purge")
+async def events_purge(request: Request) -> dict:
+    """Clean stored events. Body:
+      {"mode": "noise"}        → drop flows whose src AND dst are outside 10.1/16, 10.2/16
+      {"mode": "clear", "kind": "flow|violation|all"}  → DELETE the whole sorted set
+    Default: mode=noise.
+    """
+    store = request.app.state.events_store
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    mode = (body.get("mode") or "noise").strip().lower()
+    if mode == "clear":
+        kind = (body.get("kind") or "flow").strip().lower()
+        return {"mode": mode, **(await store.clear(kind=kind))}
+    return {"mode": "noise", **(await store.purge_noise())}
+
+
 @router.get("/cache/stats")
 async def response_cache_stats(request: Request) -> dict:
     """Hit/miss counters for the LLM response cache (Phase B)."""

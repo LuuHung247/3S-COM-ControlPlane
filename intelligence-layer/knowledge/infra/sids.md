@@ -326,3 +326,308 @@ false_positive_likelihood: high
 false_positive_scenarios:
 - Every legitimate MGT scrape, audit, logpull triggers this — by design.
 ```
+
+---
+
+# Yatesbury Benchmark SIDs (NetVigil NSDI'24, Table 3)
+
+Suricata signals each per-source contribution. For aggregated patterns (DDoS multi-source, distributed scan, infection chain), agent correlates SIDs across pairs/time windows during reasoning. `recommended_response` is a KG default — agent reasons + may override based on context.
+
+## SID 9000040 — Vertical port scan
+
+**Severity P3**  ·  **MITRE**: TA0007 Discovery / T1046 Network Service Discovery  ·  **Response**: log_only + raise_trust_score  ·  **FP likelihood**: low
+
+Detection trigger: single source initiates SYN to many ports on one destination within a short window. Indicates port enumeration / reconnaissance preceding exploit. Maps to KG pattern `vertical_port_scan`.
+
+**Detection logic**: `TCP SYN any→lab any, threshold both,track by_src,count 20,seconds 30`
+
+```yaml
+sid: 9000040
+severity_p_level: 3
+signature_msg: Vertical port scan
+mitre_tactic: TA0007 Discovery
+mitre_technique: T1046 Network Service Discovery
+kg_pattern_id: vertical_port_scan
+detection_logic: TCP SYN any→lab any, threshold by_src,count 20,seconds 30
+recommended_response: log_only + raise_trust_score
+default_ttl_seconds: 0
+false_positive_likelihood: low
+false_positive_scenarios:
+- Monitoring agent service discovery from non-MGT source
+```
+
+## SID 9000041 — TCP probe on key service ports
+
+**Severity P3**  ·  **MITRE**: TA0007 Discovery / T1046 Network Service Discovery  ·  **Response**: log_only + raise_trust_score; agent correlates per-source to detect distributed pattern  ·  **FP likelihood**: medium
+
+Detection trigger: per-source signal of probing on the union of common service ports (22/23/80/443/3389/5432/3306/1433/8080/8443). Multiple sources within a window → distributed scan pattern. Maps to KG `distributed_port_scan`.
+
+**Detection logic**: `TCP SYN any→lab key_ports, threshold by_src,count 5,seconds 60`
+
+```yaml
+sid: 9000041
+severity_p_level: 3
+signature_msg: TCP probe on key service ports
+mitre_tactic: TA0007 Discovery
+mitre_technique: T1046 Network Service Discovery
+kg_pattern_id: distributed_port_scan
+detection_logic: TCP SYN any→lab key_ports, threshold by_src,count 5,seconds 60
+recommended_response: log_only + raise_trust_score
+default_ttl_seconds: 0
+false_positive_likelihood: medium
+false_positive_scenarios:
+- MGT configuration sweep
+- Health-check tooling
+```
+
+## SID 9000042 — UDP probe on many ports
+
+**Severity P3**  ·  **MITRE**: TA0007 Discovery / T1046 Network Service Discovery  ·  **Response**: log_only + raise_trust_score  ·  **FP likelihood**: low
+
+Detection trigger: UDP-based scan from one source touching many destination ports. UDP version of vertical/distributed scan. Maps to KG `distributed_port_scan` (UDP variant).
+
+**Detection logic**: `UDP any→lab any, threshold by_src,count 15,seconds 60`
+
+```yaml
+sid: 9000042
+severity_p_level: 3
+signature_msg: UDP probe on many ports
+mitre_tactic: TA0007 Discovery
+mitre_technique: T1046 Network Service Discovery
+kg_pattern_id: distributed_port_scan
+detection_logic: UDP any→lab any, threshold by_src,count 15,seconds 60
+recommended_response: log_only + raise_trust_score
+default_ttl_seconds: 0
+false_positive_likelihood: low
+false_positive_scenarios:
+- DNS/NTP cluster discovery from MGT
+```
+
+## SID 9000043 — TCP SYN flood — single source
+
+**Severity P2**  ·  **MITRE**: TA0040 Impact / T1499 Endpoint Denial of Service  ·  **Response**: DROP src_ip  ·  **FP likelihood**: low
+
+Detection trigger: one source sustains SYN-without-ACK at >200/10s. Classic SYN flood DoS. Maps to KG `syn_flood_dos`.
+
+**Detection logic**: `TCP S,!A any→lab any, threshold by_src,count 200,seconds 10`
+
+```yaml
+sid: 9000043
+severity_p_level: 2
+signature_msg: TCP SYN flood — single source
+mitre_tactic: TA0040 Impact
+mitre_technique: T1499 Endpoint Denial of Service
+kg_pattern_id: syn_flood_dos
+detection_logic: TCP S,!A any→lab any, threshold by_src,count 200,seconds 10
+recommended_response: DROP src_ip
+default_ttl_seconds: 1800
+false_positive_likelihood: low
+false_positive_scenarios:
+- Legitimate load test (should originate from MGT only)
+```
+
+## SID 9000044 — TCP SYN contribution from source (DDoS component)
+
+**Severity P2**  ·  **MITRE**: TA0040 Impact / T1499 Endpoint Denial of Service  ·  **Response**: DROP src_ip; agent aggregates concurrent 9000044 SIDs same dst → DDoS posture  ·  **FP likelihood**: medium
+
+Detection trigger: per-source SYN-without-ACK contribution to one dst. Lower per-source threshold than 9000043 because each attacker in a DDoS contributes less. Agent correlates concurrent 9000044 SIDs targeting same dst to confirm DDoS. Maps to KG `syn_flood_ddos`.
+
+**Detection logic**: `TCP S,!A any→lab any, threshold by_src_dst,count 50,seconds 10`
+
+```yaml
+sid: 9000044
+severity_p_level: 2
+signature_msg: TCP SYN contribution from source (DDoS component)
+mitre_tactic: TA0040 Impact
+mitre_technique: T1499 Endpoint Denial of Service
+kg_pattern_id: syn_flood_ddos
+detection_logic: TCP S,!A any→lab any, threshold by_src_dst,count 50,seconds 10
+recommended_response: DROP src_ip
+default_ttl_seconds: 1800
+false_positive_likelihood: medium
+false_positive_scenarios:
+- Bursty legitimate clients during deploy/restart
+- Connection retries after a service blip
+```
+
+## SID 9000045 — UDP packet flood — high rate to destination
+
+**Severity P2**  ·  **MITRE**: TA0040 Impact / T1499.002 UDP Flood  ·  **Response**: DROP src_ip(s)  ·  **FP likelihood**: low
+
+Detection trigger: UDP flood rate exceeds 500 packets / 10s to one dst, tracked across srcs. Maps to KG `udp_ddos`.
+
+**Detection logic**: `UDP any→lab any, threshold by_dst,count 500,seconds 10`
+
+```yaml
+sid: 9000045
+severity_p_level: 2
+signature_msg: UDP packet flood — high rate to destination
+mitre_tactic: TA0040 Impact
+mitre_technique: T1499.002 UDP Flood
+kg_pattern_id: udp_ddos
+detection_logic: UDP any→lab any, threshold by_dst,count 500,seconds 10
+recommended_response: DROP src_ip(s)
+default_ttl_seconds: 1800
+false_positive_likelihood: low
+```
+
+## SID 9000046 — Periodic small outbound — possible C2 heartbeat
+
+**Severity P2**  ·  **MITRE**: TA0011 Command and Control / T1071.001 Application Layer Protocol  ·  **Response**: DROP src_ip + quarantine investigation  ·  **FP likelihood**: medium
+
+Detection trigger: src in lab sends ≥3 small (<200 byte) outbound SYNs over 90 seconds to an external destination. Low-and-slow C2 beacon pattern. Maps to KG `c2_beacon`. (rev:2 tuned threshold from 5/300s → 3/90s to fit eval window 120s while preserving low-rate beacon semantics.)
+
+**Detection logic**: `TCP SYN dsize:<200 lab→!lab any, threshold by_src,count 3,seconds 90`
+
+```yaml
+sid: 9000046
+severity_p_level: 2
+signature_msg: Periodic small outbound — possible C2 heartbeat
+mitre_tactic: TA0011 Command and Control
+mitre_technique: T1071.001 Application Layer Protocol
+kg_pattern_id: c2_beacon
+detection_logic: TCP SYN dsize:<200 lab→!lab any, threshold by_src,count 3,seconds 90
+recommended_response: DROP src_ip + quarantine investigation
+default_ttl_seconds: 3600
+false_positive_likelihood: medium
+false_positive_scenarios:
+- Notification/mail client outbound
+- NTP / package update poller
+```
+
+## SID 9000047 — DNS response with abnormally large payload
+
+**Severity P2**  ·  **MITRE**: TA0040 Impact / T1498.002 Reflection Amplification  ·  **Response**: DROP source DNS endpoint + rate-limit dst  ·  **FP likelihood**: low
+
+Detection trigger: UDP responses from port 53 with payload >1000 bytes arriving at one lab dst, threshold 5/30s. Indicates DNS amplification attack where lab host is the victim. Maps to KG `dns_tunneling` (amplification variant).
+
+**Detection logic**: `UDP src_port 53 →lab any, dsize:>1000, threshold by_dst,count 5,seconds 30`
+
+```yaml
+sid: 9000047
+severity_p_level: 2
+signature_msg: DNS response with abnormally large payload
+mitre_tactic: TA0040 Impact
+mitre_technique: T1498.002 Reflection Amplification
+kg_pattern_id: dns_tunneling
+detection_logic: UDP src_port 53→lab any dsize:>1000, threshold by_dst,count 5,seconds 30
+recommended_response: DROP source DNS endpoint + rate-limit dst
+default_ttl_seconds: 1800
+false_positive_likelihood: low
+false_positive_scenarios:
+- DNSSEC/TXT records with large legitimate payloads (rare for internal DNS)
+```
+
+## SID 9000048 — SQL syntax — UNION SELECT in DB stream
+
+**Severity P1**  ·  **MITRE**: TA0001 Initial Access / T1190 Exploit Public-Facing Application  ·  **Response**: DROP src_ip + escalate  ·  **FP likelihood**: low
+
+Detection trigger: content match `UNION SELECT` in TCP stream targeting DB ports. Classic SQL injection signature. Maps to KG `sql_injection_recon`.
+
+**Detection logic**: `TCP any→DB:5432/3306/1433, content:"UNION SELECT" nocase`
+
+```yaml
+sid: 9000048
+severity_p_level: 1
+signature_msg: SQL syntax — UNION SELECT in DB stream
+mitre_tactic: TA0001 Initial Access
+mitre_technique: T1190 Exploit Public-Facing Application
+kg_pattern_id: sql_injection_recon
+detection_logic: TCP any→DB content:"UNION SELECT" nocase
+recommended_response: DROP src_ip + escalate
+default_ttl_seconds: 3600
+false_positive_likelihood: low
+false_positive_scenarios:
+- Legitimate analytics query containing "UNION SELECT" from APP zone
+```
+
+## SID 9000049 — SQL syntax — tautology condition in DB stream
+
+**Severity P1**  ·  **MITRE**: TA0001 Initial Access / T1190 Exploit Public-Facing Application  ·  **Response**: DROP src_ip + escalate  ·  **FP likelihood**: low
+
+Detection trigger: content match `OR 1=1` in TCP stream targeting DB ports. Tautology-based SQL injection bypass. Maps to KG `sql_injection_recon`.
+
+**Detection logic**: `TCP any→DB:5432/3306/1433, content:"OR 1=1" nocase`
+
+```yaml
+sid: 9000049
+severity_p_level: 1
+signature_msg: SQL syntax — tautology condition in DB stream
+mitre_tactic: TA0001 Initial Access
+mitre_technique: T1190 Exploit Public-Facing Application
+kg_pattern_id: sql_injection_recon
+detection_logic: TCP any→DB content:"OR 1=1" nocase
+recommended_response: DROP src_ip + escalate
+default_ttl_seconds: 3600
+false_positive_likelihood: low
+```
+
+## SID 9000050 — Destructive SQL statement in DB stream
+
+**Severity P1**  ·  **MITRE**: TA0040 Impact / T1485 Data Destruction  ·  **Response**: DROP src_ip + escalate; immediate quarantine  ·  **FP likelihood**: low
+
+Detection trigger: pcre match on `DROP TABLE`, `TRUNCATE`, or `DELETE FROM` in TCP stream to DB ports. Destructive intent — never legitimate from the APP tier under normal operation. Maps to KG `destructive_sql_content`.
+
+**Detection logic**: `TCP any→DB, pcre /\b(DROP\s+TABLE|TRUNCATE|DELETE\s+FROM)\b/i`
+
+```yaml
+sid: 9000050
+severity_p_level: 1
+signature_msg: Destructive SQL statement in DB stream
+mitre_tactic: TA0040 Impact
+mitre_technique: T1485 Data Destruction
+kg_pattern_id: destructive_sql_content
+detection_logic: TCP any→DB pcre /\b(DROP\s+TABLE|TRUNCATE|DELETE\s+FROM)\b/i
+recommended_response: DROP src_ip + escalate
+default_ttl_seconds: 3600
+false_positive_likelihood: low
+false_positive_scenarios:
+- Scheduled migration run from MGT (pre-announced, rare)
+```
+
+## SID 9000051 — DB connection from non-APP zone
+
+**Severity P1**  ·  **MITRE**: TA0008 Lateral Movement / T1021 Remote Services  ·  **Response**: DROP src_ip  ·  **FP likelihood**: low
+
+Detection trigger: TCP SYN to DB service ports from any source NOT in APP zone (10.2.100.0/24) and NOT from DB itself. Generalizes SID 9000001 (WEB→DB) to catch any unauthorized data-tier access. Maps to KG `cross_zone_violation_web_to_db`.
+
+**Detection logic**: `TCP SYN ![APP,DB] → DB:5432/3306/1433/27017`
+
+```yaml
+sid: 9000051
+severity_p_level: 1
+signature_msg: DB connection from non-APP zone
+mitre_tactic: TA0008 Lateral Movement
+mitre_technique: T1021 Remote Services
+kg_pattern_id: cross_zone_violation_web_to_db
+detection_logic: TCP SYN ![10.2.100.0/24,10.1.200.0/24] → 10.1.200.0/24 [5432,3306,1433,27017]
+recommended_response: DROP src_ip
+default_ttl_seconds: 3600
+false_positive_likelihood: low
+false_positive_scenarios:
+- MGT operator running DB administration (rate-limited; verify source)
+```
+
+## SID 9000052 — Probe on commonly-exploited service port
+
+**Severity P3**  ·  **MITRE**: TA0007 Discovery / T1046 Network Service Discovery  ·  **Response**: log_only + raise_trust_score; agent correlates with 9000040–9000041 to detect Infection Monkey chain  ·  **FP likelihood**: medium
+
+Detection trigger: probe pattern on common exploit-target ports (22, 23, 135, 139, 445, 3389, 8080, 8443) from one source. Stage signal for multi-stage attacks like Infection Monkey. Maps to KG `infection_monkey_chain` (one stage).
+
+**Detection logic**: `TCP SYN any→lab [22,23,135,139,445,3389,8080,8443], threshold by_src,count 10,seconds 60`
+
+```yaml
+sid: 9000052
+severity_p_level: 3
+signature_msg: Probe on commonly-exploited service port
+mitre_tactic: TA0007 Discovery
+mitre_technique: T1046 Network Service Discovery
+kg_pattern_id: infection_monkey_chain
+detection_logic: TCP SYN any→lab [22,23,135,139,445,3389,8080,8443], threshold by_src,count 10,seconds 60
+recommended_response: log_only + raise_trust_score
+default_ttl_seconds: 0
+false_positive_likelihood: medium
+false_positive_scenarios:
+- MGT SSH scrape (rate-limited per spec)
+- Legacy app health-check
+```

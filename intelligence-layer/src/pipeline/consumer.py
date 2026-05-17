@@ -17,6 +17,17 @@ log = structlog.get_logger()
 
 _HANDSHAKE_TYPES = {"connected", "heartbeat"}
 
+# Lab CIDR scope. Drop flow events with neither endpoint in lab — IPv6 link-local
+# NDP, DHCP discoveries, and other infrastructure noise from SONIC nodes would
+# otherwise fill the FE Monitor with [EXT]↔[EXT] rows.
+_LAB_PREFIXES = ("10.1.", "10.2.")
+
+
+def _is_lab_flow_event(data: dict) -> bool:
+    src = data.get("src_ip") or ""
+    dst = data.get("dest_ip") or ""
+    return src.startswith(_LAB_PREFIXES) or dst.startswith(_LAB_PREFIXES)
+
 
 class SSEConsumer:
     def __init__(
@@ -94,6 +105,8 @@ class SSEConsumer:
 
                     # Mirror flow events to EventsStore (no agent dispatch)
                     if data.get("event_type") == "flow":
+                        if not _is_lab_flow_event(data):
+                            continue
                         if self._events_store is not None:
                             try:
                                 await self._events_store.push_flow(data)
@@ -142,6 +155,8 @@ class SSEConsumer:
             return
         for f in flows:
             if not isinstance(f, dict):
+                continue
+            if not _is_lab_flow_event(f):
                 continue
             # Dedup key: timestamp + src + dst + ports
             k = (
