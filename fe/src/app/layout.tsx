@@ -4,7 +4,7 @@ import SiteHeader from "@/components/SiteHeader";
 import SiteFooter from "@/components/SiteFooter";
 
 export const metadata: Metadata = {
-  title: "3S-NOS — Zero Trust Microsegmentation Dashboard",
+  title: "3s-COM — Zero Trust Microsegmentation Dashboard",
   description:
     "GNS3 Spine-Leaf datacenter fabric với SONiC, microsegmentation iptables, và Suricata IDS real-time monitoring. NIST 800-207 Zero Trust Architecture.",
   keywords: [

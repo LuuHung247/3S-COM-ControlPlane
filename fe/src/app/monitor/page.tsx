@@ -56,6 +56,21 @@ function ipZone(ip: string): string {
   return "EXT";
 }
 
+// Suricata reports app_proto="failed" when it can't parse L7 (mock services +
+// asymmetric capture never complete a handshake). Fall back to the well-known
+// service for the dest port so the dashboard reads cleanly instead of "failed".
+const PORT_SERVICE: Record<number, string> = {
+  5432: "postgres", 3306: "mysql", 1433: "mssql", 27017: "mongo",
+  8080: "http", 80: "http", 443: "https", 8443: "https",
+  22: "ssh", 23: "telnet", 53: "dns", 3389: "rdp",
+};
+function protoLabel(ev: TrafficFlow): string {
+  const ap = ev.app_proto;
+  if (ap && ap !== "failed" && ap !== "unknown") return ap;
+  const svc = ev.dest_port ? PORT_SERVICE[ev.dest_port] : undefined;
+  return svc ?? ev.proto;
+}
+
 function fmtBytes(b?: number) {
   if (!b) return "—";
   if (b < 1024) return `${b}B`;
@@ -492,7 +507,7 @@ export default function MonitorPage() {
                         <span className="text-xs font-mono text-tc-text-dim truncate">
                           <span className="text-tc-green/60">[{dstZone}]</span> {ev.dest_ip}:{ev.dest_port}
                         </span>
-                        <span className="text-xs font-mono text-tc-text-dim">{ev.app_proto ?? ev.proto}</span>
+                        <span className="text-xs font-mono text-tc-text-dim">{protoLabel(ev)}</span>
                         <span className="text-xs font-mono text-tc-text-dim">{fmtBytes(ev.flow?.bytes_toserver)}</span>
                       </div>
                       <div className="sm:hidden text-xs font-mono text-tc-text-dim">

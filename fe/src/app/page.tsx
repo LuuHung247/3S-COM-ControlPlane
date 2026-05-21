@@ -30,7 +30,7 @@ function priorityBadge(p: number) {
     3: "bg-yellow-900/60 text-yellow-400 border-yellow-700/50",
     4: "bg-tc-card text-tc-text-dim border-tc-border",
   };
-  const label: Record<number, string> = { 1: "P1 CRITICAL", 2: "P2 HIGH", 3: "P3 INFO", 4: "P4 AUDIT" };
+  const label: Record<number, string> = { 1: "P1 NGHIÊM TRỌNG", 2: "P2 CAO", 3: "P3 THÔNG TIN", 4: "P4 KIỂM TOÁN" };
   return (
     <span className={`px-2 py-0.5 rounded border text-xs font-mono font-bold ${map[p] ?? map[4]}`}>
       {label[p] ?? `P${p}`}
@@ -79,28 +79,28 @@ export default function HomePage() {
 
   const statCards = [
     {
-      label: "IDS Status",
-      value: loading ? "..." : health?.status === "ok" ? "ONLINE" : "OFFLINE",
+      label: "Trạng thái IDS",
+      value: loading ? "..." : health?.status === "ok" ? "TRỰC TUYẾN" : "NGOẠI TUYẾN",
       sub: loading ? "" : health?.suricata ?? "",
       color: health?.status === "ok" ? "text-tc-green" : "text-red-400",
       icon: "🛡️",
     },
     {
-      label: "Total Alerts",
+      label: "Tổng cảnh báo",
       value: loading ? "..." : String(totalToday),
-      sub: "all time",
+      sub: "toàn thời gian",
       color: "text-tc-green",
       icon: "🔔",
     },
     {
-      label: "Policy Violations",
+      label: "Vi phạm chính sách",
       value: loading ? "..." : String(violations),
-      sub: "last 5 alerts (P1+P2)",
+      sub: "5 cảnh báo gần nhất (P1+P2)",
       color: violations > 0 ? "text-red-400" : "text-tc-green",
       icon: "🚨",
     },
     {
-      label: "Zones Monitored",
+      label: "Vùng giám sát",
       value: "4",
       sub: "WEB · DB · APP · MGT",
       color: "text-tc-green",
@@ -116,12 +116,12 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl px-6 relative">
           <ScrollReveal>
             <div className="mb-3 inline-flex items-center rounded-full border border-tc-green/20 bg-tc-green/5 px-4 py-1.5 text-xs font-mono text-tc-green">
-              NIST 800-207 · Zero Trust Architecture
+              NIST 800-207 · Kiến trúc Zero Trust
             </div>
           </ScrollReveal>
           <ScrollReveal delay={100}>
             <h1 className="mt-4 text-4xl sm:text-6xl font-bold text-white glow-green-strong leading-tight">
-              3S-NOS
+              3s-COM
             </h1>
             <h2 className="text-2xl sm:text-3xl font-bold text-tc-green font-mono mt-1">
               Spine-Leaf DC Fabric
@@ -129,8 +129,8 @@ export default function HomePage() {
           </ScrollReveal>
           <ScrollReveal delay={200}>
             <p className="mt-4 max-w-2xl text-tc-text-dim text-base sm:text-lg">
-              GNS3 datacenter network với SONiC Spine-Leaf topology, microsegmentation iptables,
-              và Suricata IDS real-time monitoring theo dõi vi phạm chính sách Zero Trust.
+              Mạng datacenter GNS3 với topology SONiC Spine-Leaf, microsegmentation bằng iptables,
+              và Suricata IDS giám sát real-time các vi phạm chính sách Zero Trust.
             </p>
           </ScrollReveal>
           <ScrollReveal delay={300}>
@@ -139,13 +139,13 @@ export default function HomePage() {
                 href="/monitor"
                 className="rounded-xl bg-tc-green px-6 py-3 font-bold text-black transition-all hover:bg-tc-green-dim pulse-glow"
               >
-                Live Monitor →
+                Giám sát trực tiếp →
               </a>
               <a
-                href="/topology"
+                href="/policy"
                 className="rounded-xl border border-tc-green/30 px-6 py-3 font-medium text-tc-green transition-all hover:bg-tc-green/10"
               >
-                View Topology
+                Xem chính sách
               </a>
             </div>
           </ScrollReveal>
@@ -157,7 +157,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl px-6">
           <ScrollReveal>
             <p className="mb-6 font-mono text-xs text-tc-green tracking-wider uppercase">
-              System Status
+              Trạng thái hệ thống
             </p>
           </ScrollReveal>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -185,10 +185,10 @@ export default function HomePage() {
           <ScrollReveal>
             <div className="flex items-center justify-between mb-6">
               <p className="font-mono text-xs text-tc-green tracking-wider uppercase">
-                Recent Alerts
+                Cảnh báo gần đây
               </p>
               <a href="/monitor" className="text-xs text-tc-text-dim hover:text-tc-green transition-colors font-mono">
-                View all →
+                Xem tất cả →
               </a>
             </div>
           </ScrollReveal>
@@ -196,22 +196,22 @@ export default function HomePage() {
             <div className="rounded-xl border border-tc-border bg-tc-card overflow-hidden">
               {loading ? (
                 <div className="p-8 text-center font-mono text-tc-green text-sm animate-pulse">
-                  Loading alerts...
+                  Đang tải cảnh báo...
                 </div>
               ) : alerts.length === 0 ? (
                 <div className="p-8 text-center font-mono text-tc-text-dim text-sm">
-                  No alerts yet. Generate traffic to see detections.
+                  Chưa có cảnh báo. Tạo traffic để xem phát hiện.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-tc-border text-xs font-mono text-tc-text-dim">
-                        <th className="px-4 py-3 text-left">Time</th>
-                        <th className="px-4 py-3 text-left">Rule</th>
-                        <th className="px-4 py-3 text-left">Src → Dst</th>
-                        <th className="px-4 py-3 text-left">Zone</th>
-                        <th className="px-4 py-3 text-left">Priority</th>
+                        <th className="px-4 py-3 text-left">Thời gian</th>
+                        <th className="px-4 py-3 text-left">Luật</th>
+                        <th className="px-4 py-3 text-left">Nguồn → Đích</th>
+                        <th className="px-4 py-3 text-left">Vùng</th>
+                        <th className="px-4 py-3 text-left">Mức độ</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -251,24 +251,24 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl px-6">
           <ScrollReveal>
             <p className="mb-6 font-mono text-xs text-tc-green tracking-wider uppercase">
-              Architecture
+              Kiến trúc
             </p>
           </ScrollReveal>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
               {
-                title: "Spine-Leaf Fabric",
-                desc: "SONiC-VS Spine + 2 LEAF switches. BGP ECMP routing. 4 Alpine Linux hosts in 4 microsegment zones.",
+                title: "Hạ tầng Spine-Leaf",
+                desc: "SONiC-VS Spine + 2 switch LEAF. Định tuyến BGP ECMP. 4 host Alpine Linux trong 4 vùng microsegment.",
                 icon: "🌐",
               },
               {
-                title: "Zero Trust Policy",
-                desc: "12/12 iptables rules verified. WEB→DB blocked. DB outbound blocked. Cross-zone lateral movement prevented.",
+                title: "Chính sách Zero Trust",
+                desc: "12/12 luật iptables đã xác minh. Chặn WEB→DB. Chặn DB outbound. Ngăn lateral movement liên vùng.",
                 icon: "🔒",
               },
               {
-                title: "IDS Monitoring",
-                desc: "Suricata 8.0 với tc mirred ingress mirroring từ LEAF-1 & LEAF-2. 8 detection rules, REST API port 8765.",
+                title: "Giám sát IDS",
+                desc: "Suricata 8.0 với tc mirred ingress mirroring từ LEAF-1 & LEAF-2. 21 luật phát hiện, REST API cổng 8765.",
                 icon: "👁️",
               },
             ].map((item, i) => (

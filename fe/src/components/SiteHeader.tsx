@@ -17,9 +17,7 @@ export default function SiteHeader() {
   const navLinks = [
     { href: "/", label: "Dashboard" },
     { href: "/monitor", label: "Monitor" },
-    { href: "/topology", label: "Topology" },
     { href: NEO4J_BROWSER_URL, label: "Knowledge", external: true },
-    { href: "/rules", label: "Rules" },
     { href: "/policy", label: "Policy" },
   ];
 
@@ -28,7 +26,7 @@ export default function SiteHeader() {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2 sm:px-6">
         <a href="/" className="flex items-center gap-2">
           <span className="text-xl font-bold text-tc-green glow-green font-mono">
-            ⚡ 3S-NOS
+            ⚡ 3s-COM
           </span>
           <span className="hidden sm:inline text-xs font-mono text-tc-text-dim border border-tc-border/50 rounded px-2 py-0.5">
             Spine-Leaf DC Fabric

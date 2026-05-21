@@ -9,10 +9,10 @@ export async function register() {
       fetch(`${AGENT}/alerts`, { signal: AbortSignal.timeout(3000) }).then((r) => r.json()),
     ]);
 
-    console.log(`[3S-NOS] ✓ Go IDS Agent — ${AGENT}`);
-    console.log(`[3S-NOS] ✓ Suricata status: ${health.status} | ts: ${health.ts}`);
-    console.log(`[3S-NOS] ✓ Alerts in store: ${alerts.count} total`);
+    console.log(`[3s-COM] ✓ Go IDS Agent — ${AGENT}`);
+    console.log(`[3s-COM] ✓ Suricata status: ${health.status} | ts: ${health.ts}`);
+    console.log(`[3s-COM] ✓ Alerts in store: ${alerts.count} total`);
   } catch {
-    console.error(`[3S-NOS] ✗ Go IDS Agent unreachable at ${AGENT} — start ids-agent first`);
+    console.error(`[3s-COM] ✗ Go IDS Agent unreachable at ${AGENT} — start ids-agent first`);
   }
 }
