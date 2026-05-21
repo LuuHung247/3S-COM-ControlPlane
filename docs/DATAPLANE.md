@@ -364,7 +364,7 @@ Scenario controllers ở `/root/scenario/` trên Alpine-5 (MGT). Mỗi scenario 
 **Path inside VM:** `/etc/suricata/rules/zt-lab.rules` + `/etc/suricata/suricata-zt.yaml`.
 **Capture:** `af-packet` cluster_flow trên `eth0` (mirror từ LEAF-1) + `eth1` (mirror từ LEAF-2)
 **eve.json types:** `alert`, `flow` (flow logging bật để dashboard show normal traffic)
-**Reload:** `kill -USR2 $(cat /run/suricata-zt.pid)` — không cần restart
+**Reload (⚠️ phải RESTART, không dùng USR2):** `suricata-zt.yaml` KHÔNG bật live rule-reload (`detect-engine.rule-reload` off), nên `kill -USR2 $(cat /run/suricata-zt.pid)` là **no-op** — trả exit 0 nhưng engine giữ nguyên rule cũ. Bắt buộc `rc-service suricata-zt restart` (hoặc qua console 5018) để load rule mới. Test config trước: `suricata -T -c /etc/suricata/suricata-zt.yaml`.
 
 ### 7.1 Asymmetric routing workaround (Suricata stream config)
 
@@ -450,14 +450,24 @@ zma/suricata/ids-vm/
 ├── suricata-zt.yaml       # Suricata config (af-packet eth0+eth1, eve.json types: alert+flow, rotate 86400s)
 ├── redeploy.sh            # One-shot post-reboot installer (apk add python3 + install + rc-update + start)
 └── rules/
-    └── zt-lab.rules       # 8 ZT detection rules (SID 9000001-9000020) — xem §7.2
+    └── zt-lab.rules       # 21 ZT detection rules (SID 9000001-9000052, gồm Yatesbury benchmark) — xem §7.2
 ```
 
 ### 7A.2 Deploy commands (chạy trên IDS VM sau reboot)
 
+> **⚠️ VM KHÔNG chạy sshd** — `ssh/scp root@192.168.122.205:22` bị **connection refused**. Mọi deploy phải qua **GNS3 console** `telnet 112.137.129.232:5018` (login root, no password). Đẩy file bằng heredoc + verify md5 chống paste lỗi:
+> ```bash
+> # trong console 5018:
+> base64 -d > /etc/suricata/rules/zt-lab.rules <<'EOF'
+> <base64 của rules file>
+> EOF
+> md5sum /etc/suricata/rules/zt-lab.rules        # so khớp với control plane
+> suricata -T -c /etc/suricata/suricata-zt.yaml  # test config trước
+> rc-service suricata-zt restart                 # PHẢI restart, USR2 no-op
+> ```
+
 ```bash
-# Telnet console: 112.137.129.232:5018  | login: root (no password)
-# scp bundle vào VM (vd qua libvirt 192.168.122.205) rồi:
+# Nếu VM có sshd (KHÔNG phải hiện trạng) — scp bundle rồi:
 cd /path/to/ids-vm/
 sh ./redeploy.sh
 ```
@@ -534,7 +544,7 @@ Single Python process, `ThreadingHTTPServer`. 1 background tail thread + N HTTP 
 | `stream.async-oneside` | `true` | Inspect segments without waiting ACK from opposite direction — bắt buộc cho content rules với asymmetric routing |
 | eve.json output | `types: [alert, flow]` | Flow logging bật cho dashboard / `/service-health` |
 | Profile | `low`, `max-pending-packets: 512` | VM resource-constrained |
-| Rules path | `/etc/suricata/rules/zt-lab.rules` | Reload không cần restart: `kill -USR2 $(cat /run/suricata-zt.pid)` |
+| Rules path | `/etc/suricata/rules/zt-lab.rules` | ⚠️ Reload PHẢI restart: `rc-service suricata-zt restart` (USR2 là no-op — rule-reload off trong yaml) |
 | eve.json rotate | `rotate-interval: 86400` (cả `eve-log` và `fast`) | Suricata 8 yêu cầu integer giây — KHÔNG nhận string `daily` |
 
 ### 7A.5 OpenRC services

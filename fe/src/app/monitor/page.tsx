@@ -8,7 +8,7 @@ interface ViolationEvent {
   kind: "violation";
   timestamp: string;
   alert: { signature: string; signature_id: number; severity: number; category: string };
-  src_ip: string; dest_ip: string; proto: string;
+  src_ip: string; dest_ip: string; dest_port?: number; proto: string;
 }
 
 interface TrafficFlow {
@@ -518,7 +518,7 @@ export default function MonitorPage() {
                         <span className="text-red-400">[{ipZone(ev.src_ip)}]</span> {ev.src_ip}
                       </span>
                       <span className="text-xs font-mono text-tc-text-dim truncate">
-                        {ev.dest_ip}
+                        <span className="text-tc-green/60">[{ipZone(ev.dest_ip)}]</span> {ev.dest_ip}{ev.dest_port ? `:${ev.dest_port}` : ""}
                       </span>
                       <span className="text-xs font-mono text-tc-text-dim">{ev.proto}</span>
                       <span className="text-xs text-tc-text truncate" title={ev.alert?.signature}>
@@ -533,7 +533,7 @@ export default function MonitorPage() {
                         </span>
                       </div>
                       <div className="text-xs text-tc-text">{ev.alert?.signature}</div>
-                      <div className="text-xs font-mono text-tc-text-dim">{ev.src_ip} → {ev.dest_ip}</div>
+                      <div className="text-xs font-mono text-tc-text-dim">{ev.src_ip} → {ev.dest_ip}{ev.dest_port ? `:${ev.dest_port}` : ""} [{ipZone(ev.dest_ip)}]</div>
                     </div>
                   </div>
                 );

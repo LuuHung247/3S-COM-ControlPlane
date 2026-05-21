@@ -15,7 +15,9 @@ alert tcp 10.2.100.0/24 any -> 10.2.50.0/24 [22,3389] (msg:"[ZT-ALERT] APP to MG
 
 # ─── CATEGORY 3: Reconnaissance ────────────────────────────────────────────────
 alert icmp any any -> any any (msg:"[ZT-INFO] ICMP ping sweep detected"; itype:8; threshold:type both,track by_src,count 3,seconds 10; classtype:network-scan; priority:3; sid:9000010; rev:1;)
-alert tcp any any -> any any (msg:"[ZT-INFO] Possible port scan"; flags:S; threshold:type both,track by_src,count 10,seconds 5; classtype:network-scan; priority:3; sid:9000011; rev:1;)
+# Excludes legit baseline service ports (8080=APP, 5432=DB, 22=MGT-SSH) — a real
+# scan still trips on the many other ports it touches. DC-tuned: 15 SYN / 10s.
+alert tcp [10.1.0.0/16,10.2.0.0/16] any -> [10.1.0.0/16,10.2.0.0/16] ![22,5432,8080] (msg:"[ZT-INFO] Possible port scan"; flags:S; threshold:type both,track by_src,count 15,seconds 10; classtype:network-scan; priority:3; sid:9000011; rev:2;)
 
 # ─── CATEGORY 4: Audit Logging ─────────────────────────────────────────────────
 alert ip 10.2.50.0/24 any -> any any (msg:"[ZT-AUDIT] Management zone access"; threshold:type limit,track by_src,count 1,seconds 60; classtype:policy-violation; priority:4; sid:9000020; rev:1;)
@@ -28,10 +30,12 @@ alert ip 10.2.50.0/24 any -> any any (msg:"[ZT-AUDIT] Management zone access"; t
 
 # ─── CATEGORY 5: Reconnaissance — Scanning (Yatesbury) ─────────────────────────
 # Vertical port scan — single src probing many ports on one dst.
-alert tcp any any -> [10.1.0.0/16,10.2.0.0/16] any (msg:"[ZT-RECON] Vertical port scan — many ports same destination"; flags:S; threshold:type both,track by_src,count 20,seconds 30; classtype:network-scan; priority:3; sid:9000040; rev:1;)
+alert tcp [10.1.0.0/16,10.2.0.0/16] any -> [10.1.0.0/16,10.2.0.0/16] ![22,5432,8080] (msg:"[ZT-RECON] Vertical port scan — many ports same destination"; flags:S; threshold:type both,track by_src,count 20,seconds 30; classtype:network-scan; priority:3; sid:9000040; rev:2;)
 
 # Distributed TCP port scan — multiple srcs probing key service ports (per-src signal; agent correlates the multi-src pattern).
-alert tcp [10.1.0.0/16,10.2.0.0/16] any -> [10.1.0.0/16,10.2.0.0/16] [22,23,80,443,3389,5432,3306,1433,8080,8443] (msg:"[ZT-RECON] TCP probe on key service ports"; flags:S; threshold:type both,track by_src,count 5,seconds 60; classtype:network-scan; priority:3; sid:9000041; rev:1;)
+# Watch list excludes legit baseline ports (8080/5432/22) — only never-legit
+# cross-zone service ports remain, so any probe here is genuine recon.
+alert tcp [10.1.0.0/16,10.2.0.0/16] any -> [10.1.0.0/16,10.2.0.0/16] [23,80,443,3389,3306,1433,8443] (msg:"[ZT-RECON] TCP probe on key service ports"; flags:S; threshold:type both,track by_src,count 5,seconds 60; classtype:network-scan; priority:3; sid:9000041; rev:2;)
 
 # Distributed UDP port scan — UDP variant.
 alert udp [10.1.0.0/16,10.2.0.0/16] any -> [10.1.0.0/16,10.2.0.0/16] any (msg:"[ZT-RECON] UDP probe on many ports"; threshold:type both,track by_src,count 15,seconds 60; classtype:network-scan; priority:3; sid:9000042; rev:1;)
@@ -69,4 +73,4 @@ alert tcp ![10.2.100.0/24,10.1.200.0/24] any -> 10.1.200.0/24 [5432,3306,1433,27
 # ─── CATEGORY 9: Multi-stage — Exploit recon (Yatesbury Infection Monkey) ──────
 # Probe on commonly-exploited service ports (RDP, SMB, telnet, etc.).
 # Per-source threshold; agent correlates with category-5 SIDs to detect monkey chain.
-alert tcp any any -> [10.1.0.0/16,10.2.0.0/16] [22,23,135,139,445,3389,8080,8443] (msg:"[ZT-RECON] Probe on commonly-exploited service port"; flags:S; threshold:type both,track by_src,count 10,seconds 60; classtype:attempted-recon; priority:3; sid:9000052; rev:1;)
+alert tcp [10.1.0.0/16,10.2.0.0/16] any -> [10.1.0.0/16,10.2.0.0/16] [23,135,139,445,3389,8443] (msg:"[ZT-RECON] Probe on commonly-exploited service port"; flags:S; threshold:type both,track by_src,count 10,seconds 60; classtype:attempted-recon; priority:3; sid:9000052; rev:2;)
