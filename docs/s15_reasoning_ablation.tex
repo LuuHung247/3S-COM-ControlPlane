@@ -1,0 +1,90 @@
+\section{Reasoning versus Lookup: a Signature-Hint Ablation}
+\label{sec:exp_ablation}
+
+A natural objection to an LLM-driven decision path is that, for a known Suricata
+signature, the agent is supplied with the attack type and a recommended action, and
+therefore behaves no differently from a rule-based SOAR --- at far greater latency
+and cost. This section tests that objection directly by \emph{removing} the
+signature hint and measuring whether the agent still decides correctly, and by
+comparing against a SOAR that has only the signature table.
+
+\subsection{Method and Baseline}
+
+Each malicious flow is presented at two hint levels. At the \textbf{known} level the
+real signature ID is used, so the decision prompt carries the per-SID hint (severity,
+attack-type label, recommended action). At the \textbf{unknown} level an
+out-of-table signature ID is used --- the prompt then states only ``Unknown SID'' ---
+together with a generic signature message, so the agent must decide from the flow
+tuple, the zone policy, the topology, and the baseline alone. Two legitimate
+ALLOW-path flows are added at the unknown level as controls, for which the correct
+decision is \emph{not} to block. The decisive comparison is the WEB$\rightarrow$DB
+versus APP$\rightarrow$DB pair at the unknown level: identical signature ID, message,
+and severity --- only the source zone differs --- so a correct split can arise only
+from policy reasoning.
+
+The proposed agent is compared against \textbf{Baseline A}, a traditional SOAR: a
+fixed playbook keyed on Suricata signature IDs that issues a \texttt{DROP} when the
+ID is in its known-dangerous set and does nothing otherwise. The experiment is
+repeated for three runs; the agent runs live and enforced rules are removed after
+each run.
+
+\subsection{Results}
+
+Table~\ref{tab:exp_ablation} aggregates the three runs. The agent mitigates
+\textbf{6 of 9} unknown-signature attacks, where the SOAR mitigates \textbf{0 of 9}:
+a signature-keyed playbook is structurally blind to any signature absent from it,
+whereas the agent reaches the decision from policy and context.
+
+\begin{table}[t]
+    \centering
+    \caption{Signature-hint ablation: agent vs.\ signature-keyed SOAR over three runs}
+    \label{tab:exp_ablation}
+    \small
+    \begin{tabularx}{\textwidth}{|>{\centering\arraybackslash}p{1.7cm}|L|>{\centering\arraybackslash}p{1.6cm}|>{\centering\arraybackslash}p{1.9cm}|>{\centering\arraybackslash}p{1.9cm}|}
+        \hline
+        \textbf{Case} & \textbf{Flow / expectation} & \textbf{Hint} &
+        \textbf{Agent (correct / 3)} & \textbf{SOAR (correct / 3)} \\
+        \hline
+        M1-known   & WEB$\rightarrow$DB — DROP        & known   & 3/3 & 3/3 \\ \hline
+        M1-unknown & WEB$\rightarrow$DB — DROP        & none    & \textbf{3/3} & 0/3 \\ \hline
+        M2-known   & APP$\rightarrow$MGT:22 — DROP    & known   & 3/3 & 3/3 \\ \hline
+        M2-unknown & APP$\rightarrow$MGT:22 — DROP    & none    & 2/3 & 0/3 \\ \hline
+        M3-known   & WEB$\rightarrow$MGT:22 — DROP    & known   & 2/3 & 3/3 \\ \hline
+        M3-unknown & WEB$\rightarrow$MGT:22 — DROP    & none    & 1/3 & 0/3 \\ \hline
+        L1-unknown & APP$\rightarrow$DB — log\_only   & none    & 3/3 & 3/3 \\ \hline
+        L2-unknown & WEB$\rightarrow$APP — log\_only  & none    & 3/3 & 3/3 \\ \hline
+        \multicolumn{3}{|l|}{\textbf{Unknown-signature mitigation}} & \textbf{6/9 (67\%)} & \textbf{0/9 (0\%)} \\ \hline
+        \multicolumn{3}{|l|}{\textbf{Correct decision overall}}     & \textbf{20/24 (83\%)} & \textbf{15/24 (63\%)} \\ \hline
+    \end{tabularx}
+\end{table}
+
+\subsection{Analysis}
+
+The ablation supports three conclusions and one limitation.
+
+\textbf{The agent is not a signature lookup.} First, it generalises: on unknown
+signatures it mitigates the majority of attacks while the SOAR mitigates none.
+Second, it reasons over identical metadata: WEB$\rightarrow$DB at the unknown level
+is blocked in every run while APP$\rightarrow$DB --- the same unknown ID, message,
+and severity --- is never blocked, a split that can only come from the zone policy.
+Third, and most tellingly, in one run the agent \emph{overrode} a known signature's
+recommended \texttt{block} action with \texttt{log\_only} (subsequently rejected by
+the severity validator); a lookup table never contradicts its own recommended
+action, so the agent must be reasoning over the recommendation rather than applying
+it.
+
+\textbf{The agent is non-deterministic, with a concentrated weakness.} The same
+input yields different outcomes across runs, concentrated on the cross-tier
+SSH$\rightarrow$MGT class (M2, M3). That M3-known is unstable \emph{even with the
+hint present} indicates the weakness lies in the agent's threat assessment of this
+class --- it tends to treat SSH-to-management as plausibly legitimate administrative
+access --- rather than in the absence of the hint. The textbook WEB$\rightarrow$DB
+violation and both legitimate controls, by contrast, are stable across all runs.
+
+\textbf{Tradeoff.} Baseline A is perfectly deterministic but generalises to nothing.
+The agent trades a degree of determinism for the ability to reason about flows its
+signature table never anticipated --- precisely the regime in which a fixed rule set
+fails. The instability and the management-zone weakness are genuine limitations; a
+candidate remedy is to surface the policy verdict for the alert's zone pair directly
+in the decision context (it is currently reachable only via an on-demand knowledge
+query), which is left to future work.

@@ -26,6 +26,8 @@ experiments/
 │   └── s13_unauth_db.py               ← S13
 ├── safety/                ← S14 adversarial safety / anti-manipulation test
 │   └── s14_adversarial_safety.py      ← proposed vs Baseline B (vanilla LLM)
+├── generalization/        ← S15 reasoning-vs-lookup ablation
+│   └── s15_reasoning_ablation.py      ← proposed vs Baseline A (signature-keyed SOAR)
 └── results/               ← per-run outputs (xlsx + json) + dated run folders
     └── YYYY-MM-DD_*/      ← consolidated runs với SUMMARY.md + AGGREGATE.json
 ```

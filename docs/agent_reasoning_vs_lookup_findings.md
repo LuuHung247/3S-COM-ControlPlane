@@ -128,10 +128,17 @@ nothing), forcing the agent to derive the action from context. Then **re-run S1-
 to confirm pass-rate holds. Only after that can the thesis claim "reasons from
 context, not a handed action." Risk: results may shift; costs time.
 
-**To genuinely demonstrate "reasoning, not lookup"** you would also need a scenario
-with an **unknown SID** (no mapping) that the agent still handles correctly — i.e.
-the low-and-slow / mutation scenario that was deferred. That is the cleanest empirical
-rebuttal and is currently *not* in the evaluation.
+**Empirical follow-up (S15 — now done).** The unknown-SID ablation that this
+section called for has since been run; see
+[`docs/S15_experiment_report.md`](./S15_experiment_report.md). Headline (N=3):
+on **unknown** signatures (no mapping, generic message) the agent still mitigates
+**6/9 (67%)** of attacks vs **0/9** for a signature-keyed SOAR; it splits identical
+WEB→DB (DROP) vs APP→DB (allow) metadata by policy; and in one run it *overrode* a
+known SID's recommended `block` with `log_only` — three independent signs it is
+**not** a pure lookup. But it is **non-deterministic** and **under-reacts to
+cross-tier SSH→MGT** even with the hint present (M3-known unstable). So the honest
+claim is the hybrid + an explicit limitation, exactly as Option A frames it — *not*
+"pure reasoning."
 
 > Bottom line for the writer: **do not claim the agent independently infers the attack
 > type or action for known signatures — the prompt hands both.** Claim the hybrid +
