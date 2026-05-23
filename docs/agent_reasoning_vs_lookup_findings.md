@@ -129,8 +129,8 @@ to confirm pass-rate holds. Only after that can the thesis claim "reasons from
 context, not a handed action." Risk: results may shift; costs time.
 
 **Empirical follow-up (S15 — now done).** The unknown-SID ablation that this
-section called for has since been run; see
-[`docs/S15_experiment_report.md`](./S15_experiment_report.md). Headline (N=3):
+section called for has since been run; see the S15 section of
+[`docs/extended_evaluation_report.md`](./extended_evaluation_report.md). Headline (N=3):
 on **unknown** signatures (no mapping, generic message) the agent still mitigates
 **6/9 (67%)** of attacks vs **0/9** for a signature-keyed SOAR; it splits identical
 WEB→DB (DROP) vs APP→DB (allow) metadata by policy; and in one run it *overrode* a
