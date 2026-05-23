@@ -1,0 +1,74 @@
+<mxfile host="65bd71144e">
+    <diagram name="3-Tier Architecture Overview" id="zt-overview">
+        <mxGraphModel dx="316" dy="323" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="525" pageHeight="660" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="ui" value="Operator Dashboard&#xa;(Live Monitor UI)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontSize=12;fontStyle=1;align=center;verticalAlign=middle;arcSize=9;" parent="1" vertex="1">
+                    <mxGeometry x="75" y="50" width="130" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="orch_band" value="Control Plane" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;arcSize=8;convertToSvg=0;svgWhiteSpace=wrap;verticalAlign=top;align=left;fontStyle=1;spacingTop=3;spacingLeft=8;spacingRight=0;spacingBottom=5;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="140" width="190" height="240" as="geometry"/>
+                </mxCell>
+                <mxCell id="ids_agent" value="&lt;div&gt;IDS Agent&lt;br&gt;(Backend)&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#23445d;strokeWidth=2;fontSize=13;fontStyle=1;align=center;verticalAlign=middle;arcSize=11;" parent="1" vertex="1">
+                    <mxGeometry x="86.25" y="180" width="107.5" height="41" as="geometry"/>
+                </mxCell>
+                <mxCell id="pep" value="Secure Framework" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#23445d;strokeWidth=2;fontSize=13;fontStyle=1;align=center;verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="93.75" y="292" width="92.5" height="38" as="geometry"/>
+                </mxCell>
+                <mxCell id="forward_rule" value="forward rule&#xa;(REST)" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#23445d;fontSize=11;fontStyle=2;exitX=0.5;exitY=1;endFill=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="ids_agent" target="pep" edge="1">
+                    <mxGeometry x="-0.4423" y="3" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="75" y="240" as="sourcePoint"/>
+                        <mxPoint x="75" y="339" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="monitor_stream" value="alert + flow stream&#xa;(SSE)" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#666666;fontSize=11;fontStyle=2;entryX=0.5;entryY=1;entryDx=0;entryDy=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" parent="1" source="ids_agent" target="ui" edge="1">
+                    <mxGeometry x="0.4176" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <Array as="points"/>
+                        <mxPoint x="157.36" y="181" as="sourcePoint"/>
+                        <mxPoint x="157.36" y="76" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="agent" value="LLM Agent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#3a6629;strokeWidth=2;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;arcSize=16;" parent="1" vertex="1">
+                    <mxGeometry x="340" y="180" width="100" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="agent_proxy" value="alert stream (SSE)&#xa;rule push (REST)" style="endArrow=classic;startArrow=classic;html=1;strokeWidth=2;strokeColor=#0066cc;fontSize=11;fontStyle=2;fontColor=#0066cc;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="ids_agent" target="agent" edge="1">
+                    <mxGeometry x="0.2483" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="240" y="120.21" as="sourcePoint"/>
+                        <mxPoint x="446.25" y="120" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="data_band" value="&lt;span style=&quot;color: rgb(0, 0, 0); font-family: Helvetica; font-size: 13px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 700; letter-spacing: normal; orphans: 2; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: nowrap; text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; float: none; display: inline !important;&quot;&gt;Data Plane&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=2;arcSize=7;align=left;verticalAlign=top;labelBackgroundColor=none;spacingLeft=8;spacingTop=5;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="420" width="410" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="fabric" value="Spine-Leaf Fabric&amp;nbsp;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#c47000;strokeWidth=2;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;arcSize=15;" parent="1" vertex="1">
+                    <mxGeometry x="90" y="450" width="100" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="ids" value="IDS (Suricata)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#c47000;strokeWidth=2;fontSize=14;fontStyle=1;align=center;verticalAlign=middle;arcSize=16;" parent="1" vertex="1">
+                    <mxGeometry x="320" y="450" width="120" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="tap" value="tap-mirror&#xa;(passive monitor)" style="endArrow=open;html=1;strokeWidth=1.5;strokeColor=#9673a6;fontSize=11;fontStyle=2;fontColor=#9673a6;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" parent="1" source="fabric" target="ids" edge="1">
+                    <mxGeometry x="-0.0857" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="flow_alert_up" value="alert (SSE)" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#0066cc;fontSize=12;fontStyle=1;fontColor=#0066cc;exitX=0.5;exitY=0;entryX=1;entryY=0.75;entryDx=0;entryDy=0;exitDx=0;exitDy=0;" parent="1" source="ids" target="ids_agent" edge="1">
+                    <mxGeometry x="-0.1441" y="1" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                        <mxPoint x="505" y="640" as="sourcePoint"/>
+                        <mxPoint x="245.58" y="240" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="flow_push_down" value="rule push&#xa;(gNMI mTLS)" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#cc0000;fontSize=12;fontStyle=1;fontColor=#cc0000;entryX=0.5;entryY=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryDx=0;entryDy=0;" parent="1" source="pep" target="fabric" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="154.71" y="430" as="sourcePoint"/>
+                        <mxPoint x="154.71" y="608" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

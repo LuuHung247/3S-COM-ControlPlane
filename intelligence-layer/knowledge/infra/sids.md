@@ -428,9 +428,9 @@ false_positive_scenarios:
 
 ## SID 9000044 — TCP SYN contribution from source (DDoS component)
 
-**Severity P2**  ·  **MITRE**: TA0040 Impact / T1499 Endpoint Denial of Service  ·  **Response**: DROP src_ip; agent aggregates concurrent 9000044 SIDs same dst → DDoS posture  ·  **FP likelihood**: medium
+**Severity P2**  ·  **MITRE**: TA0040 Impact / T1499 Endpoint Denial of Service  ·  **Response**: DROP src_ip; agent aggregates concurrent 9000044 SIDs same dst → DDoS posture  ·  **FP likelihood**: low
 
-Detection trigger: per-source SYN-without-ACK contribution to one dst. Lower per-source threshold than 9000043 because each attacker in a DDoS contributes less. Agent correlates concurrent 9000044 SIDs targeting same dst to confirm DDoS. Maps to KG `syn_flood_ddos`.
+Detection trigger: per-source SYN-without-ACK contribution to one dst. Lower per-source threshold than 9000043 because each attacker in a DDoS contributes less. A sustained 50+ SYN/10s from a workload-tier host to a service port (e.g. DB OLTP 5432) is well above any legitimate retry/burst rate and should be treated as an attack on its own — do not wait to correlate a second source before acting. Agent still correlates concurrent 9000044 SIDs targeting same dst to escalate the DDoS posture. Maps to KG `syn_flood_ddos`.
 
 **Detection logic**: `TCP S,!A any→lab any, threshold by_src_dst,count 50,seconds 10`
 
@@ -444,10 +444,9 @@ kg_pattern_id: syn_flood_ddos
 detection_logic: TCP S,!A any→lab any, threshold by_src_dst,count 50,seconds 10
 recommended_response: DROP src_ip
 default_ttl_seconds: 1800
-false_positive_likelihood: medium
+false_positive_likelihood: low
 false_positive_scenarios:
-- Bursty legitimate clients during deploy/restart
-- Connection retries after a service blip
+- Health-check probers that legitimately reconnect at high frequency (rare; verify the dst is not a critical service port)
 ```
 
 ## SID 9000045 — UDP packet flood — high rate to destination

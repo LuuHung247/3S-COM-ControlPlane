@@ -11,30 +11,34 @@ experiments/
 │   ├── runner.py          ← main harness (HTTP helpers, console proxy, metrics, Excel export)
 │   └── memory_runner.py   ← memory-stateful variant (no truncate decisions between runs)
 ├── scenarios/             ← 1 file per attack scenario (thin wrapper, ~20 lines)
-│   ├── zt_01_web_db_lateral.py
-│   ├── zt_03_web_app_burst.py
-│   ├── zt_04_app_db_burst.py
-│   ├── zt_05_app_db_sql.py
-│   ├── zt_06_app_mgt_ssh.py
-│   ├── yates_01_vertical_scan.py
-│   ├── yates_02_syn_flood_dos.py
-│   ├── yates_03_syn_flood_ddos.py
-│   ├── yates_04_udp_ddos.py
-│   ├── yates_05_distributed_scan.py
-│   ├── yates_06_infection_monkey.py
-│   ├── yates_07_c2_beacon.py
-│   └── yates_08_unauth_db.py
+│   ├── s01_web_db_lateral.py          ← S1  (ZT microseg)
+│   ├── s02_web_app_burst.py           ← S2
+│   ├── s03_app_db_burst.py            ← S3
+│   ├── s04_app_db_sql.py              ← S4  (Destructive SQL)
+│   ├── s05_app_mgt_ssh.py             ← S5
+│   ├── s06_vertical_scan.py           ← S6  (NetVigil benchmark)
+│   ├── s07_syn_flood.py               ← S7
+│   ├── s08_distributed_syn_flood.py   ← S8
+│   ├── s09_udp_flood.py               ← S9
+│   ├── s10_distributed_scan.py        ← S10
+│   ├── s11_multistage_propagation.py  ← S11
+│   ├── s12_c2_beacon.py               ← S12
+│   └── s13_unauth_db.py               ← S13
+├── safety/                ← S14 adversarial safety / anti-manipulation test
+│   └── s14_adversarial_safety.py      ← proposed vs Baseline B (vanilla LLM)
 └── results/               ← per-run outputs (xlsx + json) + dated run folders
     └── YYYY-MM-DD_*/      ← consolidated runs với SUMMARY.md + AGGREGATE.json
 ```
 
-**13 scenarios** — 5 ZT lab-specific (`zt_*`) + 8 Yatesbury paper-aligned (`yates_*` per NetVigil NSDI'24 Table 3).
+**13 functional scenarios** (S1–S13) — 5 ZT lab-specific (S1–S5) + 8 NetVigil-aligned
+(S6–S13, per NetVigil NSDI'24 Table 3) — plus **S14**, the adversarial safety stress-test
+comparing the full pipeline against a guardrail-free vanilla LLM agent.
 
 ## Run single scenario
 
 ```bash
 cd /home/dis/deploy/zerotrust/experiments
-python3 scenarios/zt_01_web_db_lateral.py
+python3 scenarios/s01_web_db_lateral.py
 ```
 
 Output → `results/eval_<name>_<timestamp>.{xlsx,json}` (per-run table + aggregate metrics).
@@ -51,7 +55,7 @@ done
 ## Each scenario wrapper format
 
 ```python
-# scenarios/zt_01_web_db_lateral.py — 14 dòng total
+# scenarios/s01_web_db_lateral.py — 14 dòng total
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from harness import runner as eval_iid

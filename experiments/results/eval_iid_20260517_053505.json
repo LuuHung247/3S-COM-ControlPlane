@@ -1,0 +1,23 @@
+[
+  {
+    "run_num": 1,
+    "started_at": "2026-05-17T05:35:31Z",
+    "outcome": "benign",
+    "mttd_s": 108.5,
+    "enforce_latency_ms": 3612.9,
+    "total_latency_s": 112.11,
+    "confidence": 0.95,
+    "alert_count_p1": 1,
+    "rule_pushed": false,
+    "rule_id": "",
+    "rejection_reason": "action=log_only \u2014 no enforcement needed",
+    "dry_run": false,
+    "checks_pass": 3,
+    "checks_total": 5,
+    "passed": false,
+    "notes": "",
+    "t_alert_to_decision_s": 3.61,
+    "t_decision_to_enforce_ms": null,
+    "enforcement_correct": false
+  }
+]

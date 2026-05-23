@@ -62,6 +62,9 @@ SF_API    = os.getenv("SF_API_URL",    "http://10.10.6.238:9090")
 MGT_CONSOLE_HOST = os.getenv("MGT_CONSOLE_HOST", "10.10.6.238")
 MGT_CONSOLE_PORT = int(os.getenv("MGT_CONSOLE_PORT", "5016"))
 ATTACKER_IP  = "10.1.100.10"          # default: legacy WEB→DB scenario (SID 9000001)
+# Multi-source scenarios (DDoS floods from >1 host) accept a block on ANY of
+# these IPs as correct. ATTACKER_IP stays the primary for display/labels.
+ATTACKER_IPS = ["10.1.100.10"]
 TARGET_SID   = 9000001
 TARGET_DST_IP = "10.1.200.10"        # expected destination in agent's DROP rule
 TARGET_DST_PORT = 5432               # expected destination port (0 = any)
@@ -140,17 +143,19 @@ SCENARIO_PRESETS = {
         "expected_outcome": "enforced",
     },
     "yates-syn-flood-ddos": {
-        # APP + WEB coordinated hping3 → DB:5432. Each src fires SID 9000044
-        # (per-src_dst threshold 50/10s). Agent correlates concurrent 9000044
-        # alerts → DDoS posture. Eval anchors on src=APP.
-        "attacker_ip": "10.2.100.10", "target_sid": 9000044,
+        # APP (10.2.100.10) + WEB (10.1.100.10) coordinated hping3 → DB:5432.
+        # Each src fires SID 9000044 (per-src_dst threshold 50/10s). Multi-src —
+        # agent blocks whichever fires first in the eval window, so accept either.
+        "attacker_ip": "10.2.100.10", "attacker_ips": ["10.2.100.10", "10.1.100.10"],
+        "target_sid": 9000044,
         "target_dst_ip": "10.1.200.10", "target_dst_port": 5432,
         "trigger": "compromise-yates-synddos.sh", "restore": "restore-yates.sh",
         "expected_outcome": "enforced",
     },
     "yates-udp-ddos": {
-        # APP + WEB UDP flood → DB:53 → SID 9000045 (by_dst threshold 500/10s).
-        "attacker_ip": "10.2.100.10", "target_sid": 9000045,
+        # UDP flood → DB:53 → SID 9000045 (by_dst threshold 500/10s). The flood
+        # is launched from WEB (10.1.100.10) by 02-web-host-yates.sh, not APP.
+        "attacker_ip": "10.1.100.10", "target_sid": 9000045,
         "target_dst_ip": "10.1.200.10", "target_dst_port": 53,
         "trigger": "compromise-yates-udpddos.sh", "restore": "restore-yates.sh",
         "expected_outcome": "enforced",
@@ -298,10 +303,15 @@ def _decision_matches_scenario(d: dict) -> bool:
     src = d.get("src_ip", "") or ""
     if sid == TARGET_SID:
         return True
-    attacker = ATTACKER_IP.split("/")[0]
-    if attacker and src.startswith(attacker):
-        return True
-    return False
+    return _matches_any_attacker(src)
+
+
+def _matches_any_attacker(ip: str) -> bool:
+    """True if ip matches any acceptable attacker (handles multi-src DDoS)."""
+    bare = (ip or "").split("/")[0]
+    if not bare:
+        return False
+    return any(bare.startswith(a.split("/")[0]) for a in ATTACKER_IPS)
 
 
 def get_decisions_since(since_ts: float, limit: int = 50) -> list:
@@ -344,7 +354,7 @@ def rule_blocks_attacker(rules: list) -> bool:
     for r in rules:
         # SF returns src-prefix (gNMI YANG field name)
         src = r.get("src-prefix") or r.get("src_ip") or r.get("source-ip") or ""
-        if ATTACKER_IP in src or src.startswith(ATTACKER_IP.split("/")[0]):
+        if _matches_any_attacker(src):
             return True
     return False
 
@@ -530,9 +540,7 @@ def run_scenario(run_num: int, duration: int, anchor_ts: float = 0.0) -> RunResu
 
                 # ── Metric 3: Enforcement correctness ───────────────────────
                 src_ip = decision.get("src_ip") or ""
-                result.enforcement_correct = (
-                    ATTACKER_IP in src_ip or src_ip.startswith(ATTACKER_IP.rstrip("/"))
-                ) if src_ip else None
+                result.enforcement_correct = _matches_any_attacker(src_ip) if src_ip else None
                 m3_icon = "[green]✓[/]" if result.enforcement_correct else "[red]✗[/]"
                 m3_color = "green" if result.enforcement_correct else "red"
                 console.print(f"    {m3_icon} [bold cyan]\[M3][/] Correct src_ip: [{m3_color}]{result.enforcement_correct}[/] [dim]({src_ip!r})[/]")
@@ -542,7 +550,9 @@ def run_scenario(run_num: int, duration: int, anchor_ts: float = 0.0) -> RunResu
                 # before created_at is written). Poll SF now to confirm rule
                 # presence and measure propagation delay from created_at.
                 if result.outcome == "enforced" and t_decision_created is not None:
-                    for attempt in range(8):
+                    # Flood scenarios (multi-src SYN/UDP) make SF's gNMI client
+                    # fan-out lag worse — poll up to 20s before declaring miss.
+                    for attempt in range(20):
                         sf_rules = get_agent_rules_from_sf()
                         if rule_blocks_attacker(sf_rules):
                             t_rule_seen = time.time()
@@ -553,7 +563,7 @@ def run_scenario(run_num: int, duration: int, anchor_ts: float = 0.0) -> RunResu
                             break
                         time.sleep(1)
                     else:
-                        console.print("    [red]✗[/] [bold cyan]\[M2][/] Rule NOT visible on LEAF after 8s")
+                        console.print("    [red]✗[/] [bold cyan]\[M2][/] Rule NOT visible on LEAF after 20s")
 
                 break
 
@@ -569,8 +579,9 @@ def run_scenario(run_num: int, duration: int, anchor_ts: float = 0.0) -> RunResu
     # into the /api/rules notification snapshot. Race observed in production:
     # agent's REST POST to SF :9090 returns 201, but SF's gNMI client takes
     # ~3-7s to fan out the subscription update that /api/rules reads from.
-    # 8s gives comfortable headroom past the worst-case observed.
-    time.sleep(8)
+    # Flood scenarios push under multi-src load → fan-out lags up to ~12s;
+    # use 15s headroom past the worst-case observed.
+    time.sleep(15)
 
     # 5. Check rule in SF
     post_rules = get_agent_rules_from_sf()
@@ -935,13 +946,15 @@ def _render_summary(results: List[RunResult]) -> None:
 
 def _apply_preset(name: str) -> None:
     """Mutate module-level scenario constants based on a preset key."""
-    global ATTACKER_IP, TARGET_SID, TARGET_DST_IP, TARGET_DST_PORT
+    global ATTACKER_IP, ATTACKER_IPS, TARGET_SID, TARGET_DST_IP, TARGET_DST_PORT
     global SCENARIO_TRIGGER, SCENARIO_RESTORE, EXPECTED_OUTCOME
     if name not in SCENARIO_PRESETS:
         console.print(f"[bold red]Unknown preset '{name}'. Available: {', '.join(SCENARIO_PRESETS)}[/]")
         sys.exit(2)
     p = SCENARIO_PRESETS[name]
     ATTACKER_IP = p["attacker_ip"]
+    # Multi-src DDoS may specify attacker_ips; default to [attacker_ip].
+    ATTACKER_IPS = list(p.get("attacker_ips") or [p["attacker_ip"]])
     TARGET_SID = p["target_sid"]
     TARGET_DST_IP = p["target_dst_ip"]
     TARGET_DST_PORT = p["target_dst_port"]
