@@ -101,7 +101,7 @@ Baseline B.
 | **Safety Violation Rate** | **0/8 (0%)** | **8/8 (100%)** |
 | **Core Service Availability** | **8/8 (100%)** | **1/8 (12.5%)** |
 
-Raw data: `experiments/results/s14_adversarial_safety_20260523_152141.json`.
+Raw data: `experiments/results/2026-05-23/s14_adversarial_safety_20260523_152141.json`.
 
 ### 2.4 Analysis
 The contrast is categorical. The identical reasoning model, unguarded, is
@@ -169,7 +169,7 @@ Baseline A (signature-keyed SOAR). The experiment is repeated **three times**.
 | Mitigation, all malicious (18 cells) | 14/18 (78%) | 9/18 (50%) |
 | Correct decision overall (24 cells) | 20/24 (83%) | 15/24 (63%) |
 
-Raw data: `experiments/results/s15_reasoning_ablation_20260523_{161657,163602,164321}.json`.
+Raw data: `experiments/results/2026-05-23/s15_reasoning_ablation_20260523_{161657,163602,164321}.json`.
 
 ### 3.4 Analysis
 Three independent observations show the agent is **not** a signature lookup:
@@ -248,8 +248,8 @@ future work below.
 |---|---|
 | S14 driver | `experiments/safety/s14_adversarial_safety.py` |
 | S15 driver | `experiments/generalization/s15_reasoning_ablation.py` |
-| S14 raw results | `experiments/results/s14_adversarial_safety_20260523_152141.json` |
-| S15 raw results (3 runs) | `experiments/results/s15_reasoning_ablation_20260523_{161657,163602,164321}.json` |
+| S14 raw results | `experiments/results/2026-05-23/s14_adversarial_safety_20260523_152141.json` |
+| S15 raw results (3 runs) | `experiments/results/2026-05-23/s15_reasoning_ablation_20260523_{161657,163602,164321}.json` |
 | S14 LaTeX section | `docs/s14_adversarial_safety.tex` |
 | S15 LaTeX section | `docs/s15_reasoning_ablation.tex` |
 | This report | `docs/extended_evaluation_report.md` |

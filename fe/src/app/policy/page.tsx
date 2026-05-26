@@ -140,6 +140,9 @@ export default function PolicyPage() {
   const [toggling, setToggling]           = useState(false);
   const [pushStatus, setPushStatus]       = useState<string | null>(null);
   const [deleting, setDeleting]           = useState<string | null>(null);
+  // Raw-data modal: hiển thị YANG instance / gNMI response gốc để chứng minh
+  // rule này thật sự đến từ LEAF qua gNMI, không phải FE bịa.
+  const [rawModal, setRawModal] = useState<{ title: string; body: string } | null>(null);
   const [form, setForm] = useState({
     rule_id: "", action: "DROP", src_ip: "", dst_ip: "",
     protocol: "all", priority: "50", comment: "",
@@ -353,63 +356,99 @@ export default function PolicyPage() {
                 </span>
               )}
             </div>
-            <button onClick={loadRules}
-              className="text-xs font-mono text-tc-text-dim hover:text-tc-green transition-colors border border-tc-border/50 rounded px-2 py-1">
-              ↻ Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setRawModal({
+                  title: "Raw gNMI response (SF → LEAF via /nos-iptables:acl/rule)",
+                  body: JSON.stringify(leavesData, null, 2),
+                })}
+                className="text-xs font-mono text-tc-text-dim hover:text-tc-green transition-colors border border-tc-border/50 rounded px-2 py-1"
+                title="Hiện response gốc gNMI Get từ mỗi LEAF (chứng minh rule lấy từ LEAF thật)">
+                {} Raw gNMI
+              </button>
+              <button onClick={loadRules}
+                className="text-xs font-mono text-tc-text-dim hover:text-tc-green transition-colors border border-tc-border/50 rounded px-2 py-1">
+                ↻ Refresh
+              </button>
+            </div>
           </div>
-          <div className="hidden sm:grid grid-cols-[1fr_80px_160px_140px_80px_80px_60px] gap-2 border-b border-tc-border/50 px-4 py-2 text-xs font-mono text-tc-text-dim">
-            <span>Rule ID</span><span>Action</span><span>Src IP</span>
-            <span>Comment</span><span>Src</span><span>Priority</span><span></span>
-          </div>
-          <div className="max-h-72 overflow-y-auto">
+          <div>
             {loading ? (
               <div className="p-6 text-center font-mono text-tc-green text-sm animate-pulse">Querying LEAFs...</div>
-            ) : allRules.length === 0 ? (
-              <div className="p-6 text-center font-mono text-tc-text-dim text-sm">
-                {connectedLeaves === 0 ? "⚠ No LEAF connections" : "No rules active."}
-              </div>
-            ) : allRules.map(rule => (
-              <div key={rule["rule-id"]}
-                className={`border-b border-tc-border/30 px-4 py-3 hover:bg-tc-green/5 transition-colors ${rule.source === "agent" ? "bg-orange-900/5" : ""}`}>
-                <div className="hidden sm:grid grid-cols-[1fr_80px_160px_140px_80px_80px_60px] gap-2 items-center">
-                  <span className="text-xs font-mono text-white truncate">{rule["rule-id"]}</span>
-                  <span className={`px-2 py-0.5 rounded border text-xs font-mono font-bold w-fit ${ACTION_BADGE[rule.action] ?? ACTION_BADGE.DROP}`}>
-                    {rule.action}
-                  </span>
-                  <span className="text-xs font-mono text-tc-text-dim">{rule["src-prefix"] ?? rule["src-ip"] ?? "—"}</span>
-                  <span className="text-xs text-tc-text-dim truncate">{rule.comment ?? "—"}</span>
-                  <span className={`px-1.5 py-0.5 rounded border text-xs font-mono w-fit ${SOURCE_BADGE[rule.source ?? "manual"] ?? SOURCE_BADGE.manual}`}>
-                    {rule.source ?? "—"}
-                  </span>
-                  <span className="text-xs font-mono text-tc-text-dim">{rule.priority ?? "—"}</span>
-                  <button onClick={() => deleteRule(rule)} disabled={deleting === rule["rule-id"]}
-                    className="text-xs font-mono text-red-400 border border-red-700/40 rounded px-2 py-1 hover:bg-red-900/20 disabled:opacity-50">
-                    {deleting === rule["rule-id"] ? "…" : "Del"}
-                  </button>
-                </div>
-                <div className="sm:hidden flex flex-col gap-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-mono text-white truncate">{rule["rule-id"]}</span>
-                    <span className={`px-2 py-0.5 rounded border text-xs font-mono font-bold ${ACTION_BADGE[rule.action] ?? ACTION_BADGE.DROP}`}>{rule.action}</span>
+            ) : Object.keys(leavesData).length === 0 ? (
+              <div className="p-6 text-center font-mono text-tc-text-dim text-sm">⚠ No LEAF connections</div>
+            ) : Object.entries(leavesData).map(([leafName, leafData]) => {
+              const leafRules = extractRules(leafData);
+              return (
+                <div key={leafName} className="border-b border-tc-border/40 last:border-b-0">
+                  {/* Per-LEAF sub-header */}
+                  <div className="bg-tc-darker/40 px-4 py-2 flex items-center justify-between border-b border-tc-border/30">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-1.5 h-1.5 rounded-full ${leafData.connected ? "bg-tc-green animate-pulse" : "bg-red-400"}`} />
+                      <span className="text-xs font-mono font-bold text-tc-green">{leafName}</span>
+                      <span className="text-xs font-mono text-tc-text-dim">· {leafRules.length} rules</span>
+                      {!leafData.connected && (
+                        <span className="text-xs font-mono text-red-400">· disconnected</span>
+                      )}
+                    </div>
+                    <button onClick={() => setRawModal({
+                        title: `Raw gNMI response · ${leafName}`,
+                        body: JSON.stringify(leafData, null, 2),
+                      })}
+                      className="text-xs font-mono text-tc-text-dim hover:text-tc-green border border-tc-border/30 rounded px-2 py-0.5"
+                      title={`Hiện raw gNMI response từ ${leafName}`}>
+                      {} raw
+                    </button>
                   </div>
-                  <button onClick={() => deleteRule(rule)} disabled={deleting === rule["rule-id"]}
-                    className="text-xs font-mono text-red-400 border border-red-700/40 rounded px-2 py-0.5 hover:bg-red-900/20 w-fit">
-                    {deleting === rule["rule-id"] ? "..." : "Delete"}
-                  </button>
+                  {/* Column header */}
+                  <div className="hidden sm:grid grid-cols-[1fr_80px_160px_140px_80px_80px_60px] gap-2 border-b border-tc-border/30 px-4 py-2 text-xs font-mono text-tc-text-dim/70">
+                    <span>Rule ID</span><span>Action</span><span>Src IP</span>
+                    <span>Comment</span><span>Src</span><span>Priority</span><span></span>
+                  </div>
+                  {/* Rules — render đúng những gì gNMI Get trả về từ LEAF này */}
+                  {leafRules.length === 0 ? (
+                    <div className="px-4 py-3 text-xs font-mono text-tc-text-dim/70 italic">— không có rule trên LEAF này —</div>
+                  ) : leafRules.map(rule => (
+                    <div key={`${leafName}-${rule["rule-id"]}`}
+                      className={`border-b border-tc-border/20 last:border-b-0 px-4 py-3 hover:bg-tc-green/5 transition-colors ${rule.source === "agent" ? "bg-orange-900/5" : ""}`}>
+                      <div className="hidden sm:grid grid-cols-[1fr_80px_160px_140px_80px_80px_60px] gap-2 items-center">
+                        <button
+                          onClick={() => setRawModal({
+                            title: `YANG instance · ${leafName} · /nos-iptables:acl/rule[rule-id=${rule["rule-id"]}]`,
+                            body: JSON.stringify(rule, null, 2),
+                          })}
+                          className="text-xs font-mono text-white truncate text-left hover:text-tc-green hover:underline"
+                          title="Click để xem YANG/JSON-IETF instance gốc lấy từ LEAF qua gNMI Get">
+                          {rule["rule-id"]}
+                        </button>
+                        <span className={`px-2 py-0.5 rounded border text-xs font-mono font-bold w-fit ${ACTION_BADGE[rule.action] ?? ACTION_BADGE.DROP}`}>
+                          {rule.action}
+                        </span>
+                        <span className="text-xs font-mono text-tc-text-dim">{rule["src-prefix"] ?? rule["src-ip"] ?? "—"}</span>
+                        <span className="text-xs text-tc-text-dim truncate">{rule.comment ?? "—"}</span>
+                        <span className={`px-1.5 py-0.5 rounded border text-xs font-mono w-fit ${SOURCE_BADGE[rule.source ?? "manual"] ?? SOURCE_BADGE.manual}`}>
+                          {rule.source ?? "—"}
+                        </span>
+                        <span className="text-xs font-mono text-tc-text-dim">{rule.priority ?? "—"}</span>
+                        <button onClick={() => deleteRule(rule)} disabled={deleting === rule["rule-id"]}
+                          className="text-xs font-mono text-red-400 border border-red-700/40 rounded px-2 py-1 hover:bg-red-900/20 disabled:opacity-50">
+                          {deleting === rule["rule-id"] ? "…" : "Del"}
+                        </button>
+                      </div>
+                      <div className="sm:hidden flex flex-col gap-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-mono text-white truncate">{rule["rule-id"]}</span>
+                          <span className={`px-2 py-0.5 rounded border text-xs font-mono font-bold ${ACTION_BADGE[rule.action] ?? ACTION_BADGE.DROP}`}>{rule.action}</span>
+                        </div>
+                        <button onClick={() => deleteRule(rule)} disabled={deleting === rule["rule-id"]}
+                          className="text-xs font-mono text-red-400 border border-red-700/40 rounded px-2 py-0.5 hover:bg-red-900/20 w-fit">
+                          {deleting === rule["rule-id"] ? "..." : "Delete"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ))}
-          </div>
-          <div className="border-t border-tc-border/50 px-4 py-2 flex flex-wrap gap-2">
-            {Object.entries(leavesData).map(([name, leaf]) => (
-              <span key={name} className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-mono border ${
-                leaf.connected ? "border-tc-green/30 text-tc-green" : "border-red-700/30 text-red-400"
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${leaf.connected ? "bg-tc-green" : "bg-red-400"}`} />
-                {name} · {extractRules(leaf).length} rules
-              </span>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -538,6 +577,38 @@ export default function PolicyPage() {
           decisionId={openDecisionId}
           onClose={() => setOpenDecisionId(null)}
         />
+      )}
+
+      {/* Raw-data modal — proof rule lấy từ LEAF qua gNMI, không phải FE bịa */}
+      {rawModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setRawModal(null)}
+        >
+          <div
+            className="bg-tc-card border border-tc-border rounded-xl shadow-2xl max-w-3xl w-full max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-tc-border/50">
+              <p className="font-mono text-xs text-tc-green tracking-wider">{rawModal.title}</p>
+              <button
+                onClick={() => setRawModal(null)}
+                className="text-tc-text-dim hover:text-tc-green text-sm">
+                ✕
+              </button>
+            </div>
+            <pre className="flex-1 overflow-auto p-4 text-xs font-mono text-tc-text-dim whitespace-pre-wrap break-all">
+              {rawModal.body}
+            </pre>
+            <div className="px-4 py-2 border-t border-tc-border/50 flex justify-end">
+              <button
+                onClick={() => { navigator.clipboard.writeText(rawModal.body); }}
+                className="text-xs font-mono text-tc-text-dim hover:text-tc-green border border-tc-border/50 rounded px-2 py-1">
+                Copy
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );

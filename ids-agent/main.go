@@ -1,3 +1,14 @@
+// Package main — ids-agent: cầu nối (Go HTTP bridge) giữa
+//   • IDS API (Suricata tail server, ngoài NAT trên IDS VM)
+//   • Secure Framework (REST API quản lý LEAF rule)
+//   • Client (FE Next.js, intelligence-layer agent, harness eval)
+//
+// Trách nhiệm chính:
+//   1. Tiêu thụ SSE stream từ IDS API → broadcast lại cho mọi WS/SSE client local.
+//   2. Proxy các GET /alerts /flows /health từ IDS API (clients không phải đi qua NAT).
+//   3. Stamp source=agent và forward POST/DELETE /rules sang Secure Framework
+//      (lá chắn provenance — chỉ rule đi qua đây mới được SF coi là "do agent đẩy").
+//   4. Polling /service-health 30s/lần → broadcast trạng thái service.
 package main
 
 import (
@@ -18,6 +29,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// ── Cấu hình URL backend (có thể override qua biến môi trường) ────────────
+//   idsURL  : IDS API (Suricata tail server) — TẤT CẢ alert/flow gốc đến từ đây
+//   sfURL   : Secure Framework — đích đẩy rule (đi tiếp qua gNMI tới LEAF)
+//   listen  : cổng HTTP của chính ids-agent này (FE và intel agent gọi vào)
 var (
 	idsURL     = envOr("IDS_API_URL", "http://10.10.6.238:8765")
 	sfURL      = envOr("SF_API_URL", "http://10.10.6.238:9090")
@@ -90,7 +105,15 @@ func (h *Hub) removeWS(c *websocket.Conn)   { h.mu.Lock(); delete(h.wsClients, c
 func (h *Hub) addSSE(ch chan []byte)         { h.mu.Lock(); h.sseClients[ch] = struct{}{}; h.mu.Unlock() }
 func (h *Hub) removeSSE(ch chan []byte)      { h.mu.Lock(); delete(h.sseClients, ch); h.mu.Unlock() }
 
-// pushBlockRule sends a DROP rule to Secure Framework via REST API.
+// pushBlockRule — đẩy 1 rule DROP sang Secure Framework qua REST.
+// Dùng cho path "autoblock thủ công" (POST /autoblock {src_ip}).
+// Path "agent tự ra quyết định" đi qua POST /rules (rulesPostHandler bên dưới).
+//
+// rule_id: nếu rỗng thì auto-sinh "agent-<ip-có-dấu-gạch>" — đảm bảo idempotent
+// (cùng IP gọi lại sẽ override cùng rule, không tạo trùng).
+//
+// source=agent: đóng dấu provenance — SF dựa vào field này để phân biệt rule do
+// AGENT đẩy (TTL ngắn, dynamic) vs do OPERATOR/SDNC đẩy (baseline policy).
 func pushBlockRule(srcIP, ruleID, reason string) ([]byte, error) {
 	if ruleID == "" {
 		safe := strings.NewReplacer(".", "-", "/", "-").Replace(srcIP)
@@ -182,6 +205,8 @@ func eventsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// proxyGet — generic helper: GET url upstream, đổ nguyên response về client.
+// Nếu upstream chết → 503 + body {"status":"offline"} (FE dùng để hiện "offline").
 func proxyGet(w http.ResponseWriter, targetURL string) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(targetURL)
@@ -197,8 +222,16 @@ func proxyGet(w http.ResponseWriter, targetURL string) {
 	io.Copy(w, resp.Body)
 }
 
+// ── 3 proxy handler — "LẤY DATA TỪ IDS API" theo yêu cầu của client ──
+// FE/harness gọi vào ids-agent (local) → ids-agent đi tiếp sang IDS VM qua NAT.
+// Tách lớp như vậy để: (a) client không phải biết URL IDS thật ngoài NAT,
+// (b) thêm CORS + cache-control + xử lý timeout/offline đồng nhất.
+
+// GET /health → IDS API /health (kiểm tra Suricata còn tail eve.json không)
 func healthHandler(w http.ResponseWriter, r *http.Request) { proxyGet(w, idsURL+"/health") }
 
+// GET /alerts[?last=N] → IDS API /alerts — kéo alert buffer trong RAM của ids-api.py
+// (ids-api.py tail /var/log/suricata/eve.json và giữ ring buffer alert mới nhất).
 func alertsHandler(w http.ResponseWriter, r *http.Request) {
 	url := idsURL + "/alerts"
 	if last := r.URL.Query().Get("last"); last != "" {
@@ -207,6 +240,7 @@ func alertsHandler(w http.ResponseWriter, r *http.Request) {
 	proxyGet(w, url)
 }
 
+// GET /flows[?last=N&since=ISO] → IDS API /flows — buffer flow event của Suricata.
 func flowsHandler(w http.ResponseWriter, r *http.Request) {
 	url := idsURL + "/flows"
 	q := r.URL.Query()
@@ -223,7 +257,14 @@ func flowsHandler(w http.ResponseWriter, r *http.Request) {
 	proxyGet(w, url)
 }
 
-// rulesHandler handles GET (proxy+filter) and POST (force source=agent) for /rules
+// ── /rules handler: 2 chiều — đọc rule trên LEAF + đẩy rule mới sang SF ──
+// GET  /rules[?source=agent] : lấy rule hiện có trên các LEAF (qua SF gNMI),
+//                              có thể lọc theo source.
+// POST /rules                 : ÉP source=agent rồi forward sang SF /api/rules
+//                              → SF làm gNMI Set xuống LEAF.
+//   ⇒ Đây là cơ chế "đóng dấu provenance" lá chắn quan trọng:
+//     intel-agent enforce gọi vào ĐÂY (không gọi thẳng SF), nên SF có thể tin
+//     rằng mọi POST từ ids-agent là rule do agent quyết định.
 func rulesHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	switch r.Method {
@@ -387,16 +428,29 @@ func unblockHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(result)
 }
 
-// --- SSE bridge từ Suricata → hub ---
+// ════════════════════════════════════════════════════════════════════════════
+//  ★ CHỖ "LẤY IDS" QUAN TRỌNG NHẤT — SSE bridge từ Suricata → hub ★
+// ════════════════════════════════════════════════════════════════════════════
 //
-// Design:
-//   - Always attempt SSE; never fall back to polling permanently (the previous
-//     poller hid SSE silently-stale bugs and missed events when Suricata's
-//     ring count reset on restart).
-//   - Per-connection watchdog cancels the request context if no upstream
-//     activity (data or heartbeat) is observed within sseStallTimeout.
-//     Suricata sends `: hb` every 15s — 30s = 2 missed heartbeats.
-//   - Exponential backoff between reconnect attempts, capped at 30s.
+// Đây là đường dẫn LIVE chính lấy alert/flow từ Suricata:
+//   ids-vm/ids-api.py tail eve.json → expose SSE ở idsURL+"/stream"
+//                                  ↓ (consumeSSE giữ kết nối SSE bền)
+//                                ids-agent
+//                                  ↓ hub.broadcast()
+//                  tất cả WS/SSE client local (FE, intel-agent, harness)
+//
+// Tại sao SSE thay vì poll:
+//   - Poll bị miss event khi Suricata restart (ring buffer reset → "đã xem N
+//     lần" ở client sai), và che giấu bug stale upstream.
+//
+// 2 watchdog:
+//   1. Stall-timeout (30s): KHÔNG nhận được dòng nào từ upstream (kể cả `:hb`)
+//      → cancel context, kết nối lại (Suricata mỗi 15s gửi `: hb`, miss 2 → reconnect).
+//   2. Max connection-age (4 phút): force reconnect định kỳ. Phát hiện case
+//      hb còn nhưng broadcast list ở ids-api.py đã reset (heartbeat đến đều
+//      nhưng alert thật không bao giờ tới) — watchdog stall không bắt được.
+//
+// Backoff lũy thừa khi reconnect, trần 30s.
 
 const (
 	sseStallTimeout     = 30 * time.Second
@@ -411,6 +465,8 @@ const (
 	sseMaxConnectionAge = 4 * time.Minute
 )
 
+// runBridge — vòng đời ngoài: gọi consumeSSE liên tục, backoff khi lỗi.
+// Chạy như goroutine từ main() — không bao giờ dừng (trừ khi process exit).
 func runBridge() {
 	backoff := sseInitialBackoff
 	for {
@@ -431,15 +487,20 @@ func runBridge() {
 	}
 }
 
+// consumeSSE — 1 phiên đọc SSE từ IDS API.
+//   GET idsURL+"/stream"  → mỗi event tail từ eve.json → `data: <json>\n\n`
+// Đọc line-by-line bằng bufio.Scanner, mỗi line có prefix "data: " → broadcast
+// cho hub (tất cả WS/SSE client đăng ký nhận sẽ thấy event ngay).
 func consumeSSE() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Mở kết nối tới IDS API endpoint streaming
 	req, err := http.NewRequestWithContext(ctx, "GET", idsURL+"/stream", nil)
 	if err != nil {
 		return err
 	}
-	resp, err := (&http.Client{}).Do(req) // no client.Timeout — streaming
+	resp, err := (&http.Client{}).Do(req) // không đặt Timeout — đây là stream dài hạn
 	if err != nil {
 		return err
 	}
@@ -515,8 +576,12 @@ func cors(next http.Handler) http.Handler {
 	})
 }
 
-// runServiceHeartbeat polls IDS API /service-health every 30s (passive flow inference
-// from Suricata eve.json — no active TCP probe needed, IDS is inside GNS3 and sees all traffic).
+// runServiceHeartbeat — polling /service-health của IDS API mỗi 30s.
+// Đây là chỗ thứ 5 (ngoài SSE + 3 proxy GET) lấy data từ IDS:
+//   - Không probe TCP chủ động (Suricata đã thấy mọi packet trong GNS3 fabric,
+//     suy ngược trạng thái service từ flow event là đủ — "passive inference").
+//   - Mỗi service status được cache vào hbCache + broadcast realtime cho hub,
+//     để FE mới connect cũng thấy trạng thái ngay (không phải đợi 30s).
 func runServiceHeartbeat() {
 	client := &http.Client{Timeout: 5 * time.Second}
 	emit := func() {
@@ -563,20 +628,33 @@ func runServiceHeartbeat() {
 	}
 }
 
+// main — entry point. Khởi 2 goroutine nền + đăng ký HTTP handler.
+//
+// Tóm tắt mọi chỗ "lấy data từ IDS API" trong file này:
+//   1. consumeSSE         → idsURL+"/stream"         (live stream alert/flow)
+//   2. healthHandler      → idsURL+"/health"          (kiểm tra Suricata sống)
+//   3. alertsHandler      → idsURL+"/alerts"          (đọc buffer alert)
+//   4. flowsHandler       → idsURL+"/flows"           (đọc buffer flow)
+//   5. runServiceHeartbeat→ idsURL+"/service-health"  (polling 30s/lần)
+//
+// Mọi chỗ "đẩy data sang SF" (đi tiếp tới LEAF qua gNMI):
+//   - pushBlockRule + rulesPostHandler + rulesDeleteHandler + unblockHandler
+//     → sfURL+"/api/rules[/...]"  (đều ép source=agent server-side)
 func main() {
 	log.Printf("IDS Agent — IDS: %s  SF: %s  listen: %s", idsURL, sfURL, listenAddr)
-	go runBridge()
-	go runServiceHeartbeat()
+	go runBridge()            // goroutine: giữ SSE từ IDS API → broadcast tới hub
+	go runServiceHeartbeat()  // goroutine: polling service-health 30s → broadcast
 
+	// HTTP routes mà client (FE, intel-agent, harness) gọi vào
 	mux := http.NewServeMux()
-	mux.HandleFunc("/health", healthHandler)
-	mux.HandleFunc("/alerts", alertsHandler)
-	mux.HandleFunc("/flows", flowsHandler)
-	mux.HandleFunc("/ws", wsHandler)
-	mux.HandleFunc("/events", eventsHandler)
-	mux.HandleFunc("/rules", rulesHandler)
-	mux.HandleFunc("/rules/", rulesDeleteHandler)
-	mux.HandleFunc("/autoblock", autoblockHandler)
+	mux.HandleFunc("/health", healthHandler)        // proxy IDS health
+	mux.HandleFunc("/alerts", alertsHandler)        // proxy alert buffer (lấy IDS)
+	mux.HandleFunc("/flows", flowsHandler)          // proxy flow buffer (lấy IDS)
+	mux.HandleFunc("/ws", wsHandler)                // WebSocket subscriber
+	mux.HandleFunc("/events", eventsHandler)        // SSE subscriber (FE dùng)
+	mux.HandleFunc("/rules", rulesHandler)          // GET list / POST đẩy rule (sang SF)
+	mux.HandleFunc("/rules/", rulesDeleteHandler)   // DELETE rule (sang SF)
+	mux.HandleFunc("/autoblock", autoblockHandler)  // manual block thủ công
 	mux.HandleFunc("/autoblock/unblock/", unblockHandler)
 
 	log.Fatal(http.ListenAndServe(listenAddr, cors(mux)))

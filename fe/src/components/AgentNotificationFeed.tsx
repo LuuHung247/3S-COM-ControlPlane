@@ -10,6 +10,7 @@ interface NotificationRecord {
   alert_sid: number;
   attacker_ip: string;
   action: string | null;
+  block_dst: string | null;    // intent.dst_ip — used for flow-level dedup
   decision: string;            // enforced | dry_run | rejected
   rejection_reason: string;
   notification: {
@@ -17,6 +18,28 @@ interface NotificationRecord {
     body: string;
     severity: Severity;
   } | null;
+}
+
+// Multiple Suricata SIDs may fire on the same flow (e.g. 9000001 + 9000051 both
+// detect WEB→DB), producing several decisions a few seconds apart. Collapse them
+// into the first one shown so the SOC feed reads as one event per attack.
+const DEDUP_WINDOW_MS = 60_000;
+
+function dedupByFlow(shown: NotificationRecord[]): NotificationRecord[] {
+  // API returns newest-first; walk oldest→newest so the first chronological
+  // occurrence wins (stable across polls — once shown, doesn't get replaced).
+  const firstTs = new Map<string, number>();
+  const oldestFirst = [...shown].reverse();
+  const kept: NotificationRecord[] = [];
+  for (const d of oldestFirst) {
+    const ts = Date.parse(d.timestamp);
+    const key = `${d.attacker_ip}|${d.action ?? "none"}|${d.block_dst ?? ""}`;
+    const t0 = firstTs.get(key);
+    if (t0 !== undefined && ts - t0 < DEDUP_WINDOW_MS) continue;
+    firstTs.set(key, ts);
+    kept.push(d);
+  }
+  return kept.reverse();
 }
 
 const SEVERITY_STYLES: Record<Severity, { row: string; badge: string; label: string }> = {
@@ -73,11 +96,17 @@ export function AgentNotificationFeed() {
         const data = (await r.json()) as NotificationRecord[];
         if (cancelled || !Array.isArray(data)) return;
 
-        // Show all decisions that have either a notification OR a rejection.
-        // This lets the SOC see L3/L4/L5 safety-gate rejections too, not just
-        // successful enforcements.
-        const shown = data.filter(
-          (d) => d.notification?.title || d.decision === "rejected",
+        // SOC feed shows only enforced DROPs — the actions the agent actually
+        // took on the data plane. log_only observations, held/rejected
+        // decisions, and other non-enforcement events stay out of the feed to
+        // keep it focused on real interventions.
+        const shown = dedupByFlow(
+          data.filter(
+            (d) =>
+              d.notification?.title &&
+              d.decision === "enforced" &&
+              d.action === "DROP",
+          ),
         );
         if (firstLoad.current) {
           firstLoad.current = false;
@@ -121,15 +150,8 @@ export function AgentNotificationFeed() {
       {/* Toast — transient pop-up for newest decision */}
       {toast?.notification && (
         <div className="fixed bottom-6 right-6 z-50 max-w-md animate-slide-in">
-          <div
-            className={`rounded-xl border-l-4 border border-tc-border p-4 shadow-2xl backdrop-blur-md ${SEVERITY_STYLES[toast.notification.severity].row}`}
-          >
+          <div className="rounded-xl border-l-4 border-l-red-500/70 border border-tc-border bg-tc-card p-4 shadow-2xl backdrop-blur-md">
             <div className="flex items-center gap-2 mb-1">
-              <span
-                className={`rounded border px-2 py-0.5 text-[10px] font-mono uppercase ${SEVERITY_STYLES[toast.notification.severity].badge}`}
-              >
-                {SEVERITY_STYLES[toast.notification.severity].label}
-              </span>
               <span className="text-xs font-mono text-tc-text-dim">
                 SID #{toast.alert_sid} · {fmtTime(toast.timestamp)}
               </span>
@@ -176,26 +198,14 @@ export function AgentNotificationFeed() {
               <ul className="divide-y divide-tc-border/40">
                 {items.map((d) => {
                   const isRejected = d.decision === "rejected";
-                  // Rejected rows: blue/violet styling regardless of notification severity.
-                  // They represent safety-gate blocks (L3/L4/L5), not enforcement actions.
-                  const sty = isRejected
-                    ? {
-                        row: "border-l-violet-500 bg-violet-950/15",
-                        badge: "bg-violet-900/60 text-violet-300 border-violet-700/50",
-                        label: "REJECTED",
-                      }
-                    : SEVERITY_STYLES[d.notification?.severity ?? "info"];
+                  // Feed shows only enforced DROPs in current filter — all rows
+                  // are uniform; severity badge dropped to keep the demo clean.
                   return (
                     <li
                       key={d.id}
-                      className={`flex flex-col gap-1 border-l-4 px-4 py-3 ${sty.row}`}
+                      className="flex flex-col gap-1 border-l-4 border-l-red-500/70 bg-tc-card px-4 py-3"
                     >
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span
-                          className={`rounded border px-2 py-0.5 text-[10px] font-mono uppercase ${sty.badge}`}
-                        >
-                          {sty.label}
-                        </span>
                         <span className="text-xs font-mono text-tc-text-dim">
                           {fmtTime(d.timestamp)}
                         </span>
