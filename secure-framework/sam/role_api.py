@@ -520,11 +520,17 @@ class RoleAPIHandler(BaseHTTPRequestHandler):
         clean = {k: v for k, v in rule_data.items() if v not in (None, "")}
 
         from nos_gnmi_pool import ip_to_leaf, DEFAULT_LEAF1
-        leaf_ip = ip_to_leaf(src_ip) if src_ip else None
-        if leaf_ip:
-            clients = [self.gnmi_pool.get_client_by_key(SonicRole.ADMIN, leaf_ip)]
+        # Baseline policy (source=sdnc) phải apply đồng đều mọi LEAF (defense-in-depth)
+        # Agent dynamic rule (source=agent) — route by src_ip tới leaf sở hữu zone đó
+        if clean.get("source") == "sdnc":
+            clients = [self.gnmi_pool.get_client_by_key(SonicRole.ADMIN, ip)
+                       for ip in self.gnmi_pool.leaves.values()]
         else:
-            clients = [self.gnmi_pool.get_any_client(SonicRole.ADMIN)]
+            leaf_ip = ip_to_leaf(src_ip) if src_ip else None
+            if leaf_ip:
+                clients = [self.gnmi_pool.get_client_by_key(SonicRole.ADMIN, leaf_ip)]
+            else:
+                clients = [self.gnmi_pool.get_any_client(SonicRole.ADMIN)]
         clients = [c for c in clients if c]
 
         if not clients:

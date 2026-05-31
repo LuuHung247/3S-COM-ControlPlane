@@ -27,10 +27,18 @@ from sam.role_policy import SonicRole, get_policy_engine, RolePolicyEngine, Cert
 
 
 ZONE_TO_LEAF: Dict[str, str] = {
-    "10.1.100.0/24": "192.168.122.20",
-    "10.1.200.0/24": "192.168.122.20",
-    "10.2.100.0/24": "192.168.122.21",
-    "10.2.50.0/24":  "192.168.122.21",
+    # LEAF-1 (V1): WEB + DB-OLTP
+    "10.1.100.0/24": "192.168.122.20",   # WEB
+    "10.1.200.0/24": "192.168.122.20",   # DB-OLTP
+    # LEAF-2 (V1): APP-CORE + MGT
+    "10.2.100.0/24": "192.168.122.21",   # APP-CORE
+    "10.2.50.0/24":  "192.168.122.21",   # MGT
+    # LEAF-3 (V2): APP-GW + DB-ANLT
+    "10.3.100.0/24": "192.168.122.22",   # APP-GW
+    "10.3.200.0/24": "192.168.122.22",   # DB-ANLT
+    # LEAF-4 (V2): WORKER + MON
+    "10.4.100.0/24": "192.168.122.23",   # WORKER
+    "10.4.200.0/24": "192.168.122.23",   # MON
 }
 
 _ZONE_NETWORKS = {
@@ -45,6 +53,8 @@ DEFAULT_LEAF2 = "192.168.122.21"
 LEAF_TLS_HOSTNAME: Dict[str, str] = {
     DEFAULT_LEAF1: "sonic-leaf-1",
     DEFAULT_LEAF2: "sonic-leaf-2",
+    "192.168.122.22": "sonic-leaf-3",   # V2 NEW
+    "192.168.122.23": "sonic-leaf-4",   # V2 NEW
 }
 
 

@@ -53,10 +53,16 @@ def main():
     )
 
     # ── Multi-LEAF gNMI targets (nos-acl-bridge endpoints) ─────────────────────
+    # V2 fabric — 4 LEAFs. LEAF-3/4 mới (APP-GW+DB-ANLT, WORKER+MON zones).
+    # Truyền '' để skip LEAF chưa deploy bridge / chưa gán mgmt IP.
     parser.add_argument('--leaf1-host', default='192.168.122.20',
                         help='SONIC-LEAF-1 IP (default: 192.168.122.20)')
     parser.add_argument('--leaf2-host', default='192.168.122.21',
                         help='SONIC-LEAF-2 IP (default: 192.168.122.21)')
+    parser.add_argument('--leaf3-host', default='',
+                        help='SONIC-LEAF-3 IP (V2 NEW; "" = skip until dataplane gán mgmt IP)')
+    parser.add_argument('--leaf4-host', default='',
+                        help='SONIC-LEAF-4 IP (V2 NEW; "" = skip until dataplane gán mgmt IP)')
     parser.add_argument('--gnmi-port', type=int, default=9339,
                         help='nos-acl-bridge gNMI port (default: 9339, IANA-registered). '
                              'Bridge runs on each LEAF, accepts mTLS-authenticated gNMI Set '
@@ -125,7 +131,13 @@ def main():
         sys.exit(1)
 
     # ── Multi-LEAF gNMI pool ────────────────────────────────────────────────────
+    # Chỉ thêm LEAF có IP non-empty (cho phép skip LEAF-3/4 khi chưa deploy).
     leaves = {"leaf-1": args.leaf1_host, "leaf-2": args.leaf2_host}
+    if args.leaf3_host:
+        leaves["leaf-3"] = args.leaf3_host
+    if args.leaf4_host:
+        leaves["leaf-4"] = args.leaf4_host
+    print(f"[SF] gNMI pool: {len(leaves)} LEAF(s) configured — {list(leaves.keys())}")
 
     cert_override = None
     if args.client_cert:
