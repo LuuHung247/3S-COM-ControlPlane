@@ -23,13 +23,13 @@ class TrafficPattern(BaseModel):
     name: str
     src_zone: str
     src_ip: str
-    dst_zone: str
-    dst_ip: str
-    dst_port: int
+    dst_zone: str = ""        # V2: optional — fan-out flows (scrape/audit) have no single dst
+    dst_ip: str = ""          # V2: optional — "" means many/rotating destinations
+    dst_port: int = 0         # V2: optional
     proto: str
     cadence: str                          # human description, e.g. "every 30s"
     expected_volume_per_hour: int
-    burst_anomaly_threshold: str          # what makes this pattern look anomalous
+    burst_anomaly_threshold: str = ""     # what makes this pattern look anomalous (V2: optional)
     production_description: str          # 2-3 sentences, production language
     criticality_to_business: FlowCriticality
     if_disrupted: str

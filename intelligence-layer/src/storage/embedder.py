@@ -11,6 +11,7 @@ Lifecycle:
 from __future__ import annotations
 
 import asyncio
+import os
 from functools import lru_cache
 from typing import Iterable
 
@@ -20,6 +21,9 @@ log = structlog.get_logger()
 
 EMBED_DIM: int = 384
 _MODEL_NAME: str = "BAAI/bge-small-en-v1.5"
+# Upper bound on how long a caller waits for a vector. Retrieval of past decisions is
+# optional context; it must never hold up a decision.
+EMBED_TIMEOUT_S: float = 3.0
 
 
 class _EmbedderSingleton:
@@ -36,7 +40,9 @@ class _EmbedderSingleton:
         if self._model is None:
             try:
                 from fastembed import TextEmbedding
-                self._model = TextEmbedding(model_name=_MODEL_NAME)
+                cache_dir = os.environ.get("FASTEMBED_CACHE_PATH")
+                self._model = (TextEmbedding(model_name=_MODEL_NAME, cache_dir=cache_dir)
+                               if cache_dir else TextEmbedding(model_name=_MODEL_NAME))
                 log.info("embedder_loaded", model=_MODEL_NAME, dim=EMBED_DIM)
             except Exception as exc:
                 log.warning("embedder_load_failed", error=str(exc))
@@ -67,12 +73,22 @@ class _EmbedderSingleton:
 # ─────────────────────────────────────────────────────────────────────────────
 # Public async API
 # ─────────────────────────────────────────────────────────────────────────────
-async def embed_text(text: str) -> list[float] | None:
-    """Run embedding in thread pool to avoid blocking the event loop."""
+async def embed_text(text: str, timeout_s: float = EMBED_TIMEOUT_S) -> list[float] | None:
+    """Run embedding in thread pool to avoid blocking the event loop. Returns None if
+    the vector is not ready within timeout_s (e.g. model still loading)."""
     if not text or not text.strip():
         return None
     embedder = _EmbedderSingleton.get()
-    return await asyncio.to_thread(embedder.embed_one, text)
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(embedder.embed_one, text), timeout_s)
+    except asyncio.TimeoutError:
+        log.warning("embed_timeout", timeout_s=timeout_s)
+        return None
+
+
+async def warm_up() -> None:
+    """Load the model off the event loop at startup so the first alert finds it ready."""
+    await asyncio.to_thread(_EmbedderSingleton.get()._ensure_loaded)
 
 
 def build_decision_text(

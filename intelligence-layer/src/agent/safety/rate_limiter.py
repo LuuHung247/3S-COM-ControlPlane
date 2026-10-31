@@ -27,10 +27,12 @@ class RateLimiter:
         self._total_count: int = 0
         self._per_ip: dict[str, deque[float]] = defaultdict(deque)
 
-    async def check_and_consume(self, src_ip: str) -> str | None:
+    async def check_and_consume(self, src_ip: str, active_rules: int | None = None) -> str | None:
         """
         Check all blast radius limits. Returns error string if any limit exceeded,
-        else consumes a slot and returns None.
+        else consumes a slot and returns None. `active_rules` is the number of agent
+        rules currently installed (TTL-tracked); when given it bounds the total cap,
+        otherwise the lifetime counter is used.
         """
         async with self._lock:
             now = time.monotonic()
@@ -51,9 +53,10 @@ class RateLimiter:
                     f"L5: Rate limit exceeded — {len(self._minute_window)} rules "
                     f"pushed in last 60s (max={self._max_per_minute})"
                 )
-            if self._total_count >= self._max_total:
+            current = self._total_count if active_rules is None else active_rules
+            if current >= self._max_total:
                 return (
-                    f"L5: Total agent rule cap reached — {self._total_count} "
+                    f"L5: Active agent rule cap reached — {current} "
                     f"(max={self._max_total}). Manual review required."
                 )
             if len(self._per_ip[bare_ip]) >= self._max_per_ip:

@@ -280,6 +280,11 @@ class PostgresStore:
         """
         if self._engine is None:
             return
+        # Suppressed duplicates (flow already blocked by an active rule) are not real
+        # decisions — skip persistence so they don't clutter FE history or pollute the
+        # past-incident retrieval (DecisionRecord). They remain in structured logs.
+        if data.get("outcome") == "suppressed":
+            return
         common_fields = dict(
             id=data["id"],
             alert_sid=data["alert_sid"],

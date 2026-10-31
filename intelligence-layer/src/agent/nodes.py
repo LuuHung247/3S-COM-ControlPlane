@@ -21,6 +21,7 @@ from .tools import (
     POLICY_DECISION_SCHEMA,
     REASONING_TRACE_SCHEMA,
     execute_get_alert_history,
+    fetch_recent_alerts_all,
     prefetch_investigation_context,
 )
 from .response_cache import ResponseCache, rebind_cached_intent
@@ -62,6 +63,11 @@ async def node_classify_alert(
     src_zone = ip_to_zone(alert.src_ip)
     system = build_system_prompt(state.get("context_snapshot", ""))
     user = build_classify_prompt(alert, src_zone)
+    try:
+        from ..core import evidence
+        user += "\n" + evidence.render_for_alert(alert.raw)
+    except Exception as exc:
+        log.warning("classify_evidence_failed", error=str(exc))
 
     # L1+ prompt-injection scan on attacker-controllable fields. Pure logging here —
     # build_*_prompt already sanitizes before LLM sees the text.
@@ -114,7 +120,7 @@ async def node_gather_context(
     import asyncio
 
     alert: SuricataAlert = state["alert"]
-    await redis.push_alert_history(alert.src_ip, alert.raw)
+    # alert history is pushed in DecisionAgent.run before classification
 
     # Run all data fetches in parallel — operational memory + investigation tools + reputation
     history_task = execute_get_alert_history(redis, alert.src_ip, limit=10)
@@ -165,11 +171,38 @@ async def node_gather_context(
         reputation=reputation,
     )
 
+    # Multi-hop graph analytics (containment collateral, attack paths, pivot chain).
+    # Deterministic and read-only: informs the decision, never authorizes it.
+    recent_all: list[dict] = []
+    graph_signals: dict | None = None
+    try:
+        from ..core import graph_analytics
+        recent_all = await fetch_recent_alerts_all(redis)
+        alert_context += "\n\n" + graph_analytics.render_for_alert(
+            alert.src_ip, alert.dest_ip, alert.dest_port, recent_all,
+        )
+        graph_signals = graph_analytics.escalation_signals(
+            alert.src_ip, alert.dest_ip, alert.dest_port, recent_all)
+        log.info("graph_escalation_signals", src_ip=alert.src_ip, dst_ip=alert.dest_ip,
+                 dst_port=alert.dest_port, sid=alert.sid, n_recent=len(recent_all),
+                 **graph_signals)
+    except Exception as exc:
+        log.warning("graph_analytics_failed", error=str(exc))
+
+    # Observed IDS evidence: ruleset metadata, flow volume vs baseline B, and sanitized
+    # application-layer fields (HTTP/DNS/TLS/payload) as untrusted data.
+    try:
+        from ..core import evidence
+        alert_context += "\n\n" + evidence.render_for_alert(alert.raw, recent_all)
+    except Exception as exc:
+        log.warning("evidence_render_failed", error=str(exc))
+
     return {
         "alert_history": history.get("history", []),
         "ip_summary": ip_summary,
         "correlation": correlation,
         "alert_context": alert_context,
+        "graph_signals": graph_signals,
         "reputation": reputation.to_dict() if isinstance(reputation, AssetReputation) else None,
     }
 
@@ -182,6 +215,24 @@ async def node_check_response_cache(
     On hit: rebind src_ip to current alert and skip LLM call. On miss: continue.
     """
     alert: SuricataAlert = state["alert"]
+
+    # Flow-level idempotency: if a DROP is already active for this flow (any SID,
+    # any correlation state), suppress this duplicate BEFORE the LLM — no re-reason,
+    # no re-enforce. This collapses defense-in-depth multi-SID bursts + sustained
+    # attacks into one reasoned decision; repeats become cheap log-only suppressions.
+    active_rule = await response_cache.active_block_for_alert(
+        alert.src_ip, alert.dest_ip or "", alert.dest_port or 0
+    )
+    if active_rule:
+        log.info("alert_suppressed_active_rule", sid=alert.sid, src_ip=alert.src_ip,
+                 dst_ip=alert.dest_ip, dst_port=alert.dest_port, marker=active_rule)
+        return {
+            "outcome": DecisionOutcome.SUPPRESSED,
+            "intent": None,
+            "rejection_reason": f"duplicate suppressed — flow already covered by active agent rule ({active_rule.split(':')[-1]})",
+            "safety_checks": {"dedup": {"suppressed": True, "active_marker": active_rule}},
+        }
+
     correlation = state.get("correlation") or {}
     correlation_signal = correlation.get("kill_chain_signal", "")
 
@@ -383,6 +434,53 @@ async def node_reason_and_decide(
 #   node_collect_reasoning — Call 2, fail-tolerant, audit metadata only
 # ─────────────────────────────────────────────────────────────────────────────
 
+_SCOPE_RANK = {"flow": 0, "pair": 1, "host": 2}
+_SCOPE_REVIEW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "containment_scope": {"type": "string", "enum": ["flow", "pair", "host"]},
+        "rationale": {"type": "string"},
+    },
+    "required": ["containment_scope", "rationale"],
+}
+
+
+def _signal_scope(sig: dict | None) -> str:
+    if not sig:
+        return "flow"
+    spreading = sig.get("pivot") == "yes" or int(sig.get("distinct_targets") or 0) >= 2
+    if spreading and sig.get("crown_jewel_path_open_under_flow_scope") == "yes":
+        return "host"
+    return "pair" if int(sig.get("ports_on_this_target") or 0) >= 2 else "flow"
+
+
+async def _review_scope(llm: LLMClient, alert: SuricataAlert, state: AgentState,
+                        chosen: str, suggested: str) -> dict | None:
+    from ..core import graph_analytics
+    opts = graph_analytics.containment_options(alert.src_ip, alert.dest_ip, alert.dest_port)
+    collateral = "; ".join(
+        f"{o['scope']}: cuts {o['n_cut']} legit flows (max {o['max_cut_criticality']}), "
+        f"crown jewels still reachable: {', '.join(o['crown_jewels_still_reachable']) or 'none'}"
+        for o in opts)
+    prompt = (
+        f"You chose containment_scope={chosen} for a DROP against {alert.src_ip}.\n"
+        f"Graph escalation signals: {state.get('graph_signals')}\n"
+        f"Collateral per scope: {collateral}\n"
+        "Scope policy: host when the source is spreading (pivot=yes or distinct_targets>=2) and a "
+        "crown-jewel path stays open under flow scope; pair when several ports on one target are "
+        f"probed; flow for a single violation. The signals point to {suggested}.\n"
+        "Reconsider once. Keep your choice only if the evidence above justifies it; otherwise "
+        "switch. The target stays the alert source either way. Answer with containment_scope "
+        "and a one-sentence rationale."
+    )
+    try:
+        return await llm.chat_json(messages=[{"role": "user", "content": prompt}],
+                                   schema=_SCOPE_REVIEW_SCHEMA)
+    except Exception as exc:
+        log.warning("scope_review_failed", error=str(exc)[:140])
+        return None
+
+
 async def node_decide_policy(
     state: AgentState,
     primary_llm: LLMClient,
@@ -431,9 +529,19 @@ async def node_decide_policy(
             res = await execute_get_alert_history(redis, src_ip, limit=limit)
             return str(res)
 
+        def _containment_handler(src_ip: str, dst_ip: str = "", dst_port: int = 0) -> str:
+            from ..core import graph_analytics
+            return str(graph_analytics.containment_options(src_ip, dst_ip, int(dst_port or 0)))
+
+        def _paths_handler(src_ip: str) -> str:
+            from ..core import graph_analytics
+            return str(graph_analytics.attack_surface(src_ip))
+
         tool_handlers = {
             "query_kg": _kg_handler,
             "get_alert_history": _history_handler,
+            "graph_containment_options": _containment_handler,
+            "graph_attack_paths": _paths_handler,
         }
         try:
             result = await primary_llm.chat_react(
@@ -488,12 +596,32 @@ async def node_decide_policy(
         severity=notif_severity,
     )
 
+    # Scope self-review: when the graph signals point to a broader scope than the one
+    # chosen, the model reconsiders once with the signals and collateral side by side.
+    scope = (result.get("containment_scope") or "flow").lower()
+    scope_review = None
+    if action == PolicyAction.DROP:
+        suggested = _signal_scope(state.get("graph_signals"))
+        if _SCOPE_RANK.get(suggested, 0) > _SCOPE_RANK.get(scope, 0):
+            scope_review = await _review_scope(primary_llm, alert, state, scope, suggested)
+            if scope_review and scope_review.get("containment_scope") in _SCOPE_RANK:
+                result["containment_scope"] = scope_review["containment_scope"]
+
+    # Map the explicit containment scope onto the rule tuple deterministically.
+    scope = (result.get("containment_scope") or "flow").lower()
+    dst_ip = result.get("dst_ip", "") or ""
+    dst_port = int(result.get("dst_port", 0) or 0)
+    if scope == "host":
+        dst_ip, dst_port = "", 0
+    elif scope == "pair":
+        dst_ip, dst_port = dst_ip or f"{alert.dest_ip}/32", 0
+
     try:
         intent = PolicyIntent(
             action=action,
             src_ip=result.get("src_ip", alert.src_ip),
-            dst_ip=result.get("dst_ip", ""),
-            dst_port=int(result.get("dst_port", 0)),
+            dst_ip=dst_ip,
+            dst_port=dst_port,
             protocol=result.get("protocol", "tcp"),
             priority=int(result.get("priority", 50)),
             ttl_seconds=int(result.get("ttl_seconds", 3600)),
@@ -517,7 +645,8 @@ async def node_decide_policy(
             "safety_checks": {"schema_error": str(exc)},
         }
 
-    return {"intent": intent, "safety_checks": {}}
+    return {"intent": intent,
+            "safety_checks": {"scope_review": scope_review} if scope_review else {}}
 
 
 async def node_collect_reasoning(
@@ -624,8 +753,23 @@ async def node_collect_reasoning(
     else:
         rollback = RollbackPlan()
 
+    # Deterministic graph facts head the audit trace so the root cause and chosen scope
+    # are recorded verbatim, independent of how the model paraphrases them.
+    steps = list(result.get("reasoning_steps", []) or [])
+    sig = state.get("graph_signals") or {}
+    if sig.get("pivot") == "yes":
+        steps.insert(0, f"[graph] Pivot detected: {alert.src_ip} was previously targeted; "
+                        f"upstream root-cause source {sig.get('root_cause')}.")
+    if intent.action.value == "DROP":
+        scope = ("host" if not (intent.dst_ip or "").split("/")[0]
+                 else "pair" if not intent.dst_port else "flow")
+        steps.insert(0, f"[graph] Containment scope: {scope} "
+                        f"(distinct_targets={sig.get('distinct_targets')}, "
+                        f"ports_on_this_target={sig.get('ports_on_this_target')}, "
+                        f"crown_jewel_path_open_under_flow_scope={sig.get('crown_jewel_path_open_under_flow_scope')}).")
+
     # Patch the existing intent with reasoning fields (mutate in place)
-    object.__setattr__(intent, "reasoning_steps", result.get("reasoning_steps", []) or [])
+    object.__setattr__(intent, "reasoning_steps", steps)
     object.__setattr__(intent, "hypotheses", hypotheses)
     object.__setattr__(intent, "primary_hypothesis", result.get("primary_hypothesis", ""))
     object.__setattr__(intent, "alternative_actions", alternatives)
@@ -637,9 +781,15 @@ async def node_collect_reasoning(
     return {"reasoning_complete": True, "intent": intent}
 
 
+SEMANTIC_OVERRIDE_RATE_KEY = "agent:semantic_override:count"
+SEMANTIC_OVERRIDE_MAX_PER_WINDOW = 5
+SEMANTIC_OVERRIDE_WINDOW_S = 300
+
+
 async def node_validate_decision(
     state: AgentState,
     settings,
+    redis: "RedisStore | None" = None,
 ) -> dict:
     intent: PolicyIntent | None = state.get("intent")
     if intent is None:
@@ -655,6 +805,9 @@ async def node_validate_decision(
         ttl_min=settings.safety_ttl_min_seconds,
         ttl_max=settings.safety_ttl_max_seconds,
         alert_src_ip=alert.src_ip,
+        alert_dst_ip=alert.dest_ip,
+        alert_severity=alert.severity,
+        alert_initiator_ip=str((alert.raw.get("flow") or {}).get("src_ip") or ""),
     )
     safety_checks["validators"] = {
         "errors": val_result.errors,
@@ -668,6 +821,26 @@ async def node_validate_decision(
             "rejection_reason": "; ".join(val_result.errors),
             "safety_checks": safety_checks,
         }
+
+    # Semantic overrides of permitted paths are budgeted: fail closed when the
+    # window budget is spent or the counter is unavailable.
+    if val_result.semantic_override:
+        safety_checks["semantic_override"] = True
+        used = None
+        if redis is not None:
+            try:
+                used = await redis.client.incr(SEMANTIC_OVERRIDE_RATE_KEY)
+                if used == 1:
+                    await redis.client.expire(SEMANTIC_OVERRIDE_RATE_KEY, SEMANTIC_OVERRIDE_WINDOW_S)
+            except Exception:
+                used = None
+        if used is None or used > SEMANTIC_OVERRIDE_MAX_PER_WINDOW:
+            return {
+                "outcome": DecisionOutcome.REJECTED,
+                "intent": intent,
+                "rejection_reason": "L3-SO: semantic override budget exhausted or unavailable",
+                "safety_checks": safety_checks,
+            }
 
     # L7: Confidence gate
     conf_outcome, conf_reason = evaluate_confidence(

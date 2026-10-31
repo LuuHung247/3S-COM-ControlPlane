@@ -27,6 +27,13 @@ _CACHE_KEY_PREFIX = "agent:resp_cache:"
 _STATS_HITS = "agent:resp_cache:stats:hits"
 _STATS_MISSES = "agent:resp_cache:stats:misses"
 
+# Flow-level idempotency markers. Set when a DROP is enforced; checked BEFORE the
+# LLM so repeat alerts for an already-blocked flow are suppressed (no re-reason,
+# no re-enforce) until the rule's TTL expires. Decoupled from the response-cache
+# key (which is per-SID + per-correlation, so it cannot dedup defense-in-depth
+# multi-SID alerts for the same flow).
+_ENF_PREFIX = "agent:enf:"
+
 
 class ResponseCache:
     """Redis-backed cache for PolicyIntent decisions, keyed by decision-relevant features."""
@@ -105,6 +112,60 @@ class ResponseCache:
             await self._redis.client.set(key, payload, ex=self._ttl)
         except Exception as exc:
             log.warning("response_cache_set_failed", error=str(exc))
+
+    # ── Flow-level idempotency (separate from the per-SID response cache) ──────
+    @staticmethod
+    def _enf_keys_for(src_ip: str, dst_ip: str, dst_port: int) -> tuple[str, str]:
+        """Return (full_source_key, targeted_flow_key) for a bare-stripped flow.
+
+        full_source_key   — set when the agent blocks the whole source (dst/port any)
+        targeted_flow_key  — set for a specific (src,dst,port) block
+        """
+        s = (src_ip or "").split("/")[0]
+        d = (dst_ip or "").split("/")[0]
+        return (f"{_ENF_PREFIX}full:{s}", f"{_ENF_PREFIX}flow:{s}|{d}|{dst_port}")
+
+    async def mark_flow_enforced(self, intent: PolicyIntent) -> None:
+        """Record that a DROP is now active for this flow, with TTL = the rule's TTL.
+        A full-source block (no dst / port 0) also covers every targeted flow from
+        that source, so it is recorded under the full-source key."""
+        if not self._enabled:
+            return
+        full_key, flow_key = self._enf_keys_for(intent.src_ip, intent.dst_ip, intent.dst_port)
+        ttl = max(int(getattr(intent, "ttl_seconds", 0) or 0), 60)
+        key = full_key if (not (intent.dst_ip or "").split("/")[0] or not intent.dst_port) else flow_key
+        try:
+            await self._redis.client.set(key, "1", ex=ttl)
+        except Exception as exc:
+            log.warning("mark_flow_enforced_failed", error=str(exc))
+
+    async def active_block_for_alert(self, src_ip: str, dst_ip: str, dst_port: int) -> str | None:
+        """If an active agent DROP already covers this alert's flow, return the marker
+        key; else None. Checks full-source block first, then the targeted flow."""
+        if not self._enabled:
+            return None
+        full_key, flow_key = self._enf_keys_for(src_ip, dst_ip, dst_port)
+        try:
+            for key in (full_key, flow_key):
+                if await self._redis.client.exists(key):
+                    return key
+        except Exception as exc:
+            log.warning("active_block_check_failed", error=str(exc))
+        return None
+
+    async def clear_flow_markers(self) -> int:
+        """Delete all flow-level idempotency markers. Used by /admin/reset so each
+        controlled eval case is decided on its own merits (no cross-case suppression)."""
+        if not self._enabled:
+            return 0
+        removed = 0
+        try:
+            async for key in self._redis.client.scan_iter(match=f"{_ENF_PREFIX}*"):
+                await self._redis.client.delete(key)
+                removed += 1
+        except Exception as exc:
+            log.warning("clear_flow_markers_failed", error=str(exc))
+        return removed
 
     async def stats(self) -> dict[str, int]:
         try:

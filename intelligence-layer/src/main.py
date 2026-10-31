@@ -199,6 +199,11 @@ async def lifespan(app: FastAPI):
         enabled=settings.response_cache_enabled,
     )
 
+    # Compiled response policy: loaded and re-verified in the background; the agent uses
+    # it only once it is active, so startup never waits on verification.
+    from .compiler.fast_path import CompiledPolicy
+    compiled_policy = CompiledPolicy()
+
     # Decision agent
     agent = DecisionAgent(
         knowledge=knowledge,
@@ -215,6 +220,7 @@ async def lifespan(app: FastAPI):
         settings=settings,
         dry_run=settings.agent_dry_run,
         neo4j_driver=neo4j_kg.driver if neo4j_kg is not None else None,
+        compiled_policy=compiled_policy,
     )
 
     # Alert gate (pre-LLM filters)
@@ -227,6 +233,7 @@ async def lifespan(app: FastAPI):
     # Wire into app state
     app.state.settings = settings
     app.state.agent = agent
+    app.state.compiled_policy = compiled_policy
     app.state.gate = gate
     app.state.redis = redis
     app.state.postgres = postgres
@@ -341,11 +348,25 @@ async def lifespan(app: FastAPI):
                 log.warning("events_prune_error", error=str(exc))
     prune_task = _asyncio.create_task(_prune_events_loop())
 
+    from .enforcement import ttl_sweeper
+    ttl_task = _asyncio.create_task(
+        ttl_sweeper.run(redis, enforcement_backend, settings.ids_agent_url))
+
+    from .storage.embedder import warm_up as _embed_warm_up
+    app.state._embed_warm_task = _asyncio.create_task(_embed_warm_up())
+
+    if settings.compiled_policy_enabled:
+        import os as _os
+        compiled_task = _asyncio.create_task(compiled_policy.load(
+            settings.compiled_policy_path, _os.environ.get("ZT_KNOWLEDGE_DIR", "knowledge_v2")))
+        app.state._compiled_load_task = compiled_task
+
     log.info("intelligence_layer_ready", ids_agent=settings.ids_agent_url)
 
     yield
 
     # Shutdown
+    ttl_task.cancel()
     prune_task.cancel()
     try:
         await prune_task

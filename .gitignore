@@ -41,3 +41,8 @@ Thumbs.db
 
 # Docker volumes
 *.log
+
+# Local backups (may hold secrets, e.g. .env.bak.*)
+*.bak
+*.bak.*
+.env.bak*

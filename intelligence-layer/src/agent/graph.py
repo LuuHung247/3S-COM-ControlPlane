@@ -30,6 +30,9 @@ from ..observability.langfuse_tracer import LangfuseTracer
 
 log = structlog.get_logger()
 
+REPEAT_KEY_PREFIX = "agent:benign_repeat:"
+REPEAT_WINDOW_S = 600
+
 
 class DecisionAgent:
     """
@@ -53,6 +56,7 @@ class DecisionAgent:
         settings,
         dry_run: bool = True,
         neo4j_driver=None,  # Optional — when set, Stage 1 uses ReAct with query_kg tool
+        compiled_policy=None,  # Optional CompiledPolicy — answers covered alerts without a model call
     ) -> None:
         self._knowledge = knowledge
         self._fast_llm = fast_llm
@@ -68,8 +72,86 @@ class DecisionAgent:
         self._settings = settings
         self._dry_run = dry_run
         self._neo4j_driver = neo4j_driver
+        self._compiled = compiled_policy
 
     async def process(self, alert: SuricataAlert) -> PolicyDecision:
+        """Cost gates before any LLM call, then the full pipeline.
+
+        - source outside every fabric zone (e.g. IPv6 link-local, external): the agent can
+          never enforce against it (validator L3), so it is logged without an LLM call;
+        - a non-P1 (src, sid) pair judged benign within the last REPEAT_WINDOW_S reuses that
+          verdict; P1 alerts are always reasoned.
+        """
+        t0 = time.monotonic()
+        if ip_to_zone(alert.src_ip) is None:
+            return self._finalize({"alert": alert, "outcome": DecisionOutcome.BENIGN,
+                                   "rejection_reason": "source outside fabric zones — logged, no LLM call"},
+                                  alert, t0)
+        repeat_key = f"{REPEAT_KEY_PREFIX}{alert.src_ip}:{alert.sid}"
+        try:
+            if alert.severity >= 2 and await self._redis.client.exists(repeat_key):
+                return self._finalize({"alert": alert, "outcome": DecisionOutcome.BENIGN,
+                                       "rejection_reason": "repeat of a recent benign verdict for this (src, sid) — no LLM call"},
+                                      alert, t0)
+        except Exception as exc:
+            log.warning("repeat_gate_failed", error=str(exc))
+        if self._compiled is not None and self._compiled.active:
+            decision = await self._process_compiled(alert)
+            if decision is not None:
+                return decision
+        decision = await self._process(alert)
+        if decision.outcome == DecisionOutcome.BENIGN and alert.severity >= 2:
+            try:
+                await self._redis.client.set(repeat_key, "1", ex=REPEAT_WINDOW_S)
+            except Exception as exc:
+                log.warning("repeat_mark_failed", error=str(exc))
+        return decision
+
+    async def _process_compiled(self, alert: SuricataAlert) -> PolicyDecision | None:
+        """Answer the alert from the compiled program. Returns None when the program
+        abstains or anything needed for a compiled decision is unavailable, in which case
+        the caller runs the full runtime pipeline: the fast path can only fall back, never
+        fail the alert."""
+        t0 = time.monotonic()
+        try:
+            history = await self._redis.get_alert_history(alert.src_ip)
+            out, feats = self._compiled.decide(alert, history)
+        except Exception as exc:
+            log.warning("compiled_policy_unavailable", error=str(exc)[:200])
+            return None
+        if out.action == "abstain":
+            return None
+        intent = self._compiled.intent_for(alert, out, feats)
+        state: AgentState = {
+            "alert": alert, "intent": intent,
+            "safety_checks": {"compiled_policy": {"rule": out.rule_id, "kb_digest": self._compiled.kb_digest,
+                                                  "scope": out.scope if out.action == "DROP" else "none"}},
+        }
+        try:
+            await self._redis.push_alert_history(alert.src_ip, alert.raw)
+        except Exception as exc:
+            log.warning("alert_history_push_failed", error=str(exc)[:200])
+        try:
+            if intent.action == PolicyAction.LOG_ONLY:
+                state["outcome"] = DecisionOutcome.BENIGN
+                state["rejection_reason"] = f"compiled policy {out.rule_id}: log_only"
+                return self._finalize(state, alert, t0)
+            if await self._response_cache.active_block_for_alert(alert.src_ip, alert.dest_ip,
+                                                                 int(alert.dest_port or 0)):
+                state["outcome"] = DecisionOutcome.SUPPRESSED
+                state["rejection_reason"] = "flow already covered by an active agent rule"
+                return self._finalize(state, alert, t0)
+            state.update(await node_validate_decision(state, self._settings, self._redis))
+            if state.get("outcome") in (DecisionOutcome.REJECTED, DecisionOutcome.HELD):
+                return self._finalize(state, alert, t0)
+            await self._enforce(state)
+        except Exception as exc:
+            log.error("compiled_pipeline_error", error=str(exc), sid=alert.sid)
+            state["outcome"] = DecisionOutcome.ERROR
+            state["rejection_reason"] = str(exc)
+        return self._finalize(state, alert, t0)
+
+    async def _process(self, alert: SuricataAlert) -> PolicyDecision:
         t0 = time.monotonic()
         state: AgentState = {"alert": alert}
 
@@ -99,11 +181,20 @@ class DecisionAgent:
                 state.update(patch)
                 sp.update(metadata={"prompt_tokens_estimate": len(state.get("context_snapshot", "")) // 4})
 
+            # Record every alert reaching the agent (incl. ones the classifier will
+            # deem benign) so graph pivot / fan-out analysis sees the full sequence.
+            await self._redis.push_alert_history(alert.src_ip, alert.raw)
+
             # ── Node 2: classify ─────────────────────────────────────────
             with self._tracer.span(trace, "classify_alert"):
                 patch = await node_classify_alert(state, self._fast_llm)
                 state.update(patch)
 
+            # The fast classifier may only short-circuit non-critical alerts: a P1 alert
+            # always receives full contextual reasoning.
+            if state.get("classification") == "benign" and alert.severity <= 1:
+                log.info("classifier_benign_ignored_for_p1", sid=alert.sid, src_ip=alert.src_ip)
+                state["classification"] = "suspicious"
             if state.get("classification") == "benign":
                 patch = await node_log_and_end(state)
                 state.update(patch)
@@ -126,7 +217,15 @@ class DecisionAgent:
             with self._tracer.span(trace, "cache_lookup") as sp:
                 patch = await node_check_response_cache(state, self._response_cache)
                 state.update(patch)
-                sp.update(metadata={"cache_hit": bool(state.get("cache_hit"))})
+                sp.update(metadata={
+                    "cache_hit": bool(state.get("cache_hit")),
+                    "suppressed": state.get("outcome") == DecisionOutcome.SUPPRESSED,
+                })
+
+            # Flow-level idempotency short-circuit: this alert's flow is already
+            # covered by an active agent rule → suppressed, no LLM, no re-enforce.
+            if state.get("outcome") == DecisionOutcome.SUPPRESSED:
+                return self._finalize(state, alert, t0)
 
             # ── Node 4 (V3): policy decision — Stage 1, BLOCKING ─────────
             # Cerebras-friendly schema (9 scalar fields, 0 arrays). Reasoning
@@ -145,7 +244,7 @@ class DecisionAgent:
 
             # ── Node 5: validate ─────────────────────────────────────────
             with self._tracer.span(trace, "validate_decision") as sp:
-                patch = await node_validate_decision(state, self._settings)
+                patch = await node_validate_decision(state, self._settings, self._redis)
                 state.update(patch)
                 val = (state.get("safety_checks") or {}).get("validators", {})
                 sp.update(metadata={
@@ -153,7 +252,23 @@ class DecisionAgent:
                     "warnings": val.get("warnings", []),
                 })
 
-            if state.get("outcome") in (DecisionOutcome.REJECTED, DecisionOutcome.HELD, DecisionOutcome.BENIGN):
+            if state.get("outcome") in (DecisionOutcome.REJECTED, DecisionOutcome.HELD):
+                return self._finalize(state, alert, t0)
+
+            # log_only is a genuine reasoned decision (BENIGN outcome + a real
+            # intent, action=log_only). It does NOT enforce, but it SHOULD carry the
+            # same reasoning trace as an enforced decision — the "why NOT block" audit
+            # is the core evidence for FP-control / legitimate-traffic scenarios.
+            # (Classified-benign alerts have intent=None and need no trace.)
+            if state.get("outcome") == DecisionOutcome.BENIGN:
+                intent = state.get("intent")
+                if intent is not None and not state.get("cache_hit"):
+                    with self._tracer.span(trace, "reasoning_trace_log_only"):
+                        patch = await node_collect_reasoning(
+                            state, self._primary_llm, self._settings
+                        )
+                        if patch:
+                            state.update(patch)
                 return self._finalize(state, alert, t0)
 
             # ── Node 6 (V3): PARALLEL FORK — enforce + reasoning trace ──
@@ -205,7 +320,12 @@ class DecisionAgent:
             return
 
         # L5: Rate limiter
-        rl_error = await self._rate_limiter.check_and_consume(intent.src_ip)
+        try:
+            from ..enforcement.ttl_sweeper import EXPIRY_KEY
+            active_rules = await self._redis.client.zcard(EXPIRY_KEY)
+        except Exception:
+            active_rules = None
+        rl_error = await self._rate_limiter.check_and_consume(intent.src_ip, active_rules=active_rules)
         if rl_error:
             state["outcome"] = DecisionOutcome.REJECTED
             state["rejection_reason"] = rl_error
@@ -222,6 +342,12 @@ class DecisionAgent:
                 confidence=intent.confidence,
             )
             state["outcome"] = DecisionOutcome.DRY_RUN
+            # Mark the flow so repeat alerts are suppressed even in dry-run mode
+            # (keeps dedup behaviour consistent for experiments running dry).
+            try:
+                await self._response_cache.mark_flow_enforced(intent)
+            except Exception as exc:
+                log.warning("mark_flow_enforced_failed", error=str(exc))
             return
 
         # Live enforcement
@@ -231,6 +357,20 @@ class DecisionAgent:
                 await self._circuit_breaker.record_success()
                 state["outcome"] = DecisionOutcome.ENFORCED
                 safety_checks["enforcement"] = {"backend": result.backend, "rule_id": result.rule_id}
+                # Agent owns rule lifetime: schedule revocation at TTL expiry.
+                try:
+                    from ..enforcement import ttl_sweeper
+                    await ttl_sweeper.record(self._redis, result.rule_id or intent.rule_id,
+                                             intent.ttl_seconds)
+                except Exception as exc:
+                    log.warning("ttl_record_failed", error=str(exc))
+                # Flow-level idempotency: mark this flow as actively blocked so repeat
+                # alerts (other defense-in-depth SIDs, sustained traffic) are suppressed
+                # before the LLM until the rule's TTL expires.
+                try:
+                    await self._response_cache.mark_flow_enforced(intent)
+                except Exception as exc:
+                    log.warning("mark_flow_enforced_failed", error=str(exc))
                 # Cache the enforced template for fast reuse on identical-shape alerts.
                 # Only cache on successful enforcement (post all safety layers + LEAF apply).
                 # Skip caching if this decision itself came from cache (avoid double-stale).

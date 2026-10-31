@@ -187,6 +187,28 @@ class KnowledgeLoader:
         """
         parts = ["## ALERT-SPECIFIC CONTEXT\n"]
 
+        # Policy-matrix verdict for this zone pair — the static ZT contract (a 1-hop
+        # graph edge). Surfaced up-front so the agent reasons against the explicit
+        # ALLOW/DENY rather than inferring intent from the destination's role (e.g.
+        # not mis-reading a DENY flow toward MON/MGT as "benign telemetry/admin").
+        try:
+            from .topology import ip_to_zone as _ip_to_zone
+            from . import policy as _policy
+            _sz = _ip_to_zone(src_ip)
+            _dz = _ip_to_zone(dst_ip) if dst_ip else None
+            if _sz and _dz:
+                _verdict = _policy.check_policy(_sz, _dz)
+                _note = ("flow is permitted by the matrix — a DROP here declares a behavioural "
+                         "override (system degraded)" if _verdict == "ALLOW"
+                         else "this flow should NOT exist per the matrix — its presence is itself "
+                              "a policy violation signal")
+                parts.append(
+                    f"### Policy-matrix verdict: {_sz} → {_dz} = **{_verdict}**\n"
+                    f"- {_note}."
+                )
+        except Exception:
+            pass
+
         # Source asset profile
         src_asset = system_model.get_asset(src_ip)
         if src_asset:

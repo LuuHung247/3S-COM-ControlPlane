@@ -114,6 +114,8 @@ class DecisionOutcome(str, Enum):
     HELD = "held"
     BENIGN = "benign"
     ERROR = "error"
+    SUPPRESSED = "suppressed"   # duplicate alert for a flow already covered by an active agent rule
+                                # — short-circuited before the LLM (no re-reason, no re-enforce)
 
 
 class PolicyDecision(BaseModel):

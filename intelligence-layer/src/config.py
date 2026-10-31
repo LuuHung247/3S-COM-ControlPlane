@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     llm_primary_model: str = "zai-glm-4.7"
     llm_primary_temperature: float = 0.1
     llm_primary_max_tokens: int = 2048
+    llm_primary_reasoning_effort: str = ""   # gpt-oss: low|medium|high ('' = do not send)
 
     # LLM Fast
     llm_fast_provider: str = "openai_compat"
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
     llm_fast_model: str = "llama3.1-8b"
     llm_fast_temperature: float = 0.0
     llm_fast_max_tokens: int = 512
+    llm_fast_reasoning_effort: str = ""
 
     llm_timeout_seconds: int = 10
 
@@ -78,6 +80,11 @@ class Settings(BaseSettings):
 
     # Observability
     log_level: str = "INFO"
+
+    # Compiled response policy (src/compiler). Off by default; when enabled the program
+    # answers covered alerts before any model call and abstentions use the full pipeline.
+    compiled_policy_enabled: bool = False
+    compiled_policy_path: str = "compiled/policy.json"
 
     @property
     def filter_whitelist_ip_list(self) -> list[str]:

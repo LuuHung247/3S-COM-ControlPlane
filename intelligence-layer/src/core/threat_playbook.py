@@ -21,9 +21,9 @@ class SidDetection(BaseModel):
     mitre_technique: str
     detection_logic: str              # match criteria, threshold
     uses_flags_s_workaround: bool = False  # asymmetric capture caveat
-    recommended_response: str         # "DROP src_ip" | "log_only" | "escalate"
-    default_ttl_seconds: int          # 0 = log_only
-    false_positive_likelihood: str    # "low" | "medium" | "high"
+    recommended_response: str = ""    # "DROP src_ip" | "log_only" | "escalate" (V2: optional)
+    default_ttl_seconds: int = 0      # 0 = log_only (V2: optional, defaults log_only)
+    false_positive_likelihood: str = ""  # "low" | "medium" | "high" (V2: optional)
     false_positive_scenarios: list[str] = []
     kg_pattern_id: str = ""           # link to threat-patterns.md entry
 
@@ -33,7 +33,7 @@ class KillChainStage(BaseModel):
     tactic: str
     expected_signals: list[int]       # SIDs
     production_indicators: str
-    false_positive_sources: list[str]
+    false_positive_sources: list[str] = []  # V2: optional
 
 
 class KillChain(BaseModel):

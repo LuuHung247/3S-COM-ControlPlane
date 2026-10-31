@@ -14,6 +14,7 @@ def get_llm_client(role: Literal["primary", "fast"], settings: Settings) -> LLMC
         model = settings.llm_primary_model
         temperature = settings.llm_primary_temperature
         max_tokens = settings.llm_primary_max_tokens
+        reasoning_effort = settings.llm_primary_reasoning_effort
     else:
         provider = settings.llm_fast_provider
         api_key = settings.llm_fast_api_key
@@ -21,6 +22,7 @@ def get_llm_client(role: Literal["primary", "fast"], settings: Settings) -> LLMC
         model = settings.llm_fast_model
         temperature = settings.llm_fast_temperature
         max_tokens = settings.llm_fast_max_tokens
+        reasoning_effort = settings.llm_fast_reasoning_effort
 
     if provider == "openai_compat":
         return OpenAICompatibleClient(
@@ -30,6 +32,7 @@ def get_llm_client(role: Literal["primary", "fast"], settings: Settings) -> LLMC
             temperature=temperature,
             max_tokens=max_tokens,
             timeout=settings.llm_timeout_seconds,
+            reasoning_effort=reasoning_effort,
         )
 
     raise ValueError(f"Unknown LLM provider: {provider!r}. Supported: openai_compat")

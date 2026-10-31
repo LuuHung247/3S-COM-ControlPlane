@@ -20,6 +20,11 @@ class DecisionResponse(BaseModel):
     rejection_reason: str = ""
     latency_ms: float = 0.0
     dry_run: bool = True
+    dst_port: int | None = None
+    rule_id: str | None = None
+    ttl_seconds: int | None = None
+    decision_path: str = "runtime"      # "compiled" when the compiled program decided
+    persist_error: str = ""             # decision stands; only its persistence failed
 
 
 class HealthResponse(BaseModel):

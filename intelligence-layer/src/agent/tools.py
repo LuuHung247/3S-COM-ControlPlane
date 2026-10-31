@@ -117,6 +117,8 @@ Edges:
   (:Zone)-[:ALLOW]->(:Zone)   — policy matrix
   (:Zone)-[:DENY]->(:Zone)
   (:Sid)-[:EXPECTED_IN {stage, tactic, indicators, false_positive_sources}]->(:KillChain)
+  (:Asset)-[:FLOW {baseline, dst_port, proto, criticality}]->(:Asset)  — legitimate baseline flows
+  Asset.crown_jewel = true for critical assets holding confidential/restricted data
 
 ## EXAMPLES
 
@@ -126,6 +128,14 @@ Get full asset profile:
 Find baselines involving a src IP (is this flow legitimate?):
   MATCH (b:Baseline) WHERE b.src_ip = '10.1.100.10' OR b.dst_ip = '10.1.100.10'
   RETURN b.name, b.src_ip, b.dst_ip, b.dst_port, b.proto, b.criticality_to_business
+
+Multi-hop: zone paths from a source zone to crown-jewel assets (≤3 hops):
+  MATCH p=(z:Zone {name:'WEB'})-[:ALLOW*1..3]->(:Zone)<-[:MEMBER_OF]-(a:Asset {crown_jewel:true})
+  RETURN a.hostname, [n IN nodes(p) | n.name] AS path, length(p) AS hops ORDER BY hops LIMIT 5
+
+Legitimate flows that depend on an asset (collateral if it is isolated):
+  MATCH (a:Asset {ip:'10.2.100.10'})-[f:FLOW]-(o:Asset)
+  RETURN startNode(f).hostname AS src, endNode(f).hostname AS dst, f.dst_port, f.criticality
 
 Find kill chains containing this SID + which stage:
   MATCH (s:Sid {sid: 9000001})-[r:EXPECTED_IN]->(k:KillChain)
@@ -185,6 +195,58 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 ]
 
 
+TOOL_DEFINITIONS += [
+    {
+        "type": "function",
+        "function": {
+            "name": "graph_containment_options",
+            "description": (
+                "Multi-hop collateral analysis: for each DROP scope (flow src->dst:port, "
+                "pair src->dst any port, host src->any) list the legitimate baseline flows "
+                "it would cut and the crown-jewel assets the source could still reach."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "src_ip": {"type": "string"},
+                    "dst_ip": {"type": "string"},
+                    "dst_port": {"type": "integer"},
+                },
+                "required": ["src_ip"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "graph_attack_paths",
+            "description": (
+                "From a possibly compromised source, list permitted next hops and the "
+                "shortest policy-permitted paths (<=3 hops) to crown-jewel assets."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"src_ip": {"type": "string"}},
+                "required": ["src_ip"],
+            },
+        },
+    },
+]
+
+
+async def fetch_recent_alerts_all(redis: RedisStore, per_src: int = 20, max_sources: int = 64) -> list[dict]:
+    """Recent raw alerts across ALL sources (for pivot / root-cause analysis)."""
+    alerts: list[dict] = []
+    n = 0
+    async for key in redis.client.scan_iter(match="alert_history:*"):
+        src = key.decode() if isinstance(key, bytes) else key
+        alerts.extend(await redis.get_alert_history(src.split(":", 1)[1], limit=per_src))
+        n += 1
+        if n >= max_sources:
+            break
+    return alerts
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SPLIT SCHEMAS (V3) — separate critical-path policy from audit-only reasoning
 #
@@ -210,6 +272,15 @@ POLICY_DECISION_SCHEMA: dict[str, Any] = {
             "description": "Policy action. DROP for P1/P2 threats. log_only for P3/P4 or low confidence.",
         },
         "src_ip": {"type": "string", "description": "CIDR e.g. 10.1.100.10/32. MUST contain alert.src_ip."},
+        "containment_scope": {
+            "type": "string",
+            "enum": ["flow", "pair", "host"],
+            "description": (
+                "How much to isolate the alert source, from Graph analytics 'Escalation signals'. "
+                "host = (pivot=yes OR distinct_targets>=2) AND crown_jewel_path_open_under_flow_scope=yes; "
+                "pair = ports_on_this_target>=2; flow = otherwise (single violation)."
+            ),
+        },
         "dst_ip": {"type": "string", "description": "CIDR or empty string."},
         "dst_port": {"type": "integer"},
         "protocol": {"type": "string", "description": "tcp / udp / icmp / all"},
@@ -247,7 +318,7 @@ POLICY_DECISION_SCHEMA: dict[str, Any] = {
             ),
         },
     },
-    "required": ["action", "src_ip", "confidence", "notification_title", "notification_body", "notification_severity"],
+    "required": ["action", "containment_scope", "src_ip", "confidence", "notification_title", "notification_body", "notification_severity"],
 }
 
 

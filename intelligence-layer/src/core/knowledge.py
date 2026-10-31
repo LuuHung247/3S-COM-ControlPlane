@@ -112,15 +112,39 @@ SID_KNOWLEDGE: dict[int, dict] = {
 
 
 def get_sid_info(sid: int) -> dict | None:
-    return SID_KNOWLEDGE.get(sid)
+    """SID metadata for L6 gating + prompt context.
+
+    V2: derive from the live threat_playbook catalog (loaded from knowledge_v2 →
+    Neo4j hot-swap), NOT the legacy hardcoded SID_KNOWLEDGE table above (which was
+    V1-only and had stale severities/semantics — e.g. 9000011 was "TCP port scan
+    P3" in V1 but is "inbound-to-MGT P1" in V2). Single source of truth = the KB.
+    Deferred import avoids a circular dependency at module load.
+    """
+    from .threat_playbook import get_sid_detection
+    det = get_sid_detection(sid)
+    if det is None:
+        return None
+    sev = det.severity_p_level
+    return {
+        "severity": sev,
+        "desc": det.signature_msg,
+        "tactic": det.mitre_tactic,
+        "technique": det.mitre_technique,
+        "detection_logic": det.detection_logic,
+        # action/ttl derived from severity (P1/P2 enforce, P3/P4 log_only) — matches
+        # the L6 _SEVERITY_RULES gradation; V2 catalog leaves recommended_response blank.
+        "action": "block" if sev <= 2 else "log_only",
+        "ttl": 3600 if sev == 1 else (1800 if sev == 2 else 0),
+        "false_positive_likelihood": det.false_positive_likelihood,
+    }
 
 
 def render_sid_knowledge() -> str:
+    from .threat_playbook import SID_DETECTIONS
     lines = ["Known Suricata SIDs and MITRE mappings:"]
-    for sid, info in SID_KNOWLEDGE.items():
+    for sid, det in SID_DETECTIONS.items():
         lines.append(
-            f"  SID {sid} (P{info['severity']}): {info['desc']}"
-            f" | {info['tactic']} / {info['technique']}"
-            f" | action={info['action']}"
+            f"  SID {sid} (P{det.severity_p_level}): {det.signature_msg}"
+            f" | {det.mitre_tactic} / {det.mitre_technique}"
         )
     return "\n".join(lines)

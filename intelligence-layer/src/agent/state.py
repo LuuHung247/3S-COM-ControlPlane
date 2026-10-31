@@ -17,6 +17,7 @@ class AgentState(TypedDict, total=False):
     correlation: dict | None       # Short-window kill-chain correlation (10min)
     reputation: dict | None        # Runtime behavioral reputation (1h window from retrospective labels)
     alert_context: str             # Tier 3 alert-specific knowledge render
+    graph_signals: dict | None     # Escalation signals from core.graph_analytics
 
     # Cache (Phase B — response cache)
     cache_key: str

@@ -29,6 +29,7 @@ class TrustLevel(str, Enum):
     TRUSTED_INTERNAL = "trusted-internal"
     CROWN_JEWEL = "crown-jewel"      # Holds sensitive state, no outbound
     PRIVILEGED = "privileged"        # Universal access by design
+    PRIVILEGED_READONLY = "privileged-readonly"  # V2: broad read/scrape reach, no mutate (e.g. MONITORING)
 
 
 class Service(BaseModel):
@@ -36,7 +37,7 @@ class Service(BaseModel):
     proto: str                        # "tcp", "udp", "icmp"
     name: str                         # "postgresql", "sshd"
     facing: str                       # "internal-app-only", "internal-mgt-only", "external", "any"
-    purpose: str                      # production-language description
+    purpose: str = ""                 # production-language description (V2: optional)
 
 
 class Zone(BaseModel):

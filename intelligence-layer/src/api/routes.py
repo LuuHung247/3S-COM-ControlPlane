@@ -4,11 +4,14 @@ import json
 from collections import deque
 from typing import Any
 
+import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse, HTMLResponse, Response
 
 from ..models.alert import SuricataAlert
 from .schemas import AlertIngest, DecisionResponse, HealthResponse, RevokeResponse
+
+log = structlog.get_logger()
 
 router = APIRouter()
 
@@ -18,6 +21,11 @@ _sse_queues: list[asyncio.Queue] = []
 
 
 def _push_decision(decision_dict: dict[str, Any]) -> None:
+    # Suppressed = duplicate alert for an already-blocked flow (no policy pushed).
+    # Keep it out of the FE "Agent Policy History" feed — it's audit-logged, not a
+    # policy action. Avoids noisy "intent pending fix" rows for dedup'd duplicates.
+    if decision_dict.get("outcome") == "suppressed":
+        return
     _recent_decisions.appendleft(decision_dict)
     for q in list(_sse_queues):
         try:
@@ -50,7 +58,12 @@ async def ingest_alert(body: AlertIngest, request: Request) -> DecisionResponse:
     postgres = request.app.state.postgres
 
     alert = SuricataAlert.from_raw(body.data)
-    should, reason = await gate.should_process(alert)
+    try:
+        should, reason = await gate.should_process(alert)
+    except Exception as exc:
+        # The gate only filters noise; the safety layers downstream do not depend on it.
+        log.warning("alert_gate_failed", error=str(exc)[:200])
+        should, reason = True, ""
     if not should:
         return DecisionResponse(
             id="filtered",
@@ -58,9 +71,19 @@ async def ingest_alert(body: AlertIngest, request: Request) -> DecisionResponse:
             alert_src_ip=alert.src_ip,
             outcome="filtered",
             rejection_reason=reason,
+            decision_path="gate",
         )
 
-    decision = await agent.process(alert)
+    try:
+        decision = await agent.process(alert)
+    except Exception as exc:
+        # process() already contains its pipeline errors; anything escaping it is
+        # reported as an ERROR decision rather than an HTTP 500.
+        log.exception("agent_process_unhandled", sid=alert.sid, src_ip=alert.src_ip)
+        from ..models.decision import PolicyDecision, DecisionOutcome
+        decision = PolicyDecision(alert_sid=alert.sid, alert_src_ip=alert.src_ip,
+                                  outcome=DecisionOutcome.ERROR,
+                                  rejection_reason=f"unhandled: {type(exc).__name__}: {exc}"[:300])
     intent = decision.intent
     from datetime import datetime as _dt, timezone as _tz
     reasoning_done = bool(intent and intent.reasoning_steps)
@@ -91,14 +114,36 @@ async def ingest_alert(body: AlertIngest, request: Request) -> DecisionResponse:
         "mitre_technique": intent.mitre_technique if intent else None,
         "mitre_tactic": intent.mitre_tactic if intent else None,
         "reasoning_completed_at": _dt.now(_tz.utc) if reasoning_done else None,
+        "decision_path": "compiled" if "compiled_policy" in (decision.safety_checks or {}) else "runtime",
     }
 
-    # Persist
-    await postgres.save_decision(decision_dict)
-    await redis.cache_decision(decision.id, decision_dict)
-    _push_decision(decision_dict)
+    # Persist. The decision (and any rule it enforced) already stands, so a storage
+    # fault is recorded on the response instead of turning the request into a 500.
+    persist_errors = []
+    for name, op in (("postgres", lambda: postgres.save_decision(decision_dict)),
+                     ("redis", lambda: redis.cache_decision(decision.id, decision_dict))):
+        try:
+            await op()
+        except Exception as exc:
+            log.exception("decision_persist_failed", store=name, decision_id=decision.id)
+            persist_errors.append(f"{name}: {type(exc).__name__}: {exc}"[:200])
+    try:
+        _push_decision(decision_dict)
+    except Exception as exc:
+        log.warning("decision_push_failed", error=str(exc)[:200])
+    decision_dict["persist_error"] = "; ".join(persist_errors)
 
     # P2: embed-on-write background task (semantic indexing for past-decision retrieval)
+    try:
+        _schedule_embedding(request, postgres, decision)
+    except Exception as exc:
+        log.warning("embed_schedule_failed", error=str(exc)[:200])
+
+    return DecisionResponse(**{k: v for k, v in decision_dict.items()
+                               if k in DecisionResponse.model_fields})
+
+
+def _schedule_embedding(request: Request, postgres, decision) -> None:
     if decision.intent is not None:
         from ..core.topology import ip_to_zone
         from ..storage.embedder import embed_text, build_decision_text
@@ -138,8 +183,6 @@ async def ingest_alert(body: AlertIngest, request: Request) -> DecisionResponse:
         task = asyncio.create_task(_embed_in_bg(doc, decision.id))
         bg_set.add(task)
         task.add_done_callback(bg_set.discard)
-
-    return DecisionResponse(**{k: v for k, v in decision_dict.items() if k != "safety_checks"})
 
 
 @router.get("/decisions")
@@ -222,7 +265,50 @@ async def admin_reset(request: Request) -> dict:
     """Reset in-memory safety state between eval runs (rate limiter + circuit breaker counters)."""
     agent = request.app.state.agent
     await agent._rate_limiter.reset()
-    return {"ok": True, "reset": ["rate_limiter"]}
+    flow_markers = 0
+    try:
+        flow_markers = await agent._response_cache.clear_flow_markers()
+    except Exception:
+        pass
+    # Per-source alert history feeds graph pivot/fan-out analysis; clear it so each
+    # controlled eval case is not influenced by alerts from the previous case.
+    histories = 0
+    try:
+        redis = request.app.state.redis
+        await redis.client.delete("agent:semantic_override:count")
+        async for key in redis.client.scan_iter(match="agent:benign_repeat:*"):
+            await redis.client.delete(key)
+        # Duplicate suppression is keyed on (src, sid); clearing it keeps controlled
+        # evaluation cases that share a source and signature independent of each other.
+        async for key in redis.client.scan_iter(match="dedup:*"):
+            await redis.client.delete(key)
+        async for key in redis.client.scan_iter(match="alert_history:*"):
+            await redis.client.delete(key)
+            histories += 1
+    except Exception:
+        pass
+    return {"ok": True, "reset": ["rate_limiter", "flow_markers", "alert_history", "dedup"],
+            "flow_markers_cleared": flow_markers, "alert_histories_cleared": histories}
+
+
+@router.get("/admin/compiled")
+async def compiled_status(request: Request) -> dict:
+    return request.app.state.compiled_policy.describe()
+
+
+@router.post("/admin/compiled")
+async def compiled_configure(request: Request, body: dict) -> dict:
+    """{"enabled": bool, "path": optional artefact path}. Loading re-verifies the
+    program exhaustively and checks it was compiled from the running knowledge base;
+    the policy stays inactive if either check fails."""
+    import os
+    cp = request.app.state.compiled_policy
+    enabled = bool(body.get("enabled", True))
+    path = body.get("path") or cp.path or request.app.state.settings.compiled_policy_path
+    if enabled and (body.get("path") or cp.status != "active"):
+        await cp.load(path, os.environ.get("ZT_KNOWLEDGE_DIR", "knowledge_v2"), enabled=True)
+    cp.enabled = enabled
+    return cp.describe()
 
 
 @router.get("/events")

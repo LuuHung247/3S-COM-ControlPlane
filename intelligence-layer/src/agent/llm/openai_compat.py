@@ -4,9 +4,26 @@ import time
 from typing import Any
 
 import httpx
+import structlog
 
 from .interface import LLMClient
 from ...observability.langfuse_tracer import get_global_tracer, get_active_trace
+
+log = structlog.get_logger()
+
+
+def _log_usage(model: str, path: str, usage: dict, latency_ms: float) -> None:
+    """Per-call token accounting (Langfuse may be disabled) — grep 'llm_usage' in logs."""
+    details = usage.get("completion_tokens_details") or {}
+    log.info(
+        "llm_usage",
+        model=model,
+        path=path,
+        prompt_tokens=usage.get("prompt_tokens", 0),
+        completion_tokens=usage.get("completion_tokens", 0),
+        reasoning_tokens=details.get("reasoning_tokens", 0),
+        latency_ms=round(latency_ms, 1),
+    )
 
 
 class OpenAICompatibleClient(LLMClient):
@@ -18,6 +35,7 @@ class OpenAICompatibleClient(LLMClient):
         temperature: float = 0.1,
         max_tokens: int = 2048,
         timeout: int = 10,
+        reasoning_effort: str = "",
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
@@ -25,6 +43,7 @@ class OpenAICompatibleClient(LLMClient):
         self._temperature = temperature
         self._max_tokens = max_tokens
         self._timeout = timeout
+        self._reasoning_effort = reasoning_effort
 
     @property
     def model(self) -> str:
@@ -48,6 +67,8 @@ class OpenAICompatibleClient(LLMClient):
             "temperature": self._temperature,
             "max_tokens": self._max_tokens,
         }
+        if self._reasoning_effort:
+            payload["reasoning_effort"] = self._reasoning_effort
         if tools:
             payload["tools"] = tools
         if tool_choice is not None:
@@ -87,6 +108,7 @@ class OpenAICompatibleClient(LLMClient):
                 for tc in msg["tool_calls"]
             ]
         usage = data.get("usage", {})
+        _log_usage(self._model, "chat", usage, (time.monotonic() - t0) * 1000)
 
         # Record successful LLM generation to Langfuse (cost + tokens auto-tracked)
         self._record_generation(
@@ -219,7 +241,10 @@ class OpenAICompatibleClient(LLMClient):
                 "max_tokens": self._max_tokens,
                 "response_format": {"type": "json_object"},
             }
+            if self._reasoning_effort:
+                payload["reasoning_effort"] = self._reasoning_effort
             try:
+                t0 = time.monotonic()
                 async with httpx.AsyncClient(timeout=self._timeout) as client:
                     resp = await client.post(
                         f"{self._base_url}/chat/completions",
@@ -228,6 +253,7 @@ class OpenAICompatibleClient(LLMClient):
                     )
                     resp.raise_for_status()
                     data = resp.json()
+                _log_usage(self._model, "json_fallback", data.get("usage", {}), (time.monotonic() - t0) * 1000)
                 content = data["choices"][0]["message"].get("content") or ""
                 if content.strip():
                     return json.loads(content)

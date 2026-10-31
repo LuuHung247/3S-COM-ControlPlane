@@ -10,6 +10,7 @@ file load to avoid partial/inconsistent state in Neo4j.
 """
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,13 @@ import yaml
 # the first parse_zones() call evaluates the deferred import.
 
 
-KNOWLEDGE_DIR = Path(__file__).resolve().parents[2] / "knowledge" / "infra"
+# Authoring source dir. Defaults to V2 (8-zone Clos); override with ZT_KNOWLEDGE_DIR
+# (e.g. "knowledge" for the legacy 4-zone model). Relative paths resolve from the
+# intelligence-layer root (parents[2]).
+_ROOT = Path(__file__).resolve().parents[2]
+_KNOWLEDGE_SUBDIR = os.environ.get("ZT_KNOWLEDGE_DIR", "knowledge_v2")
+KNOWLEDGE_DIR = (_ROOT / _KNOWLEDGE_SUBDIR / "infra") if not Path(_KNOWLEDGE_SUBDIR).is_absolute() \
+    else Path(_KNOWLEDGE_SUBDIR) / "infra"
 
 _YAML_BLOCK = re.compile(r"^```yaml\s*\n(.*?)^```\s*$", re.MULTILINE | re.DOTALL)
 
@@ -69,7 +76,7 @@ def parse_baselines() -> dict[str, Any]:
     for b in blocks:
         if not isinstance(b, dict):
             continue
-        if "steady_state_flows_per_minute" in b:
+        if "steady_state_flows_per_minute" in b or "steady_state_flows_per_minute_min" in b:
             constants_block = b
         elif "anomalous_patterns" in b:
             anomalous_block = b
@@ -80,10 +87,17 @@ def parse_baselines() -> dict[str, Any]:
                          "(steady_state_flows_per_minute / mgt_audit_alert_rate_per_minute)")
     if anomalous_block is None:
         raise ValueError("baselines.md missing anomalous_patterns block")
+    # Steady-state: accept the legacy single value, or the V2 min/max range (use midpoint).
+    if "steady_state_flows_per_minute" in constants_block:
+        steady = int(constants_block["steady_state_flows_per_minute"])
+    else:
+        lo = int(constants_block["steady_state_flows_per_minute_min"])
+        hi = int(constants_block["steady_state_flows_per_minute_max"])
+        steady = (lo + hi) // 2
     return {
         "patterns": patterns,
         "anomalous_patterns": list(anomalous_block["anomalous_patterns"]),
-        "steady_state_flows_per_minute": int(constants_block["steady_state_flows_per_minute"]),
+        "steady_state_flows_per_minute": steady,
         "mgt_audit_alert_rate_per_minute": int(constants_block["mgt_audit_alert_rate_per_minute"]),
     }
 

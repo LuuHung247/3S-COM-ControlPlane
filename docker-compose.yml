@@ -81,6 +81,7 @@ services:
       - ./intelligence-layer/.env
     environment:
       - IDS_AGENT_URL=http://ids-agent:8766
+      - ZT_KNOWLEDGE_DIR=knowledge_v2
       - REDIS_URL=redis://redis:6379/0
       - POSTGRES_URL=postgresql+asyncpg://ztuser:ztpass@postgres:5432/zerotrust
       - NEO4J_URI=bolt://neo4j:7687

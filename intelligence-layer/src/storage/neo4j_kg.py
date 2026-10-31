@@ -302,6 +302,36 @@ class Neo4jKG:
                 )
                 counts["nodes"] += 1
 
+            # ── Baseline flows as Asset→Asset edges (multi-hop traversal) ────
+            # Fan-out baselines (no single dst) attach to every asset in a zone the
+            # source zone may reach, mirroring core.graph_analytics._flows_into.
+            for b in patterns:
+                dst_ips = [b.dst_ip] if b.dst_ip not in ("", "rotating") else [
+                    a.ip for a in assets.values()
+                    if policy_matrix.get((b.src_zone, a.zone)) == "ALLOW"
+                ]
+                for dst_ip in dst_ips:
+                    await sess.run(
+                        """
+                        MATCH (s:Asset {ip: $src}), (d:Asset {ip: $dst})
+                        MERGE (s)-[r:FLOW {baseline: $name}]->(d)
+                        SET r.kg_managed = true, r.dst_port = $port, r.proto = $proto,
+                            r.criticality = $crit
+                        """,
+                        src=b.src_ip, dst=dst_ip, name=b.name, port=b.dst_port,
+                        proto=b.proto, crit=b.criticality_to_business.value,
+                    )
+                    counts["edges"] += 1
+
+            # Crown jewels: critical assets holding confidential/restricted data.
+            await sess.run(
+                """
+                MATCH (a:Asset) WHERE a.kg_managed = true
+                SET a.crown_jewel = (a.criticality = 'critical'
+                    AND a.data_classification IN ['confidential', 'restricted'])
+                """
+            )
+
             # ── Singleton :KnowledgeMeta — anomalous patterns + steady state ─
             await sess.run(
                 """
