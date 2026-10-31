@@ -436,46 +436,7 @@ The validator applies the bounded-isolation invariants from Section~\ref{sec:inv
 \paragraph{Enforcement planning and rule generation}
 Only an admissible decision is converted into a DROP intent. The enforcement planner binds the decision to the alert source, protocol, destination port, TTL, provenance metadata, and source-side enforcement scope. The rule generator then converts the intent into a policy/YANG-oriented request for the control plane. The model therefore proposes the bounded action, but deterministic components decide whether it is admissible and how it is represented for enforcement. Consequently, the decision logic is summarized in Algorithm~\ref{alg:decision}.
 
-\subsection{Compiled Response Policy}
-\label{sec:compiled_policy}
-
-Reasoning per alert is unnecessary when the response follows from the knowledge base and does not change between alerts, and it ties decision latency, cost, and availability to the model provider (R8). BIZM therefore uses the same LLM ahead of time to compile the knowledge base into a response program. The program answers covered alerts and abstains on the rest.
-
-\paragraph{Program language}
-A program is an ordered list of rules. Each rule is a conjunction of conditions over the alert features in Table~\ref{tab:program_inputs} and yields \textsc{drop} with a scope, TTL, and confidence, \textsc{log\_only}, or \textsc{abstain}. The first matching rule decides, and an alert that no rule matches is \textsc{abstain}. The language has no target field: an enforced rule always blocks the alert source as a single host, and the scope only selects the destination and port (flow, pair, or host). Each \textsc{drop} rule carries a rationale and the knowledge-base entries it relies on.
-
-\begin{table}[tbp]
-    \centering
-    \caption{Inputs of the compiled response program. Every feature takes finitely many values, so the alert domain is finite.}
-    \label{tab:program_inputs}
-    \small
-    \setlength{\tabcolsep}{4pt}
-    \begin{tabular}{@{}lll@{}}
-        \toprule
-        \textbf{Feature} & \textbf{Values} & \textbf{Source} \\
-        \midrule
-        Signature & catalogue, or unknown & alert, catalogue \\
-        Severity & P1 to P4 & alert \\
-        Source, destination zone & zones, or external & topology \\
-        Policy verdict & allow, deny, intra, external & matrix \\
-        Protected source & yes, no & invariants \\
-        Prior alert from source & 0, 1+ & history \\
-        Other targets of source & 0, 1, 2+ & history \\
-        Other ports on target & 0, 1+ & history \\
-        \bottomrule
-    \end{tabular}
-\end{table}
-
-\paragraph{Exhaustive verification}
-The features define a finite domain $D(K)$ for a knowledge-base snapshot $K$. For the deployed fabric, 29 signatures and the unknown value, four severities, nine zones including external, the protected flag, and seven consistent history combinations give 136,080 points, of which 19,824 can be emitted by the deployed IDS, i.e., a catalogued signature with its catalogued severity on a zone pair its detection logic covers. The verifier evaluates the program on every point and rejects it if any \textsc{drop} targets a protected or external source (I3), violates the TTL bounds, uses host scope outside P1 or with a TTL above 1800 seconds, or overrides a permitted path with anything but flow scope, a TTL of at most 1800 seconds, and a confidence of at least 0.90 (I4), falls outside P1 and P2 or below $\tau_c$ (I5), concerns an unknown signature, or lacks a knowledge-base citation (I6). Verifying one program takes about five seconds.
-
-\paragraph{Compilation}
-The compiler gives the LLM the knowledge-base documents and the language, and asks for one program that covers the whole fabric. The objectives are stated in priority order: obey the hard constraints, contain what the knowledge base identifies as requiring response, do not cut traffic it documents as legitimate, prefer the narrowest scope, and abstain when the knowledge base does not determine the answer. A rejected program is returned to the model with counterexamples, each naming the rule, the violated invariant, and an example input, and the model repairs it for at most three rounds. A verified program is then summarized per signature and policy verdict, and the model reviews this behavior against the knowledge base; the revision is kept only if it also verifies. Because sampled programs differ, BIZM compiles $k$ programs independently and deploys their point-wise majority: an action is taken only when a strict majority chooses it, otherwise the ensemble abstains, and among agreeing programs the narrowest scope, shortest TTL, and lowest confidence are kept. The ensemble is verified again as a whole.
-
-\paragraph{Activation and runtime use}
-The compiled artifact records the digest of the knowledge base it was compiled from, the model, the repair rounds, and the token cost. The agent activates a program only if it was verified at compile time, its digest equals that of the running knowledge base, and it passes verification again in the agent process. A knowledge-base change therefore disables the old program until it is recompiled, and all alerts take the runtime path in the meantime. At runtime, the features are extracted from the alert and from the source's alerts in the preceding ten minutes. A program decision becomes a bounded intent whose audit trace is the rule rationale and its cited entries, and it passes the same validators, rate limits, circuit breaker, and enforcement path as a runtime decision. Any error on the compiled path falls back to the runtime path rather than failing the alert.
-
-\begin{algorithm}[t]
+\begin{algorithm}[!htbp]
 \caption{Fail-closed bounded-isolation decision}
 \label{alg:decision}
 \small
@@ -519,6 +480,47 @@ The compiled artifact records the digest of the knowledge base it was compiled f
 \State \textsc{RecordAudit}$(a',d,o)$
 \end{algorithmic}
 \end{algorithm}
+
+\subsection{Compiled Response Policy}
+\label{sec:compiled_policy}
+
+Reasoning per alert is unnecessary when the response follows from the knowledge base and does not change between alerts, and it ties decision latency, cost, and availability to the model provider (R8). BIZM therefore uses the same LLM ahead of time to compile the knowledge base into a response program. The program answers covered alerts and abstains on the rest.
+
+\paragraph{Program language}
+A program is an ordered list of rules. Each rule is a conjunction of conditions over the alert features in Table~\ref{tab:program_inputs} and yields \textsc{drop} with a scope, TTL, and confidence, \textsc{log\_only}, or \textsc{abstain}. The first matching rule decides, and an alert that no rule matches is \textsc{abstain}. The language has no target field: an enforced rule always blocks the alert source as a single host, and the scope only selects the destination and port (flow, pair, or host). Each \textsc{drop} rule carries a rationale and the knowledge-base entries it relies on.
+
+\begin{table}[tbp]
+    \centering
+    \caption{Inputs of the compiled response program. Every feature takes finitely many values, so the alert domain is finite.}
+    \label{tab:program_inputs}
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        \textbf{Feature} & \textbf{Values} & \textbf{Source} \\
+        \midrule
+        Signature & catalogue, or unknown & alert, catalogue \\
+        Severity & P1 to P4 & alert \\
+        Source, destination zone & zones, or external & topology \\
+        Policy verdict & allow, deny, intra, external & matrix \\
+        Protected source & yes, no & invariants \\
+        Prior alert from source & 0, 1+ & history \\
+        Other targets of source & 0, 1, 2+ & history \\
+        Other ports on target & 0, 1+ & history \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\paragraph{Exhaustive verification}
+The features define a finite domain $D(K)$ for a knowledge-base snapshot $K$. For the deployed fabric, 29 signatures and the unknown value, four severities, nine zones including external, the protected flag, and seven consistent history combinations give 136,080 points, of which 19,824 can be emitted by the deployed IDS, i.e., a catalogued signature with its catalogued severity on a zone pair its detection logic covers. The verifier evaluates the program on every point and rejects it if any \textsc{drop} targets a protected or external source (I3), violates the TTL bounds, uses host scope outside P1 or with a TTL above 1800 seconds, or overrides a permitted path with anything but flow scope, a TTL of at most 1800 seconds, and a confidence of at least 0.90 (I4), falls outside P1 and P2 or below $\tau_c$ (I5), concerns an unknown signature, or lacks a knowledge-base citation (I6). Verifying one program takes about five seconds.
+
+\paragraph{Compilation}
+The compiler gives the LLM the knowledge-base documents and the language, and asks for one program that covers the whole fabric. The objectives are stated in priority order: obey the hard constraints, contain what the knowledge base identifies as requiring response, do not cut traffic it documents as legitimate, prefer the narrowest scope, and abstain when the knowledge base does not determine the answer. A rejected program is returned to the model with counterexamples, each naming the rule, the violated invariant, and an example input, and the model repairs it for at most three rounds. A verified program is then summarized per signature and policy verdict, and the model reviews this behavior against the knowledge base; the revision is kept only if it also verifies. Because sampled programs differ, BIZM compiles $k$ programs independently and deploys their point-wise majority: an action is taken only when a strict majority chooses it, otherwise the ensemble abstains, and among agreeing programs the narrowest scope, shortest TTL, and lowest confidence are kept. The ensemble is verified again as a whole.
+
+\paragraph{Activation and runtime use}
+The compiled artifact records the digest of the knowledge base it was compiled from, the model, the repair rounds, and the token cost. The agent activates a program only if it was verified at compile time, its digest equals that of the running knowledge base, and it passes verification again in the agent process. A knowledge-base change therefore disables the old program until it is recompiled, and all alerts take the runtime path in the meantime. At runtime, the features are extracted from the alert and from the source's alerts in the preceding ten minutes. A program decision becomes a bounded intent whose audit trace is the rule rationale and its cited entries, and it passes the same validators, rate limits, circuit breaker, and enforcement path as a runtime decision. Any error on the compiled path falls back to the runtime path rather than failing the alert.
+
+
 
 \subsection{Zero Trust Enforcement Plane}
 \label{sec:enforcement_plane}
@@ -782,13 +784,13 @@ Table~\ref{tab:reasoning} reports the signature-hint ablation. Scenario S9 conta
     \label{tab:reasoning}
     \small
     \setlength{\tabcolsep}{3.5pt}
-    \begin{tabular}{@{}p{2.6cm}ccc@{}}
+    \begin{tabular}{@{}lccc@{}}
         \toprule
-        \textbf{Case group} & \textbf{BIZM} & \textbf{Runtime-only} & \textbf{SOAR-A} \\
+        \textbf{Case, signature} & \textbf{BIZM} & \textbf{Runtime-only} & \textbf{SOAR-A} \\
         \midrule
-        Malicious, known signature    & 9/9   & 30/30 & 30/30 \\
-        Malicious, unknown signature  & 7/9   & 28/30 & 0/30  \\
-        Legitimate, unknown signature & 9/9   & 30/30 & 30/30 \\
+        Malicious, known    & 9/9   & 30/30 & 30/30 \\
+        Malicious, unknown  & 7/9   & 28/30 & 0/30  \\
+        Legitimate, unknown & 9/9   & 30/30 & 30/30 \\
         \midrule
         Total                         & 25/27 & 88/90 & 60/90 \\
         \bottomrule
