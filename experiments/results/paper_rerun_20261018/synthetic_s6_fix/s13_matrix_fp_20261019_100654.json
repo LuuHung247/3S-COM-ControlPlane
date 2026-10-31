@@ -1,0 +1,214 @@
+{
+  "summary": {
+    "fabric": "V2-8zone",
+    "n_cases": 9,
+    "n_malicious": 5,
+    "n_legit": 4,
+    "deny_matrix_mitigation_proposed": "5/5",
+    "deny_matrix_mitigation_baseline_a": "4/5",
+    "fp_rate_proposed": 0.0,
+    "fp_rate_baseline_a": 0.0,
+    "correct_decision_proposed": "9/9",
+    "correct_decision_baseline_a": "8/9"
+  },
+  "rows": [
+    {
+      "id": "D1-9000003",
+      "cls": "malicious",
+      "expected": "DROP",
+      "true_src": "10.1.100.10",
+      "sid": 9000003,
+      "proposed": {
+        "outcome": "enforced",
+        "decision": "DROP",
+        "blocked": "10.1.100.10",
+        "confidence": 0.94,
+        "correct": true,
+        "reject": "",
+        "latency_s": 3.02
+      },
+      "baseline_a": {
+        "sid": 9000003,
+        "action": "DROP",
+        "correct": true,
+        "reason": "matched known-dangerous SID"
+      }
+    },
+    {
+      "id": "D2-9000005",
+      "cls": "malicious",
+      "expected": "DROP",
+      "true_src": "10.3.100.10",
+      "sid": 9000005,
+      "proposed": {
+        "outcome": "enforced",
+        "decision": "DROP",
+        "blocked": "10.3.100.10",
+        "confidence": 0.94,
+        "correct": true,
+        "reject": "",
+        "latency_s": 2.57
+      },
+      "baseline_a": {
+        "sid": 9000005,
+        "action": "DROP",
+        "correct": true,
+        "reason": "matched known-dangerous SID"
+      }
+    },
+    {
+      "id": "D3-9000007",
+      "cls": "malicious",
+      "expected": "DROP",
+      "true_src": "10.2.100.10",
+      "sid": 9000007,
+      "proposed": {
+        "outcome": "enforced",
+        "decision": "DROP",
+        "blocked": "10.2.100.10",
+        "confidence": 0.94,
+        "correct": true,
+        "reject": "",
+        "latency_s": 6.25
+      },
+      "baseline_a": {
+        "sid": 9000007,
+        "action": "DROP",
+        "correct": true,
+        "reason": "matched known-dangerous SID"
+      }
+    },
+    {
+      "id": "D4-9000011",
+      "cls": "malicious",
+      "expected": "DROP",
+      "true_src": "10.1.200.10",
+      "sid": 9000011,
+      "proposed": {
+        "outcome": "enforced",
+        "decision": "DROP",
+        "blocked": "10.1.200.10",
+        "confidence": 0.94,
+        "correct": true,
+        "reject": "",
+        "latency_s": 3.1
+      },
+      "baseline_a": {
+        "sid": 9000011,
+        "action": "no-action",
+        "correct": false,
+        "reason": "no rule for this SID \u2014 ignored"
+      }
+    },
+    {
+      "id": "D5-9000013",
+      "cls": "malicious",
+      "expected": "DROP",
+      "true_src": "10.4.100.10",
+      "sid": 9000013,
+      "proposed": {
+        "outcome": "enforced",
+        "decision": "DROP",
+        "blocked": "10.4.100.10",
+        "confidence": 0.92,
+        "correct": true,
+        "reject": "",
+        "latency_s": 3.24
+      },
+      "baseline_a": {
+        "sid": 9000013,
+        "action": "DROP",
+        "correct": true,
+        "reason": "matched known-dangerous SID"
+      }
+    },
+    {
+      "id": "FP1-allow",
+      "cls": "legit",
+      "expected": "log_only",
+      "true_src": "10.2.100.10",
+      "sid": 9000042,
+      "proposed": {
+        "outcome": "benign",
+        "decision": "no-drop",
+        "blocked": null,
+        "confidence": 0.92,
+        "correct": true,
+        "reject": "action=log_only \u2014 no enforcement needed",
+        "latency_s": 3.51
+      },
+      "baseline_a": {
+        "sid": 9000042,
+        "action": "no-action",
+        "correct": true,
+        "reason": "no rule for this SID \u2014 ignored"
+      }
+    },
+    {
+      "id": "FP2-allow",
+      "cls": "legit",
+      "expected": "log_only",
+      "true_src": "10.1.100.10",
+      "sid": 9000040,
+      "proposed": {
+        "outcome": "benign",
+        "decision": "no-drop",
+        "blocked": null,
+        "confidence": null,
+        "correct": true,
+        "reject": "classified as benign",
+        "latency_s": 1.17
+      },
+      "baseline_a": {
+        "sid": 9000040,
+        "action": "no-action",
+        "correct": true,
+        "reason": "no rule for this SID \u2014 ignored"
+      }
+    },
+    {
+      "id": "FP3-allow",
+      "cls": "legit",
+      "expected": "log_only",
+      "true_src": "10.2.100.10",
+      "sid": 9000041,
+      "proposed": {
+        "outcome": "benign",
+        "decision": "no-drop",
+        "blocked": null,
+        "confidence": 0.8,
+        "correct": true,
+        "reject": "action=log_only \u2014 no enforcement needed",
+        "latency_s": 3.13
+      },
+      "baseline_a": {
+        "sid": 9000041,
+        "action": "no-action",
+        "correct": true,
+        "reason": "no rule for this SID \u2014 ignored"
+      }
+    },
+    {
+      "id": "FP4-baseline",
+      "cls": "legit",
+      "expected": "log_only",
+      "true_src": "10.2.50.10",
+      "sid": 9000080,
+      "proposed": {
+        "outcome": "benign",
+        "decision": "no-drop",
+        "blocked": null,
+        "confidence": null,
+        "correct": true,
+        "reject": "classified as benign",
+        "latency_s": 0.7
+      },
+      "baseline_a": {
+        "sid": 9000080,
+        "action": "no-action",
+        "correct": true,
+        "reason": "no rule for this SID \u2014 ignored"
+      }
+    }
+  ]
+}

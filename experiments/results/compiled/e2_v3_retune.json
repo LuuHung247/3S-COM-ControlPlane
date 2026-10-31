@@ -1,0 +1,269 @@
+{
+ "kb_digest": "d8921f80a06bbb70",
+ "baseline_c": {
+  "known_points": 15034,
+  "coverage": 1.0,
+  "accuracy_decided": 0.9446,
+  "accuracy_all_known_abstain_as_wrong": 0.9446,
+  "TP": 2014,
+  "FN": 560,
+  "FP": 273,
+  "TN": 12187,
+  "abstain": 0,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 518,
+  "ambiguous_points": 758,
+  "ambiguous_actions": {
+   "DROP": 737,
+   "log_only": 21,
+   "abstain": 0
+  },
+  "errors_by_sid": {
+   "9000052:ALLOW:FN": 91,
+   "9000060:ALLOW:FN": 91,
+   "9000070:ALLOW:FN": 91,
+   "9000071:ALLOW:FN": 91,
+   "9000072:ALLOW:FN": 91,
+   "9000050:ALLOW:FP": 49,
+   "9000051:ALLOW:FP": 49,
+   "9000061:ALLOW:FP": 49,
+   "9000050:EXTERNAL:FP": 42,
+   "9000051:EXTERNAL:FP": 42,
+   "9000061:EXTERNAL:FP": 42,
+   "9000052:EXTERNAL:FN": 14,
+   "9000060:EXTERNAL:FN": 14,
+   "9000070:EXTERNAL:FN": 14,
+   "9000071:EXTERNAL:FN": 14
+  }
+ },
+ "baseline_c_host": {
+  "known_points": 15034,
+  "coverage": 1.0,
+  "accuracy_decided": 0.9609,
+  "accuracy_all_known_abstain_as_wrong": 0.9609,
+  "TP": 2574,
+  "FN": 0,
+  "FP": 588,
+  "TN": 11872,
+  "abstain": 0,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 532,
+  "ambiguous_points": 758,
+  "ambiguous_actions": {
+   "DROP": 758,
+   "log_only": 0,
+   "abstain": 0
+  },
+  "errors_by_sid": {
+   "9000050:ALLOW:FP": 140,
+   "9000051:ALLOW:FP": 140,
+   "9000061:ALLOW:FP": 140,
+   "9000050:EXTERNAL:FP": 56,
+   "9000051:EXTERNAL:FP": 56,
+   "9000061:EXTERNAL:FP": 56
+  }
+ },
+ "baseline_c_stale": {
+  "known_points": 15034,
+  "coverage": 1.0,
+  "accuracy_decided": 0.9446,
+  "accuracy_all_known_abstain_as_wrong": 0.9446,
+  "TP": 2014,
+  "FN": 560,
+  "FP": 273,
+  "TN": 12187,
+  "abstain": 0,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 518,
+  "ambiguous_points": 758,
+  "ambiguous_actions": {
+   "DROP": 737,
+   "log_only": 21,
+   "abstain": 0
+  },
+  "errors_by_sid": {
+   "9000052:ALLOW:FN": 91,
+   "9000060:ALLOW:FN": 91,
+   "9000070:ALLOW:FN": 91,
+   "9000071:ALLOW:FN": 91,
+   "9000072:ALLOW:FN": 91,
+   "9000050:ALLOW:FP": 49,
+   "9000051:ALLOW:FP": 49,
+   "9000061:ALLOW:FP": 49,
+   "9000050:EXTERNAL:FP": 42,
+   "9000051:EXTERNAL:FP": 42,
+   "9000061:EXTERNAL:FP": 42,
+   "9000052:EXTERNAL:FN": 14,
+   "9000060:EXTERNAL:FN": 14,
+   "9000070:EXTERNAL:FN": 14,
+   "9000071:EXTERNAL:FN": 14
+  }
+ },
+ "v3_retune_single": {
+  "known_points": 15034,
+  "coverage": 1.0,
+  "accuracy_decided": 1.0,
+  "accuracy_all_known_abstain_as_wrong": 1.0,
+  "TP": 2574,
+  "FN": 0,
+  "FP": 0,
+  "TN": 12460,
+  "abstain": 0,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 0,
+  "ambiguous_points": 758,
+  "ambiguous_actions": {
+   "DROP": 2,
+   "log_only": 756,
+   "abstain": 0
+  },
+  "errors_by_sid": {},
+  "verified": true,
+  "compile_tokens": {
+   "prompt_tokens": 47626,
+   "completion_tokens": 7457
+  }
+ },
+ "v3_retune_ens5.member0": {
+  "known_points": 15034,
+  "coverage": 0.9609,
+  "accuracy_decided": 1.0,
+  "accuracy_all_known_abstain_as_wrong": 0.9609,
+  "TP": 2574,
+  "FN": 0,
+  "FP": 0,
+  "TN": 11872,
+  "abstain": 588,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 0,
+  "ambiguous_points": 758,
+  "ambiguous_actions": {
+   "DROP": 2,
+   "log_only": 0,
+   "abstain": 756
+  },
+  "errors_by_sid": {},
+  "verified": true
+ },
+ "v3_retune_ens5.member1": {
+  "known_points": 15034,
+  "coverage": 1.0,
+  "accuracy_decided": 1.0,
+  "accuracy_all_known_abstain_as_wrong": 1.0,
+  "TP": 2574,
+  "FN": 0,
+  "FP": 0,
+  "TN": 12460,
+  "abstain": 0,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 0,
+  "ambiguous_points": 758,
+  "ambiguous_actions": {
+   "DROP": 2,
+   "log_only": 756,
+   "abstain": 0
+  },
+  "errors_by_sid": {},
+  "verified": true
+ },
+ "v3_retune_ens5.member2": {
+  "known_points": 15034,
+  "coverage": 0.9995,
+  "accuracy_decided": 1.0,
+  "accuracy_all_known_abstain_as_wrong": 0.9995,
+  "TP": 2567,
+  "FN": 0,
+  "FP": 0,
+  "TN": 12460,
+  "abstain": 7,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 0,
+  "ambiguous_points": 758,
+  "ambiguous_actions": {
+   "DROP": 2,
+   "log_only": 756,
+   "abstain": 0
+  },
+  "errors_by_sid": {},
+  "verified": true
+ },
+ "v3_retune_ens5.member3": {
+  "known_points": 15034,
+  "coverage": 1.0,
+  "accuracy_decided": 1.0,
+  "accuracy_all_known_abstain_as_wrong": 1.0,
+  "TP": 2574,
+  "FN": 0,
+  "FP": 0,
+  "TN": 12460,
+  "abstain": 0,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 0,
+  "ambiguous_points": 758,
+  "ambiguous_actions": {
+   "DROP": 2,
+   "log_only": 756,
+   "abstain": 0
+  },
+  "errors_by_sid": {},
+  "verified": true
+ },
+ "v3_retune_ens5.member4": {
+  "known_points": 15034,
+  "coverage": 1.0,
+  "accuracy_decided": 0.9339,
+  "accuracy_all_known_abstain_as_wrong": 0.9339,
+  "TP": 1580,
+  "FN": 994,
+  "FP": 0,
+  "TN": 12460,
+  "abstain": 0,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 0,
+  "ambiguous_points": 758,
+  "ambiguous_actions": {
+   "DROP": 2,
+   "log_only": 756,
+   "abstain": 0
+  },
+  "errors_by_sid": {
+   "9000052:ALLOW:FN": 140,
+   "9000060:ALLOW:FN": 140,
+   "9000070:ALLOW:FN": 140,
+   "9000071:ALLOW:FN": 140,
+   "9000072:ALLOW:FN": 140,
+   "9000052:EXTERNAL:FN": 56,
+   "9000060:EXTERNAL:FN": 56,
+   "9000070:EXTERNAL:FN": 56,
+   "9000071:EXTERNAL:FN": 56,
+   "9000072:EXTERNAL:FN": 56,
+   "9000062:EXTERNAL:FN": 14
+  },
+  "verified": true
+ },
+ "v3_retune_ens5": {
+  "known_points": 15034,
+  "coverage": 1.0,
+  "accuracy_decided": 1.0,
+  "accuracy_all_known_abstain_as_wrong": 1.0,
+  "TP": 2574,
+  "FN": 0,
+  "FP": 0,
+  "TN": 12460,
+  "abstain": 0,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 0,
+  "ambiguous_points": 758,
+  "ambiguous_actions": {
+   "DROP": 2,
+   "log_only": 756,
+   "abstain": 0
+  },
+  "errors_by_sid": {},
+  "verified": true,
+  "compile_tokens": {
+   "prompt_tokens": 289218,
+   "completion_tokens": 37158
+  }
+ }
+}

@@ -4,53 +4,72 @@ Eval framework cho lab ZT pipeline (Suricata → intel-layer agent → SDNC/SF �
 
 ## Layout
 
+> **V2 fabric (8-zone / 4-leaf / 2-spine Clos).** Scenarios target the V2 topology
+> (`docs/DATAPLANE_V2.md`, knowledge base `intelligence-layer/knowledge_v2/`). V1 (4-zone)
+> scenarios are retired. Two families: **S01–S10 real-traffic** (controller-driven, end-to-end
+> through Suricata — needs dataplane online) and **S11–S15 synthetic-injection** (POST
+> `eve.json` to `/alerts` — reproducible, no dataplane). Full catalog + coverage matrix:
+> [`scenarios/SCENARIOS.md`](scenarios/SCENARIOS.md).
+
 ```
 experiments/
 ├── README.md              ← document này
 ├── harness/               ← shared eval framework (KHÔNG sửa per scenario)
 │   ├── runner.py          ← main harness (HTTP helpers, console proxy, metrics, Excel export)
 │   └── memory_runner.py   ← memory-stateful variant (no truncate decisions between runs)
-├── scenarios/             ← 1 file per attack scenario (thin wrapper, ~20 lines)
-│   ├── s01_web_db_lateral.py          ← S1  (ZT microseg)
-│   ├── s02_web_app_burst.py           ← S2
-│   ├── s03_app_db_burst.py            ← S3
-│   ├── s04_app_db_sql.py              ← S4  (Destructive SQL)
-│   ├── s05_app_mgt_ssh.py             ← S5
-│   ├── s06_vertical_scan.py           ← S6  (NetVigil benchmark)
-│   ├── s07_syn_flood.py               ← S7
-│   ├── s08_distributed_syn_flood.py   ← S8
-│   ├── s09_udp_flood.py               ← S9
-│   ├── s10_distributed_scan.py        ← S10
-│   ├── s11_multistage_propagation.py  ← S11
-│   ├── s12_c2_beacon.py               ← S12
-│   └── s13_unauth_db.py               ← S13
-├── safety/                ← S14 adversarial safety / anti-manipulation test
-│   └── s14_adversarial_safety.py      ← proposed vs Baseline B (vanilla LLM)
-├── generalization/        ← S15 reasoning-vs-lookup ablation
-│   └── s15_reasoning_ablation.py      ← proposed vs Baseline A (signature-keyed SOAR)
+├── scenarios/             ← real-traffic scenarios (S01–S10) + matrix/FP synthetic (S13)
+│   ├── s01_web_db_bypass.py           ← S01  WEB→DB-OLTP microseg bypass (SID 9000001+12)
+│   ├── s02_web_gw_skip.py             ← S02  WEB→APP-CORE skip APP-GW (9000002)
+│   ├── s03_appgw_db_bypass.py         ← S03  APP-GW→DB-OLTP skip APP-CORE (9000004+12)
+│   ├── s04_appcore_dba_exfil.py       ← S04  APP-CORE→DB-ANLT bulk+exfil (9000070+62)
+│   ├── s05_appcore_reverse.py         ← S05  APP-CORE→WEB:22 reverse lateral (9000006)
+│   ├── s06_worker_reverse.py          ← S06  WORKER→APP-GW reverse (9000008)
+│   ├── s07_dboltp_c2.py               ← S07  DB-OLTP→external C2 beacon (9000009+60+62)
+│   ├── s08_dbanlt_pivot.py            ← S08  DB-ANLT sink-violation outbound (9000010)
+│   ├── s09_appcore_sql_destructive.py ← S09  APP-CORE→DB-OLTP destructive SQL (9000072)
+│   ├── s10_baseline_mgt_mon_fp.py     ← S10  MGT/MON baseline — FP control (9000080+81)
+│   └── s13_matrix_fp.py               ← S13  DENY-matrix coverage + FP battery [synthetic]
+├── safety/                ← adversarial / guardrail synthetic evals (vs Baseline B)
+│   ├── s12_privileged_neverblock.py   ← S12  MGT/MON-as-attacker + never-block conflict
+│   └── s14_adversarial_safety.py      ← S14  prompt-injection + core-asset spoof
+├── generalization/        ← reasoning / correlation synthetic evals (vs Baseline A)
+│   ├── s11_killchain_multistage.py    ← S11  multi-stage temporal correlation
+│   └── s15_reasoning_ablation.py      ← S15  reasoning-vs-lookup ablation
 └── results/               ← per-run outputs (xlsx + json) + dated run folders
     └── YYYY-MM-DD_*/      ← consolidated runs với SUMMARY.md + AGGREGATE.json
 ```
 
-**13 functional scenarios** (S1–S13) — 5 ZT lab-specific (S1–S5) + 8 NetVigil-aligned
-(S6–S13, per NetVigil NSDI'24 Table 3) — plus **S14**, the adversarial safety stress-test
-comparing the full pipeline against a guardrail-free vanilla LLM agent.
+**Functional real-traffic (S01–S10)** — cross-tier DENY, content-L7, sink-role, FP control
+on the live V2 fabric. **Controlled synthetic (S11–S15)** — temporal correlation (S11),
+never-block conflict (S12), DENY-matrix+FP coverage (S13), adversarial safety (S14),
+reasoning-vs-lookup ablation (S15); each compares the agent against a baseline.
 
-## Run single scenario
+## Run a real-traffic scenario (S01–S10, needs dataplane + LLM online)
 
 ```bash
 cd /home/dis/deploy/zerotrust/experiments
-python3 scenarios/s01_web_db_lateral.py
+uv run python scenarios/s01_web_db_bypass.py
 ```
 
 Output → `results/eval_<name>_<timestamp>.{xlsx,json}` (per-run table + aggregate metrics).
 
-## Run all 13 sequentially
+## Run a synthetic eval (S11–S15, needs only LLM online)
 
 ```bash
 cd /home/dis/deploy/zerotrust/experiments
-for s in scenarios/*.py; do
-  python3 -u "$s" 2>&1 | grep -E "PASS|FAIL|outcome"
+intelligence-layer/.venv/bin/python generalization/s15_reasoning_ablation.py   # or s11
+intelligence-layer/.venv/bin/python safety/s14_adversarial_safety.py           # or s12
+intelligence-layer/.venv/bin/python scenarios/s13_matrix_fp.py
+```
+
+Output → `results/<sNN_name>_<timestamp>.json` (summary + per-case rows).
+
+## Run all real-traffic scenarios sequentially
+
+```bash
+cd /home/dis/deploy/zerotrust/experiments
+for s in scenarios/s0*.py; do
+  echo "▶ $s"; uv run python "$s" 2>&1 | grep -E "PASS|FAIL|outcome"
 done
 ```
 

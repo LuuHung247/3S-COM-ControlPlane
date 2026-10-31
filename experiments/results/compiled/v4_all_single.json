@@ -1,0 +1,267 @@
+{
+  "compiled_at": "2026-10-27T05:46:42.210079+00:00",
+  "kb_root": "compiled_policy/kb_variants/v4_all",
+  "kb_digest": "aff251907b7dd90d",
+  "model": "gpt-oss-120b",
+  "reasoning_effort": "medium",
+  "temperature": 0.0,
+  "samples": 1,
+  "review": true,
+  "verified": true,
+  "rounds": [
+    {
+      "stage": "draft",
+      "round": 0,
+      "latency_s": 3.71,
+      "prompt_tokens": 24474,
+      "completion_tokens": 5187,
+      "ok": true,
+      "points": 212800,
+      "realizable": 31150,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 24906,
+      "realizable_drop": 3283,
+      "realizable_abstain": 6244,
+      "coverage": 0.7996,
+      "dead_rules": []
+    },
+    {
+      "stage": "review",
+      "round": 0,
+      "latency_s": 2.34,
+      "prompt_tokens": 30131,
+      "completion_tokens": 2844,
+      "ok": true,
+      "points": 212800,
+      "realizable": 31150,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 24885,
+      "realizable_drop": 3262,
+      "realizable_abstain": 6265,
+      "coverage": 0.7989,
+      "dead_rules": [],
+      "sample": 0
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 54605,
+    "completion_tokens": 8031
+  },
+  "compile_seconds": 39.1,
+  "verification": {
+    "ok": true,
+    "points": 212800,
+    "realizable": 31150,
+    "violating_points": 0,
+    "violation_kinds": 0,
+    "provenance_errors": 0,
+    "realizable_decided": 24885,
+    "realizable_drop": 3262,
+    "realizable_abstain": 6265,
+    "coverage": 0.7989,
+    "dead_rules": []
+  },
+  "program": {
+    "rules": [
+      {
+        "id": "R0",
+        "when": {
+          "src_protected": true
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "Never block sources that are in the never\u2011block whitelist (e.g., MGT, MONITORING, SVI gateways).",
+        "kb_refs": [
+          "invariants.md never_block"
+        ]
+      },
+      {
+        "id": "R1",
+        "when": {
+          "src_zones": [
+            "EXTERNAL"
+          ]
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "External sources are not allowed to be dropped by the internal agent; they are logged for visibility.",
+        "kb_refs": [
+          "policy-matrix.md EXTERNAL"
+        ]
+      },
+      {
+        "id": "R2",
+        "when": {
+          "sids": [
+            9000001,
+            9000002,
+            9000003,
+            9000004,
+            9000005,
+            9000006,
+            9000007,
+            9000008,
+            9000009,
+            9000010,
+            9000011,
+            9000012,
+            9000013,
+            9000014,
+            9000015
+          ],
+          "severity_min": 1,
+          "severity_max": 2,
+          "verdicts": [
+            "DENY"
+          ]
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 1800,
+          "confidence": 0.95
+        },
+        "rationale": "Policy\u2011violation signatures on denied zone\u2011pair flows indicate a hard microsegmentation breach; drop the source.",
+        "kb_refs": [
+          "SID 9000001",
+          "SID 9000002",
+          "SID 9000003",
+          "SID 9000004",
+          "SID 9000005",
+          "SID 9000006",
+          "SID 9000007",
+          "SID 9000008",
+          "SID 9000009",
+          "SID 9000010",
+          "SID 9000011",
+          "SID 9000012",
+          "SID 9000013",
+          "SID 9000014",
+          "SID 9000015",
+          "policy-matrix.md"
+        ]
+      },
+      {
+        "id": "R3",
+        "when": {
+          "sids": [
+            9000070,
+            9000071,
+            9000072,
+            9000073,
+            9000074
+          ],
+          "severity_min": 1,
+          "severity_max": 2
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 1800,
+          "confidence": 0.95
+        },
+        "rationale": "Malicious SQL content (injection, destructive statements, COPY TO PROGRAM) is always prohibited regardless of policy path.",
+        "kb_refs": [
+          "SID 9000070",
+          "SID 9000071",
+          "SID 9000072",
+          "SID 9000073",
+          "SID 9000074",
+          "threat-patterns.md SQLi"
+        ]
+      },
+      {
+        "id": "R4",
+        "when": {
+          "sids": [
+            9000040,
+            9000041,
+            9000042,
+            9000043,
+            9000044,
+            9000050,
+            9000051,
+            9000052,
+            9000060,
+            9000061,
+            9000075,
+            9000076,
+            9000077,
+            9000078,
+            9000080,
+            9000081
+          ],
+          "severity_min": 3,
+          "severity_max": 4
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 0.8
+        },
+        "rationale": "Recon, flooding, audit and low\u2011severity signatures are logged for visibility; they do not warrant dropping.",
+        "kb_refs": [
+          "SID 9000040",
+          "SID 9000041",
+          "SID 9000042",
+          "SID 9000043",
+          "SID 9000044",
+          "SID 9000050",
+          "SID 9000051",
+          "SID 9000052",
+          "SID 9000060",
+          "SID 9000061",
+          "SID 9000075",
+          "SID 9000076",
+          "SID 9000077",
+          "SID 9000078",
+          "SID 9000080",
+          "SID 9000081"
+        ]
+      },
+      {
+        "id": "R5",
+        "when": {
+          "sid_known": false
+        },
+        "then": {
+          "action": "abstain",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "Signature not present in the catalogue; cannot enforce a DROP per hard constraints.",
+        "kb_refs": [
+          "sids.md catalogue"
+        ]
+      },
+      {
+        "id": "R6",
+        "when": {},
+        "then": {
+          "action": "abstain",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "No rule matches; safe default is to abstain and hand to human analyst.",
+        "kb_refs": []
+      }
+    ],
+    "notes": "Protective rules (R0, R1) are first to guarantee they cannot be overridden. All DROP actions respect hard constraints: severity 1\u20112, confidence \u22650.85, ttl 1800 (within 60\u20113600), flow scope. No DROP is issued for protected sources, external sources, or unknown signatures. Content\u2011based malicious SQL signatures are dropped regardless of policy verdict because the payload itself is malicious. Recon and low\u2011severity signatures are logged only. All other traffic is abstained."
+  },
+  "ensemble": null
+}

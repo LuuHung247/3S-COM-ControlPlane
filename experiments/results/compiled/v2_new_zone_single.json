@@ -1,0 +1,252 @@
+{
+  "compiled_at": "2026-10-27T05:40:36.461696+00:00",
+  "kb_root": "compiled_policy/kb_variants/v2_new_zone",
+  "kb_digest": "42f9c57aa9675dd4",
+  "model": "gpt-oss-120b",
+  "reasoning_effort": "medium",
+  "temperature": 0.0,
+  "samples": 1,
+  "review": true,
+  "verified": true,
+  "rounds": [
+    {
+      "stage": "draft",
+      "round": 0,
+      "latency_s": 3.63,
+      "prompt_tokens": 23263,
+      "completion_tokens": 3476,
+      "ok": true,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 24836,
+      "realizable_drop": 4984,
+      "realizable_abstain": 0,
+      "coverage": 1.0,
+      "dead_rules": []
+    },
+    {
+      "stage": "review",
+      "round": 0,
+      "latency_s": 3.02,
+      "prompt_tokens": 26594,
+      "completion_tokens": 3750,
+      "ok": true,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 24836,
+      "realizable_drop": 3283,
+      "realizable_abstain": 0,
+      "coverage": 1.0,
+      "dead_rules": [],
+      "sample": 0
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 49857,
+    "completion_tokens": 7226
+  },
+  "compile_seconds": 37.8,
+  "verification": {
+    "ok": true,
+    "points": 179200,
+    "realizable": 24836,
+    "violating_points": 0,
+    "violation_kinds": 0,
+    "provenance_errors": 0,
+    "realizable_decided": 24836,
+    "realizable_drop": 3283,
+    "realizable_abstain": 0,
+    "coverage": 1.0,
+    "dead_rules": []
+  },
+  "program": {
+    "rules": [
+      {
+        "id": "R0",
+        "when": {
+          "src_protected": true
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "Source IP belongs to the never\u2011block whitelist (critical infrastructure SVI gateways, management hosts, monitoring hosts). Blocking would partition the fabric and violate hard safety invariants.",
+        "kb_refs": [
+          "invariants.md never_block"
+        ]
+      },
+      {
+        "id": "R1",
+        "when": {
+          "src_zones": [
+            "EXTERNAL"
+          ]
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "External sources are not to be dropped per hard constraint; they are logged for visibility only.",
+        "kb_refs": [
+          "policy-matrix.md EXTERNAL"
+        ]
+      },
+      {
+        "id": "R2",
+        "when": {
+          "sid_known": false
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "Signature not present in the catalogue; dropping unknown signatures is prohibited.",
+        "kb_refs": [
+          "sids.md"
+        ]
+      },
+      {
+        "id": "R_LOG_SPECIFIC",
+        "when": {
+          "sids": [
+            9000051,
+            9000052,
+            9000061
+          ],
+          "severity_min": 2,
+          "severity_max": 2
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "These signatures (TCP SYN contribution, UDP flood, large DNS response) are defined in the knowledge base with a response of log_only (and optional escalation). They are not hard policy violations.",
+        "kb_refs": [
+          "SID 9000051",
+          "SID 9000052",
+          "SID 9000061"
+        ]
+      },
+      {
+        "id": "R_LOG_P3P4",
+        "when": {
+          "sids": [
+            9000040,
+            9000041,
+            9000042,
+            9000043,
+            9000044,
+            9000080,
+            9000081
+          ],
+          "severity_min": 3,
+          "severity_max": 4
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "Reconnaissance, baseline audit, and low\u2011severity events are intended to be logged only according to the knowledge base.",
+        "kb_refs": [
+          "SID 9000040",
+          "SID 9000041",
+          "SID 9000042",
+          "SID 9000043",
+          "SID 9000044",
+          "SID 9000080",
+          "SID 9000081"
+        ]
+      },
+      {
+        "id": "R_DROP",
+        "when": {
+          "sids": [
+            9000001,
+            9000002,
+            9000003,
+            9000004,
+            9000005,
+            9000006,
+            9000007,
+            9000008,
+            9000009,
+            9000010,
+            9000011,
+            9000012,
+            9000013,
+            9000014,
+            9000015,
+            9000050,
+            9000060,
+            9000062,
+            9000070,
+            9000071,
+            9000072
+          ],
+          "severity_min": 1,
+          "severity_max": 2,
+          "src_protected": false,
+          "src_zones": [
+            "WEB",
+            "APP-GW",
+            "APP-CORE",
+            "WORKER",
+            "DB-OLTP",
+            "DB-ANALYTICS",
+            "MONITORING",
+            "MGT",
+            "PAYMENTS"
+          ]
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 1800,
+          "confidence": 0.95
+        },
+        "rationale": "These signatures represent confirmed policy violations or malicious content (e.g., micro\u2011segmentation bypass, unauthorized DB access, lateral\u2011movement attempts, SQL injection, destructive SQL, exfiltration beacons). The knowledge base prescribes dropping the source IP for the offending flow.",
+        "kb_refs": [
+          "SID 9000001",
+          "SID 9000002",
+          "SID 9000003",
+          "SID 9000004",
+          "SID 9000005",
+          "SID 9000006",
+          "SID 9000007",
+          "SID 9000008",
+          "SID 9000009",
+          "SID 9000010",
+          "SID 9000011",
+          "SID 9000012",
+          "SID 9000013",
+          "SID 9000014",
+          "SID 9000015",
+          "SID 9000050",
+          "SID 9000060",
+          "SID 9000062",
+          "SID 9000070",
+          "SID 9000071",
+          "SID 9000072"
+        ]
+      }
+    ],
+    "notes": "Rules are ordered from most restrictive (protective) to least. The DROP rule applies only to known signatures with severity 1\u20112, respects the never\u2011block list, and uses flow\u2011scope with TTL 1800\u202fs and confidence 0.95, satisfying all hard constraints."
+  },
+  "ensemble": null
+}

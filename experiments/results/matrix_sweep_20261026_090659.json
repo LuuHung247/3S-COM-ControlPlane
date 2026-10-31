@@ -1,0 +1,334 @@
+{
+  "summary": {
+    "generated_at": "2026-10-26T09:06:59.601663+00:00",
+    "n_cases": 2,
+    "repeats": 1,
+    "n_decisions": 2,
+    "detection_gaps": [
+      {
+        "pair": "MONITORING->MGT",
+        "verdict": "DENY",
+        "reason": "no custom signature covers this denied cell"
+      }
+    ],
+    "static_configurations": {
+      "flat": {
+        "n_edges": 105,
+        "ENICE": 56,
+        "CJR": 21,
+        "MPL": 1.0
+      },
+      "static_microsegmentation": {
+        "n_edges": 40,
+        "ENICE": 28,
+        "CJR": 13,
+        "MPL": 1.538
+      }
+    },
+    "systems": {
+      "bizm": {
+        "TP": 2,
+        "FN": 0,
+        "FP": 0,
+        "TN": 0,
+        "accuracy": 1.0,
+        "zone_exposure_reduction_total": 0,
+        "service_exposure_reduction_total": 2,
+        "observed_paths_blocked": 2,
+        "crown_jewels_contained": 0,
+        "legit_flows_cut_total": 2,
+        "critical_flows_cut": 2
+      },
+      "static_only": {
+        "TP": 0,
+        "FN": 2,
+        "FP": 0,
+        "TN": 0,
+        "accuracy": 0.0,
+        "zone_exposure_reduction_total": 0,
+        "service_exposure_reduction_total": 0,
+        "observed_paths_blocked": 0,
+        "crown_jewels_contained": 0,
+        "legit_flows_cut_total": 0,
+        "critical_flows_cut": 0
+      },
+      "soar_host": {
+        "TP": 0,
+        "FN": 2,
+        "FP": 0,
+        "TN": 0,
+        "accuracy": 0.0,
+        "zone_exposure_reduction_total": 0,
+        "service_exposure_reduction_total": 0,
+        "observed_paths_blocked": 0,
+        "crown_jewels_contained": 0,
+        "legit_flows_cut_total": 0,
+        "critical_flows_cut": 0
+      },
+      "fixed_flow": {
+        "TP": 2,
+        "FN": 0,
+        "FP": 0,
+        "TN": 0,
+        "accuracy": 1.0,
+        "zone_exposure_reduction_total": 0,
+        "service_exposure_reduction_total": 2,
+        "observed_paths_blocked": 2,
+        "crown_jewels_contained": 0,
+        "legit_flows_cut_total": 2,
+        "critical_flows_cut": 2
+      },
+      "graph_rule": {
+        "TP": 2,
+        "FN": 0,
+        "FP": 0,
+        "TN": 0,
+        "accuracy": 1.0,
+        "zone_exposure_reduction_total": 0,
+        "service_exposure_reduction_total": 2,
+        "observed_paths_blocked": 2,
+        "crown_jewels_contained": 0,
+        "legit_flows_cut_total": 2,
+        "critical_flows_cut": 2
+      }
+    },
+    "by_verdict": {
+      "DENY": {},
+      "ALLOW": {
+        "bizm": {
+          "TP": 2,
+          "FN": 0,
+          "FP": 0,
+          "TN": 0,
+          "accuracy": 1.0,
+          "zone_exposure_reduction_total": 0,
+          "service_exposure_reduction_total": 2,
+          "observed_paths_blocked": 2,
+          "crown_jewels_contained": 0,
+          "legit_flows_cut_total": 2,
+          "critical_flows_cut": 2
+        },
+        "static_only": {
+          "TP": 0,
+          "FN": 2,
+          "FP": 0,
+          "TN": 0,
+          "accuracy": 0.0,
+          "zone_exposure_reduction_total": 0,
+          "service_exposure_reduction_total": 0,
+          "observed_paths_blocked": 0,
+          "crown_jewels_contained": 0,
+          "legit_flows_cut_total": 0,
+          "critical_flows_cut": 0
+        },
+        "soar_host": {
+          "TP": 0,
+          "FN": 2,
+          "FP": 0,
+          "TN": 0,
+          "accuracy": 0.0,
+          "zone_exposure_reduction_total": 0,
+          "service_exposure_reduction_total": 0,
+          "observed_paths_blocked": 0,
+          "crown_jewels_contained": 0,
+          "legit_flows_cut_total": 0,
+          "critical_flows_cut": 0
+        },
+        "fixed_flow": {
+          "TP": 2,
+          "FN": 0,
+          "FP": 0,
+          "TN": 0,
+          "accuracy": 1.0,
+          "zone_exposure_reduction_total": 0,
+          "service_exposure_reduction_total": 2,
+          "observed_paths_blocked": 2,
+          "crown_jewels_contained": 0,
+          "legit_flows_cut_total": 2,
+          "critical_flows_cut": 2
+        },
+        "graph_rule": {
+          "TP": 2,
+          "FN": 0,
+          "FP": 0,
+          "TN": 0,
+          "accuracy": 1.0,
+          "zone_exposure_reduction_total": 0,
+          "service_exposure_reduction_total": 2,
+          "observed_paths_blocked": 2,
+          "crown_jewels_contained": 0,
+          "legit_flows_cut_total": 2,
+          "critical_flows_cut": 2
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "case_id": "A-APP-GW-APP-CORE",
+      "policy_verdict": "ALLOW",
+      "sid": 9000050,
+      "severity": 2,
+      "expected": "contain",
+      "src_zone": "APP-GW",
+      "dst_zone": "APP-CORE",
+      "latency_s": 3.17,
+      "bizm": {
+        "outcome": "enforced",
+        "confidence": 0.92,
+        "blocked": "10.3.100.10",
+        "rule": {
+          "src_ip": "10.3.100.10/32",
+          "dst_ip": "10.2.100.10/32",
+          "dst_port": 8090
+        },
+        "target_ok": true,
+        "reject": "",
+        "contains": true,
+        "scope": "flow",
+        "exposure_reduction": 0,
+        "service_reduction": 1,
+        "observed_path_blocked": true,
+        "crown_jewel_contained": false,
+        "crown_jewel_services_after": 0,
+        "legit_flows_cut": 1,
+        "max_cut_criticality": "critical",
+        "correct": true
+      },
+      "systems": {
+        "static_only": {
+          "contains": false,
+          "scope": "none",
+          "exposure_reduction": 0,
+          "service_reduction": 0,
+          "observed_path_blocked": false,
+          "crown_jewel_contained": false,
+          "crown_jewel_services_after": null,
+          "legit_flows_cut": 0,
+          "max_cut_criticality": "none",
+          "correct": false
+        },
+        "soar_host": {
+          "contains": false,
+          "scope": "none",
+          "exposure_reduction": 0,
+          "service_reduction": 0,
+          "observed_path_blocked": false,
+          "crown_jewel_contained": false,
+          "crown_jewel_services_after": null,
+          "legit_flows_cut": 0,
+          "max_cut_criticality": "none",
+          "correct": false
+        },
+        "fixed_flow": {
+          "contains": true,
+          "scope": "flow",
+          "exposure_reduction": 0,
+          "service_reduction": 1,
+          "observed_path_blocked": true,
+          "crown_jewel_contained": false,
+          "crown_jewel_services_after": 0,
+          "legit_flows_cut": 1,
+          "max_cut_criticality": "critical",
+          "correct": true
+        },
+        "graph_rule": {
+          "contains": true,
+          "scope": "flow",
+          "exposure_reduction": 0,
+          "service_reduction": 1,
+          "observed_path_blocked": true,
+          "crown_jewel_contained": false,
+          "crown_jewel_services_after": 0,
+          "legit_flows_cut": 1,
+          "max_cut_criticality": "critical",
+          "correct": true
+        }
+      },
+      "repeat": 1
+    },
+    {
+      "case_id": "A-WEB-APP-GW",
+      "policy_verdict": "ALLOW",
+      "sid": 9000050,
+      "severity": 2,
+      "expected": "contain",
+      "src_zone": "WEB",
+      "dst_zone": "APP-GW",
+      "latency_s": 2.82,
+      "bizm": {
+        "outcome": "enforced",
+        "confidence": 0.92,
+        "blocked": "10.1.100.10",
+        "rule": {
+          "src_ip": "10.1.100.10/32",
+          "dst_ip": "10.3.100.10/32",
+          "dst_port": 8080
+        },
+        "target_ok": true,
+        "reject": "",
+        "contains": true,
+        "scope": "flow",
+        "exposure_reduction": 0,
+        "service_reduction": 1,
+        "observed_path_blocked": true,
+        "crown_jewel_contained": false,
+        "crown_jewel_services_after": 0,
+        "legit_flows_cut": 1,
+        "max_cut_criticality": "critical",
+        "correct": true
+      },
+      "systems": {
+        "static_only": {
+          "contains": false,
+          "scope": "none",
+          "exposure_reduction": 0,
+          "service_reduction": 0,
+          "observed_path_blocked": false,
+          "crown_jewel_contained": false,
+          "crown_jewel_services_after": null,
+          "legit_flows_cut": 0,
+          "max_cut_criticality": "none",
+          "correct": false
+        },
+        "soar_host": {
+          "contains": false,
+          "scope": "none",
+          "exposure_reduction": 0,
+          "service_reduction": 0,
+          "observed_path_blocked": false,
+          "crown_jewel_contained": false,
+          "crown_jewel_services_after": null,
+          "legit_flows_cut": 0,
+          "max_cut_criticality": "none",
+          "correct": false
+        },
+        "fixed_flow": {
+          "contains": true,
+          "scope": "flow",
+          "exposure_reduction": 0,
+          "service_reduction": 1,
+          "observed_path_blocked": true,
+          "crown_jewel_contained": false,
+          "crown_jewel_services_after": 0,
+          "legit_flows_cut": 1,
+          "max_cut_criticality": "critical",
+          "correct": true
+        },
+        "graph_rule": {
+          "contains": true,
+          "scope": "flow",
+          "exposure_reduction": 0,
+          "service_reduction": 1,
+          "observed_path_blocked": true,
+          "crown_jewel_contained": false,
+          "crown_jewel_services_after": 0,
+          "legit_flows_cut": 1,
+          "max_cut_criticality": "critical",
+          "correct": true
+        }
+      },
+      "repeat": 1
+    }
+  ]
+}

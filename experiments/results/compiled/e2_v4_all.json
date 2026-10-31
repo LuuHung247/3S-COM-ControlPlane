@@ -1,0 +1,286 @@
+{
+ "kb_digest": "aff251907b7dd90d",
+ "baseline_c": {
+  "known_points": 24428,
+  "coverage": 1.0,
+  "accuracy_decided": 0.9407,
+  "accuracy_all_known_abstain_as_wrong": 0.9407,
+  "TP": 3337,
+  "FN": 1085,
+  "FP": 364,
+  "TN": 19642,
+  "abstain": 0,
+  "unknown_points": 5040,
+  "unknown_auto_drop": 686,
+  "ambiguous_points": 1682,
+  "ambiguous_actions": {
+   "DROP": 1647,
+   "log_only": 35,
+   "abstain": 0
+  },
+  "errors_by_sid": {
+   "9000073:ALLOW:FN": 168,
+   "9000074:ALLOW:FN": 168,
+   "9000052:ALLOW:FN": 105,
+   "9000060:ALLOW:FN": 105,
+   "9000070:ALLOW:FN": 105,
+   "9000071:ALLOW:FN": 105,
+   "9000072:ALLOW:FN": 105,
+   "9000050:ALLOW:FP": 63,
+   "9000051:ALLOW:FP": 63,
+   "9000061:ALLOW:FP": 63,
+   "9000050:EXTERNAL:FP": 49,
+   "9000051:EXTERNAL:FP": 49,
+   "9000061:EXTERNAL:FP": 49,
+   "9000073:EXTERNAL:FN": 49,
+   "9000074:EXTERNAL:FN": 49
+  }
+ },
+ "baseline_c_host": {
+  "known_points": 24428,
+  "coverage": 1.0,
+  "accuracy_decided": 0.9524,
+  "accuracy_all_known_abstain_as_wrong": 0.9524,
+  "TP": 3981,
+  "FN": 441,
+  "FP": 721,
+  "TN": 19285,
+  "abstain": 0,
+  "unknown_points": 5040,
+  "unknown_auto_drop": 700,
+  "ambiguous_points": 1682,
+  "ambiguous_actions": {
+   "DROP": 1682,
+   "log_only": 0,
+   "abstain": 0
+  },
+  "errors_by_sid": {
+   "9000050:ALLOW:FP": 168,
+   "9000051:ALLOW:FP": 168,
+   "9000061:ALLOW:FP": 168,
+   "9000073:ALLOW:FN": 168,
+   "9000074:ALLOW:FN": 168,
+   "9000050:EXTERNAL:FP": 63,
+   "9000051:EXTERNAL:FP": 63,
+   "9000061:EXTERNAL:FP": 63,
+   "9000073:EXTERNAL:FN": 49,
+   "9000074:EXTERNAL:FN": 49,
+   "9000075:EXTERNAL:FP": 14,
+   "9000078:EXTERNAL:FP": 14,
+   "9000012:ALLOW:FN": 7
+  }
+ },
+ "baseline_c_stale": {
+  "known_points": 24428,
+  "coverage": 1.0,
+  "accuracy_decided": 0.9203,
+  "accuracy_all_known_abstain_as_wrong": 0.9203,
+  "TP": 2798,
+  "FN": 1624,
+  "FP": 322,
+  "TN": 19684,
+  "abstain": 0,
+  "unknown_points": 5040,
+  "unknown_auto_drop": 546,
+  "ambiguous_points": 1682,
+  "ambiguous_actions": {
+   "DROP": 1360,
+   "log_only": 322,
+   "abstain": 0
+  },
+  "errors_by_sid": {
+   "9000073:ALLOW:FN": 168,
+   "9000074:ALLOW:FN": 168,
+   "9000052:ALLOW:FN": 112,
+   "9000060:ALLOW:FN": 112,
+   "9000070:ALLOW:FN": 112,
+   "9000071:ALLOW:FN": 112,
+   "9000072:ALLOW:FN": 112,
+   "9000073:DENY:FN": 77,
+   "9000074:DENY:FN": 77,
+   "9000050:ALLOW:FP": 56,
+   "9000051:ALLOW:FP": 56,
+   "9000052:DENY:FN": 56,
+   "9000060:DENY:FN": 56,
+   "9000061:ALLOW:FP": 56,
+   "9000070:DENY:FN": 56
+  }
+ },
+ "v4_all_single": {
+  "known_points": 24428,
+  "coverage": 0.9051,
+  "accuracy_decided": 1.0,
+  "accuracy_all_known_abstain_as_wrong": 0.9051,
+  "TP": 3260,
+  "FN": 0,
+  "FP": 0,
+  "TN": 18851,
+  "abstain": 2317,
+  "unknown_points": 5040,
+  "unknown_auto_drop": 0,
+  "ambiguous_points": 1682,
+  "ambiguous_actions": {
+   "DROP": 2,
+   "log_only": 0,
+   "abstain": 1680
+  },
+  "errors_by_sid": {},
+  "verified": true,
+  "compile_tokens": {
+   "prompt_tokens": 54605,
+   "completion_tokens": 8031
+  }
+ },
+ "v4_all_ens5.member0": {
+  "known_points": 24428,
+  "coverage": 0.8608,
+  "accuracy_decided": 0.9997,
+  "accuracy_all_known_abstain_as_wrong": 0.8605,
+  "TP": 2170,
+  "FN": 7,
+  "FP": 0,
+  "TN": 18851,
+  "abstain": 3400,
+  "unknown_points": 5040,
+  "unknown_auto_drop": 0,
+  "ambiguous_points": 1682,
+  "ambiguous_actions": {
+   "DROP": 0,
+   "log_only": 0,
+   "abstain": 1682
+  },
+  "errors_by_sid": {
+   "9000012:ALLOW:FN": 7
+  },
+  "verified": true
+ },
+ "v4_all_ens5.member1": {
+  "known_points": 24428,
+  "coverage": 0.9527,
+  "accuracy_decided": 1.0,
+  "accuracy_all_known_abstain_as_wrong": 0.9527,
+  "TP": 4422,
+  "FN": 0,
+  "FP": 0,
+  "TN": 18851,
+  "abstain": 1155,
+  "unknown_points": 5040,
+  "unknown_auto_drop": 0,
+  "ambiguous_points": 1682,
+  "ambiguous_actions": {
+   "DROP": 2,
+   "log_only": 0,
+   "abstain": 1680
+  },
+  "errors_by_sid": {},
+  "verified": true
+ },
+ "v4_all_ens5.member2": {
+  "known_points": 24428,
+  "coverage": 0.906,
+  "accuracy_decided": 1.0,
+  "accuracy_all_known_abstain_as_wrong": 0.906,
+  "TP": 2126,
+  "FN": 0,
+  "FP": 0,
+  "TN": 20006,
+  "abstain": 2296,
+  "unknown_points": 5040,
+  "unknown_auto_drop": 0,
+  "ambiguous_points": 1682,
+  "ambiguous_actions": {
+   "DROP": 2,
+   "log_only": 1680,
+   "abstain": 0
+  },
+  "errors_by_sid": {},
+  "verified": true
+ },
+ "v4_all_ens5.member3": {
+  "known_points": 24428,
+  "coverage": 1.0,
+  "accuracy_decided": 0.9997,
+  "accuracy_all_known_abstain_as_wrong": 0.9997,
+  "TP": 4415,
+  "FN": 7,
+  "FP": 0,
+  "TN": 20006,
+  "abstain": 0,
+  "unknown_points": 5040,
+  "unknown_auto_drop": 0,
+  "ambiguous_points": 1682,
+  "ambiguous_actions": {
+   "DROP": 2,
+   "log_only": 1680,
+   "abstain": 0
+  },
+  "errors_by_sid": {
+   "9000012:ALLOW:FN": 7
+  },
+  "verified": true
+ },
+ "v4_all_ens5.member4": {
+  "known_points": 24428,
+  "coverage": 1.0,
+  "accuracy_decided": 0.9034,
+  "accuracy_all_known_abstain_as_wrong": 0.9034,
+  "TP": 2063,
+  "FN": 2359,
+  "FP": 0,
+  "TN": 20006,
+  "abstain": 0,
+  "unknown_points": 5040,
+  "unknown_auto_drop": 0,
+  "ambiguous_points": 1682,
+  "ambiguous_actions": {
+   "DROP": 2,
+   "log_only": 1680,
+   "abstain": 0
+  },
+  "errors_by_sid": {
+   "9000070:DENY:FN": 336,
+   "9000071:DENY:FN": 336,
+   "9000072:DENY:FN": 336,
+   "9000073:DENY:FN": 336,
+   "9000052:ALLOW:FN": 168,
+   "9000060:ALLOW:FN": 168,
+   "9000074:ALLOW:FN": 168,
+   "9000052:EXTERNAL:FN": 63,
+   "9000060:EXTERNAL:FN": 63,
+   "9000070:EXTERNAL:FN": 63,
+   "9000071:EXTERNAL:FN": 63,
+   "9000072:EXTERNAL:FN": 63,
+   "9000073:EXTERNAL:FN": 63,
+   "9000074:EXTERNAL:FN": 63,
+   "9000009:DENY:FN": 42
+  },
+  "verified": true
+ },
+ "v4_all_ens5": {
+  "known_points": 24428,
+  "coverage": 0.9226,
+  "accuracy_decided": 0.9997,
+  "accuracy_all_known_abstain_as_wrong": 0.9223,
+  "TP": 2525,
+  "FN": 7,
+  "FP": 0,
+  "TN": 20006,
+  "abstain": 1890,
+  "unknown_points": 5040,
+  "unknown_auto_drop": 0,
+  "ambiguous_points": 1682,
+  "ambiguous_actions": {
+   "DROP": 2,
+   "log_only": 1680,
+   "abstain": 0
+  },
+  "errors_by_sid": {
+   "9000012:ALLOW:FN": 7
+  },
+  "verified": true,
+  "compile_tokens": {
+   "prompt_tokens": 402810,
+   "completion_tokens": 55890
+  }
+ }
+}

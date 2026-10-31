@@ -1,0 +1,195 @@
+{
+  "summary": {
+    "fabric": "V2-8zone",
+    "kill_chain_src": "10.1.100.10",
+    "stages": {
+      "stage1": {
+        "sid": 9000041,
+        "sig": "Vertical port scan",
+        "src": "10.1.100.10",
+        "dst": "10.3.100.10",
+        "dport": 8080
+      },
+      "stage2": {
+        "sid": 9000002,
+        "sig": "WEB to APP/WORKER direct - skips APP-GW",
+        "src": "10.1.100.10",
+        "dst": "10.2.100.10",
+        "dport": 8090
+      },
+      "stage3": {
+        "sid": 9000001,
+        "sig": "WEB to DB direct - microsegmentation bypass",
+        "src": "10.1.100.10",
+        "dst": "10.1.200.10",
+        "dport": 5432
+      }
+    },
+    "proposed_sequence": {
+      "outcome": "enforced",
+      "confidence": 0.95,
+      "blocked": "10.1.100.10",
+      "correlation_detected": true
+    },
+    "proposed_cold": {
+      "outcome": "enforced",
+      "confidence": 0.95,
+      "blocked": "10.1.100.10"
+    },
+    "confidence_lift": 0.0,
+    "correlation_detected_in_sequence": true,
+    "baseline_a_temporal_awareness": false,
+    "baseline_a_action_stage3": "DROP",
+    "thesis_claim": "Proposed agent escalates with kill-chain context (higher confidence, correlation markers present); SOAR correctly mitigates on SID match but cannot escalate, correlate across stages, or distinguish cold vs. sequence."
+  },
+  "sequence_run": {
+    "outcome": "enforced",
+    "confidence": 0.95,
+    "blocked": "10.1.100.10",
+    "correlation_detected": true,
+    "stage3_decision_raw": {
+      "id": "ee705d4d-9e0e-4ba9-b467-dbb5c6a1d1e0",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "enforced",
+      "action": "DROP",
+      "src_ip": "10.1.100.10/32",
+      "dst_ip": "10.1.200.10/32",
+      "confidence": 0.95,
+      "rejection_reason": "",
+      "latency_ms": 7092.124155955389,
+      "dry_run": false
+    },
+    "latest_decision_fetched": {
+      "id": "ee705d4d-9e0e-4ba9-b467-dbb5c6a1d1e0",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "enforced",
+      "action": "DROP",
+      "src_ip": "10.1.100.10/32",
+      "dst_ip": "10.1.200.10/32",
+      "dst_port": 5432,
+      "confidence": 0.95,
+      "rejection_reason": "",
+      "safety_checks": {
+        "validators": {
+          "errors": [],
+          "warnings": []
+        },
+        "confidence": {
+          "score": 0.95,
+          "outcome": "enforce"
+        },
+        "enforcement": {
+          "backend": "ids_agent_proxy",
+          "rule_id": "agent-5c5875aa62"
+        }
+      },
+      "reasoning": [
+        "SID 9000001 triggered: TCP SYN from WEB zone (10.1.100.10) to DB-OLTP zone (10.1.200.10) on PostgreSQL port 5432 - matches detection logic for microsegmentation bypass.",
+        "Policy matrix confirms WEB\u2192DB-OLTP = DENY - this is a hard microsegmentation violation; legitimate traffic must flow WEB\u2192APP-GW\u2192APP-CORE\u2192DB-OLTP.",
+        "Baseline check: No web-to-db traffic exists in production baselines; WEB's only legitimate outbound is web-to-appgw-proxy (10.3.100.10:8080). DB-OLTP only accepts from APP-CORE, WORKER, MGT, MONITORING.",
+        "Source reputation: 10.1.100.10 has trust score 0.39, runtime score 0.00 (very low), 28 prior SID 9000001 alerts in 90 days - classified as REPEAT OFFENDER.",
+        "Past incidents: 100% enforcement rate (28/28) for exact SID matches in 90-day lookback; all recent decisions were DROP with 0.95 confidence; 5 semantically similar and 5 MITRE T1021 matches.",
+        "Multi-alert correlation: 5-alert sequence (SIDs 9000001, 9000001, 9000901, 9000905, 9000002) indicates active kill-chain progression - not isolated event.",
+        "Threat pattern match: `cross_zone_violation_web_to_db` with confidence anchor 0.95; severity scoring yields 10 points (cross_zone_policy_violation +4, dst_port_in_critical_db_set +1, corroborated_by_past_incidents +1, matches_known_chain_stage +2, rate_above_3x_baseline +2) \u2192 P1.",
+        "Confidence gate: 0.95 >= 0.85 threshold passes L7 safety check; targeted block (src+dst+port) selected to preserve legitimate web-to-appgw-proxy flow while blocking malicious path.",
+        "Hard overrides verified: src_zone != MGT, dst_ip not in NEVER_BLOCK list, action=DROP, priority=50 (<100) - all constraints satisfied."
+      ],
+      "hypotheses": [
+        {
+          "name": "Microsegmentation bypass attack",
+          "description": "Microsegmentation bypass attack (probability=0.95) \u2014 WEB host attempting direct DB connection, bypassing APP-GW and APP-CORE. Evidence: SID 9000001 trigger, policy matrix DENY verdict, no baseline match, repeat offender with 28 prior incidents. Counter: None significant.",
+          "probability": 0.95,
+          "supporting_evidence": [],
+          "disconfirming_evidence": []
+        },
+        {
+          "name": "Misconfigured application",
+          "description": "Misconfigured application (probability=0.04) \u2014 Application misconfigured to connect directly to DB instead of through proper chain. Evidence: None - no legitimate web-to-db baseline exists in production. Counter: 28 prior exact-SID incidents all enforced as malicious; no change window announced.",
+          "probability": 0.04,
+          "supporting_evidence": [],
+          "disconfirming_evidence": []
+        },
+        {
+          "name": "Lateral movement pivot",
+          "description": "Lateral movement pivot (probability=0.01) \u2014 WEB host compromised, attacker pivoting toward crown-jewel DB. Evidence: Multi-SID kill-chain signal (9000001\u21929000901\u21929000905\u21929000002), MITRE T1021 mapping. Counter: Would expect reconnaissance SIDs (9000040/9000041) before direct DB access in typical attack chain.",
+          "probability": 0.01,
+          "supporting_evidence": [],
+          "disconfirming_evidence": []
+        }
+      ],
+      "rollback_plan": {
+        "trigger": "Trigger: Legitimate application team confirms DB migration or configuration change requiring direct web-to-db access. Action: DELETE /rules/{rule_id} via SF REST API. Monitor: 60s for traffic restoration and verify no new alerts on same flow.",
+        "action": "Trigger: Legitimate application team confirms DB migration or configuration change requiring direct web-to-db access. Action: DELETE /rules/{rule_id} via SF REST API. Monitor: 60s for traffic restoration and verify no new alerts on same flow.",
+        "monitor_seconds": 300
+      },
+      "rule_id": "agent-5c5875aa62",
+      "ttl_seconds": 3600,
+      "latency_ms": 7092.124155955389,
+      "created_at": "2026-06-02T09:41:52.568666+00:00",
+      "dry_run": false,
+      "retrospective_outcome": null,
+      "trace_id": "f32418fc-8631-428a-b581-2347062ee393",
+      "primary_hypothesis": "Microsegmentation bypass attack - WEB tier attempting direct database access",
+      "alternative_actions": [
+        {
+          "trigger_condition": "If multi-destination scanning detected (unique_dst_ports > 10 in 60s) then FULL-SOURCE BLOCK (10.1.100.10/32) because attacker is probing multiple targets beyond DB.",
+          "action": "log_only",
+          "rationale": "If multi-destination scanning detected (unique_dst_ports > 10 in 60s) then FULL-SOURCE BLOCK (10.1.100.10/32) because attacker is probing multiple targets beyond DB."
+        },
+        {
+          "trigger_condition": "If legitimate DB migration window announced by operations team then ESCALATE TO OPERATOR (OU=sdnc) for temporary ACCEPT rule because maintenance requires exception to microsegmentation.",
+          "action": "ESCALATE_HUMAN",
+          "rationale": "If legitimate DB migration window announced by operations team then ESCALATE TO OPERATOR (OU=sdnc) for temporary ACCEPT rule because maintenance requires exception to microsegmentation."
+        },
+        {
+          "trigger_condition": "If flow rate drops below threshold and no recurrence in 30min then AUTO-EXPIRE rule (DELETE at TTL) because threat may be contained and host may be recovering.",
+          "action": "DROP",
+          "rationale": "If flow rate drops below threshold and no recurrence in 30min then AUTO-EXPIRE rule (DELETE at TTL) because threat may be contained and host may be recovering."
+        }
+      ],
+      "follow_up_actions": [
+        "Monitor for additional lateral movement attempts from WEB tier (WEB\u2192APP-CORE, WEB\u2192WORKER) - watch for SIDs 9000002, 9000008.",
+        "Watch for DB exfiltration patterns from db-oltp-01 (DB-OLTP\u2192external) - SID 9000062, indicating attacker achieved access.",
+        "Track source host 10.1.100.10 for C2 beacon patterns (periodic small outbound) - SIDs 9000060, 9000061.",
+        "Correlate with authentication logs for web-01 to detect potential credential theft or session hijacking.",
+        "Monitor for SQL injection or destructive content on DB-OLTP connections - SIDs 9000070, 9000071, 9000072."
+      ],
+      "mitre_technique": "T1021",
+      "mitre_tactic": "TA0008",
+      "reasoning_completed_at": "2026-06-02T09:41:52.566356+00:00",
+      "reasoning_loading": false,
+      "retrospective_notes": null,
+      "labeled_at": null,
+      "notification_title": null,
+      "notification_body": null,
+      "notification_severity": null
+    }
+  },
+  "cold_run": {
+    "outcome": "enforced",
+    "confidence": 0.95,
+    "blocked": "10.1.100.10",
+    "stage3_decision_raw": {
+      "id": "53647550-7e89-40cc-b2f9-ef430d4ded3b",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "enforced",
+      "action": "DROP",
+      "src_ip": "10.1.100.10/32",
+      "dst_ip": "10.1.200.10/32",
+      "confidence": 0.95,
+      "rejection_reason": "",
+      "latency_ms": 755.7167347986251,
+      "dry_run": false
+    }
+  },
+  "baseline_a": {
+    "sid": 9000001,
+    "action": "DROP",
+    "temporal_awareness": false,
+    "reason": "matched known-dangerous SID",
+    "note": "Correct mitigation on SID match but no escalation or correlation; output is identical regardless of whether STAGE1/STAGE2 preceded this alert."
+  }
+}

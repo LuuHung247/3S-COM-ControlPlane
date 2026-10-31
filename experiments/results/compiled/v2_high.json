@@ -1,0 +1,267 @@
+{
+  "compiled_at": "2026-10-27T05:08:15.500084+00:00",
+  "kb_root": "../intelligence-layer/knowledge_v2",
+  "kb_digest": "bb3edf83a797e9dd",
+  "model": "gpt-oss-120b",
+  "reasoning_effort": "high",
+  "verified": true,
+  "rounds": [
+    {
+      "round": 0,
+      "latency_s": 9.15,
+      "prompt_tokens": 16003,
+      "completion_tokens": 16000,
+      "parse_error": "model output is not valid JSON: Expecting ',' delimiter: line 107 column 8 (char 2842)"
+    },
+    {
+      "round": 1,
+      "latency_s": 5.73,
+      "prompt_tokens": 16964,
+      "completion_tokens": 9496,
+      "ok": true,
+      "points": 136080,
+      "realizable": 19824,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 17094,
+      "realizable_drop": 1638,
+      "realizable_abstain": 2730,
+      "coverage": 0.8623,
+      "dead_rules": []
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 32967,
+    "completion_tokens": 25496
+  },
+  "compile_seconds": 19.8,
+  "verification": {
+    "ok": true,
+    "points": 136080,
+    "realizable": 19824,
+    "violating_points": 0,
+    "violation_kinds": 0,
+    "provenance_errors": 0,
+    "realizable_decided": 17094,
+    "realizable_drop": 1638,
+    "realizable_abstain": 2730,
+    "coverage": 0.8623,
+    "dead_rules": []
+  },
+  "program": {
+    "rules": [
+      {
+        "id": "R0_protected_src",
+        "when": {
+          "src_protected": true
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "Never block sources that are in the never\u2011block whitelist (invariants.md). Blocking them would partition the fabric.",
+        "kb_refs": [
+          "invariants.md never_block"
+        ]
+      },
+      {
+        "id": "R1_external_src",
+        "when": {
+          "src_zones": [
+            "EXTERNAL"
+          ]
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "External sources must never be dropped per hard constraint.",
+        "kb_refs": [
+          "policy-matrix.md"
+        ]
+      },
+      {
+        "id": "R2_policy_violations",
+        "when": {
+          "sids": [
+            9000001,
+            9000002,
+            9000003,
+            9000004,
+            9000005,
+            9000006,
+            9000007,
+            9000008,
+            9000009,
+            9000010,
+            9000011,
+            9000012,
+            9000013
+          ],
+          "severity_min": 1,
+          "severity_max": 2,
+          "verdicts": [
+            "DENY"
+          ]
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.9
+        },
+        "rationale": "Micro\u2011segmentation policy violation: unauthorized zone\u2011pair communication. Dropping the source contains the threat.",
+        "kb_refs": [
+          "SID 9000001",
+          "SID 9000002",
+          "SID 9000003",
+          "SID 9000004",
+          "SID 9000005",
+          "SID 9000006",
+          "SID 9000007",
+          "SID 9000008",
+          "SID 9000009",
+          "SID 9000010",
+          "SID 9000011",
+          "SID 9000012",
+          "SID 9000013",
+          "policy-matrix.md"
+        ]
+      },
+      {
+        "id": "R3_sql_injection",
+        "when": {
+          "sids": [
+            9000070,
+            9000071,
+            9000072
+          ],
+          "severity_min": 1,
+          "severity_max": 1,
+          "verdicts": [
+            "ALLOW"
+          ]
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.9
+        },
+        "rationale": "Malicious SQL content detected on allowed DB traffic (SQL injection). Dropping the source prevents data exfiltration and corruption.",
+        "kb_refs": [
+          "SID 9000070",
+          "SID 9000071",
+          "SID 9000072"
+        ]
+      },
+      {
+        "id": "R4_db_exfil",
+        "when": {
+          "sids": [
+            9000062
+          ],
+          "severity_min": 1,
+          "severity_max": 1,
+          "verdicts": [
+            "DENY"
+          ]
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.9
+        },
+        "rationale": "Crown\u2011jewel DB tier initiating outbound traffic violates sink\u2011role invariant; drop to stop exfiltration.",
+        "kb_refs": [
+          "SID 9000062"
+        ]
+      },
+      {
+        "id": "R5_syn_flood",
+        "when": {
+          "sids": [
+            9000050
+          ],
+          "severity_min": 2,
+          "severity_max": 2
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.9
+        },
+        "rationale": "TCP SYN flood DoS attack; dropping the source mitigates impact.",
+        "kb_refs": [
+          "SID 9000050"
+        ]
+      },
+      {
+        "id": "R6_c2_heartbeat",
+        "when": {
+          "sids": [
+            9000060
+          ],
+          "severity_min": 2,
+          "severity_max": 2
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.9
+        },
+        "rationale": "Low\u2011and\u2011slow C2 beacon to external network; dropping the source stops potential command\u2011and\u2011control.",
+        "kb_refs": [
+          "SID 9000060"
+        ]
+      },
+      {
+        "id": "R7_log_only_recon",
+        "when": {
+          "sids": [
+            9000040,
+            9000041,
+            9000042,
+            9000043,
+            9000044,
+            9000051,
+            9000052,
+            9000061,
+            9000080,
+            9000081
+          ],
+          "severity_min": 2,
+          "severity_max": 4
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "Reconnaissance, low\u2011severity scanning, and audit signatures are logged for visibility but not blocked.",
+        "kb_refs": [
+          "SID 9000040",
+          "SID 9000041",
+          "SID 9000042",
+          "SID 9000043",
+          "SID 9000044",
+          "SID 9000051",
+          "SID 9000052",
+          "SID 9000061",
+          "SID 9000080",
+          "SID 9000081"
+        ]
+      }
+    ],
+    "notes": "Program enforces Zero\u2011Trust policy: protective rules first, then drops for policy violations and malicious content, logs for recon/audit. All DROP actions meet hard constraints (severity 1\u20112, confidence >=0.9, ttl 300s, flow scope)."
+  }
+}

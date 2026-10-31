@@ -1,0 +1,188 @@
+{
+  "summary": {
+    "fabric": "V2-8zone",
+    "kill_chain_src": "10.1.100.10",
+    "stages": {
+      "stage1": {
+        "sid": 9000041,
+        "sig": "Vertical port scan",
+        "src": "10.1.100.10",
+        "dst": "10.3.100.10",
+        "dport": 8080
+      },
+      "stage2": {
+        "sid": 9000002,
+        "sig": "WEB to APP/WORKER direct - skips APP-GW",
+        "src": "10.1.100.10",
+        "dst": "10.2.100.10",
+        "dport": 8090
+      },
+      "stage3": {
+        "sid": 9000001,
+        "sig": "WEB to DB direct - microsegmentation bypass",
+        "src": "10.1.100.10",
+        "dst": "10.1.200.10",
+        "dport": 5432
+      }
+    },
+    "proposed_sequence": {
+      "outcome": "enforced",
+      "confidence": 0.93,
+      "blocked": "10.1.100.10",
+      "correlation_detected": true
+    },
+    "proposed_cold": {
+      "outcome": "filtered",
+      "confidence": null,
+      "blocked": null
+    },
+    "confidence_lift": "N/A (one or both confidence values missing)",
+    "correlation_detected_in_sequence": true,
+    "baseline_a_temporal_awareness": false,
+    "baseline_a_action_stage3": "DROP",
+    "thesis_claim": "Proposed agent escalates with kill-chain context (higher confidence, correlation markers present); SOAR correctly mitigates on SID match but cannot escalate, correlate across stages, or distinguish cold vs. sequence."
+  },
+  "sequence_run": {
+    "outcome": "enforced",
+    "confidence": 0.93,
+    "blocked": "10.1.100.10",
+    "correlation_detected": true,
+    "stage3_decision_raw": {
+      "id": "a8c2fd5b-7ec2-42d2-b39d-75694d0fcf20",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "enforced",
+      "action": "DROP",
+      "src_ip": "10.1.100.10/32",
+      "dst_ip": "10.1.200.10",
+      "confidence": 0.93,
+      "rejection_reason": "",
+      "latency_ms": 3024.5933197438717,
+      "dry_run": false
+    },
+    "latest_decision_fetched": {
+      "id": "a8c2fd5b-7ec2-42d2-b39d-75694d0fcf20",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "enforced",
+      "action": "DROP",
+      "src_ip": "10.1.100.10/32",
+      "dst_ip": "10.1.200.10",
+      "dst_port": 5432,
+      "confidence": 0.93,
+      "rejection_reason": "",
+      "safety_checks": {
+        "validators": {
+          "errors": [],
+          "warnings": []
+        },
+        "confidence": {
+          "score": 0.93,
+          "outcome": "enforce"
+        },
+        "enforcement": {
+          "backend": "ids_agent_proxy",
+          "rule_id": "agent-67508979e6"
+        }
+      },
+      "reasoning": [
+        "1. Policy matrix explicitly DENYs any traffic from zone WEB to zone DB-OLTP; this flow is a direct violation.",
+        "2. SID 9000001 is a P1 severity signature for exactly this microsegmentation bypass, mapping to TA0008/T1021.",
+        "3. No baseline traffic exists for 10.1.100.10\u219210.1.200.10:5432, confirming anomaly.",
+        "4. Historical data shows three prior identical alerts where the agent enforced DROP with confidence >0.92, indicating a recurring threat pattern.",
+        "5. Blast\u2011radius assessment shows medium impact: blocking this specific flow preserves the web service while preventing DB compromise.",
+        "6. Confidence calculation (0.93) exceeds the hard\u2011override threshold (0.85), allowing DROP action.",
+        "7. Hard constraints satisfied: src_ip is trusted, not in NEVER_BLOCK list, TTL 3600\u202fs within allowed range, priority will be set <100.",
+        "8. Decision aligns with threat\u2011playbook recommendation for cross_zone_violation_web_to_db (DROP, TTL 3600)."
+      ],
+      "hypotheses": [
+        {
+          "name": "cross_zone_violation_web_to_db",
+          "description": "cross_zone_violation_web_to_db (probability=0.85) \u2014 Direct WEB\u2192DB-OLTP connection violates microsegmentation policy. Evidence: SID 9000001 P1 alert, policy matrix DENY, no baseline traffic, prior enforced drops with high confidence. Counter: runtime reputation clean, recent benign alerts could indicate legitimate admin task (unlikely).",
+          "probability": 0.85,
+          "supporting_evidence": [],
+          "disconfirming_evidence": []
+        },
+        {
+          "name": "false_positive_admin_task",
+          "description": "false_positive_admin_task (probability=0.10) \u2014 Possible scheduled DB maintenance from web host. Evidence: clean reputation, recent alerts low severity. Counter: policy matrix strictly denies WEB\u2192DB, no known admin process from WEB zone.",
+          "probability": 0.1,
+          "supporting_evidence": [],
+          "disconfirming_evidence": []
+        },
+        {
+          "name": "kill_chain_progression",
+          "description": "kill_chain_progression (probability=0.05) \u2014 Part of multi-stage lateral movement campaign. Evidence: multiple related SIDs, prior enforced drops, MITRE T1021 matches. Counter: limited to single flow, no additional C2 indicators.",
+          "probability": 0.05,
+          "supporting_evidence": [],
+          "disconfirming_evidence": []
+        }
+      ],
+      "rollback_plan": {
+        "trigger": "Trigger: unexpected service outage on web-01 (e.g., HTTP 5xx spikes). Action: DELETE rule via /rules/{id}. Monitor: 300s for restoration of web-to-appgw-proxy traffic.",
+        "action": "Trigger: unexpected service outage on web-01 (e.g., HTTP 5xx spikes). Action: DELETE rule via /rules/{id}. Monitor: 300s for restoration of web-to-appgw-proxy traffic.",
+        "monitor_seconds": 300
+      },
+      "rule_id": "agent-67508979e6",
+      "ttl_seconds": 3600,
+      "latency_ms": 3024.5933197438717,
+      "created_at": "2026-10-18T14:03:50.414484+00:00",
+      "dry_run": false,
+      "retrospective_outcome": null,
+      "trace_id": "d48869ca-b7a9-438e-a7dd-b6ca973b47c8",
+      "primary_hypothesis": "cross_zone_violation_web_to_db",
+      "alternative_actions": [
+        {
+          "trigger_condition": "if reputation score drops below 0.5 then elevate to full source block (DROP src_ip/32) because increased malicious likelihood.",
+          "action": "DROP",
+          "rationale": "if reputation score drops below 0.5 then elevate to full source block (DROP src_ip/32) because increased malicious likelihood."
+        },
+        {
+          "trigger_condition": "if subsequent alerts show scanning behavior (multiple dst ports) then broaden block to src_ip/32 all ports to DB zones because of vertical scan indication.",
+          "action": "log_only",
+          "rationale": "if subsequent alerts show scanning behavior (multiple dst ports) then broaden block to src_ip/32 all ports to DB zones because of vertical scan indication."
+        }
+      ],
+      "follow_up_actions": [
+        "Monitor for additional WEB\u2192DB attempts (other ports or destinations).",
+        "Correlate future alerts for SID 9000002 or SID 9000003 to detect lateral movement escalation.",
+        "Check DB\u2011OLTP logs for any unauthorized connection attempts from other sources.",
+        "Validate that web-to-appgw-proxy flow resumes normally after block expires."
+      ],
+      "mitre_technique": "T1021",
+      "mitre_tactic": "TA0008",
+      "reasoning_completed_at": "2026-10-18T14:03:50.407807+00:00",
+      "reasoning_loading": false,
+      "retrospective_notes": null,
+      "labeled_at": null,
+      "notification_title": null,
+      "notification_body": null,
+      "notification_severity": null
+    }
+  },
+  "cold_run": {
+    "outcome": "filtered",
+    "confidence": null,
+    "blocked": null,
+    "stage3_decision_raw": {
+      "id": "filtered",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "filtered",
+      "action": null,
+      "src_ip": null,
+      "dst_ip": null,
+      "confidence": null,
+      "rejection_reason": "duplicate alert sid=9000001 src=10.1.100.10",
+      "latency_ms": 0.0,
+      "dry_run": true
+    }
+  },
+  "baseline_a": {
+    "sid": 9000001,
+    "action": "DROP",
+    "temporal_awareness": false,
+    "reason": "matched known-dangerous SID",
+    "note": "Correct mitigation on SID match but no escalation or correlation; output is identical regardless of whether STAGE1/STAGE2 preceded this alert."
+  }
+}

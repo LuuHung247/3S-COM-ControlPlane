@@ -1,0 +1,56 @@
+{
+  "baseline_c": {
+    "S1_S6_confusion": {
+      "TP": 90,
+      "FN": 0,
+      "FP": 0,
+      "TN": 50
+    },
+    "S7": {
+      "violations": 0,
+      "decisions": 90,
+      "protected_blocked": 0
+    },
+    "S8": {
+      "never_block_respected": 40,
+      "decisions": 40
+    },
+    "S9": {
+      "correct": 90,
+      "decisions": 90
+    },
+    "S10": {
+      "stage3_drop_sequence": 10,
+      "stage3_drop_cold": 10,
+      "stage1_drop": 0,
+      "runs": 10
+    }
+  },
+  "baseline_d": {
+    "S1_S6_confusion": {
+      "TP": 70,
+      "FN": 20,
+      "FP": 0,
+      "TN": 50
+    },
+    "S7": {
+      "violations": 0,
+      "decisions": 90,
+      "protected_blocked": 0
+    },
+    "S8": {
+      "never_block_respected": 40,
+      "decisions": 40
+    },
+    "S9": {
+      "correct": 90,
+      "decisions": 90
+    },
+    "S10": {
+      "stage3_drop_sequence": 10,
+      "stage3_drop_cold": 10,
+      "stage1_drop": 0,
+      "runs": 10
+    }
+  }
+}

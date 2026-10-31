@@ -1,0 +1,188 @@
+{
+  "summary": {
+    "fabric": "V2-8zone",
+    "kill_chain_src": "10.1.100.10",
+    "stages": {
+      "stage1": {
+        "sid": 9000041,
+        "sig": "Vertical port scan",
+        "src": "10.1.100.10",
+        "dst": "10.3.100.10",
+        "dport": 8080
+      },
+      "stage2": {
+        "sid": 9000002,
+        "sig": "WEB to APP/WORKER direct - skips APP-GW",
+        "src": "10.1.100.10",
+        "dst": "10.2.100.10",
+        "dport": 8090
+      },
+      "stage3": {
+        "sid": 9000001,
+        "sig": "WEB to DB direct - microsegmentation bypass",
+        "src": "10.1.100.10",
+        "dst": "10.1.200.10",
+        "dport": 5432
+      }
+    },
+    "proposed_sequence": {
+      "outcome": "enforced",
+      "confidence": 0.94,
+      "blocked": "10.1.100.10",
+      "correlation_detected": true
+    },
+    "proposed_cold": {
+      "outcome": "enforced",
+      "confidence": 0.94,
+      "blocked": "10.1.100.10"
+    },
+    "confidence_lift": 0.0,
+    "correlation_detected_in_sequence": true,
+    "baseline_a_temporal_awareness": false,
+    "baseline_a_action_stage3": "DROP",
+    "thesis_claim": "Proposed agent escalates with kill-chain context (higher confidence, correlation markers present); SOAR correctly mitigates on SID match but cannot escalate, correlate across stages, or distinguish cold vs. sequence."
+  },
+  "sequence_run": {
+    "outcome": "enforced",
+    "confidence": 0.94,
+    "blocked": "10.1.100.10",
+    "correlation_detected": true,
+    "stage3_decision_raw": {
+      "id": "c63518cc-daa1-4618-9a5e-612a7f307249",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "enforced",
+      "action": "DROP",
+      "src_ip": "10.1.100.10/32",
+      "dst_ip": "10.1.200.10/32",
+      "confidence": 0.94,
+      "rejection_reason": "",
+      "latency_ms": 3489.250835031271,
+      "dry_run": false
+    },
+    "latest_decision_fetched": {
+      "id": "c63518cc-daa1-4618-9a5e-612a7f307249",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "enforced",
+      "action": "DROP",
+      "src_ip": "10.1.100.10/32",
+      "dst_ip": "10.1.200.10/32",
+      "dst_port": 5432,
+      "confidence": 0.94,
+      "rejection_reason": "",
+      "safety_checks": {
+        "validators": {
+          "errors": [],
+          "warnings": []
+        },
+        "confidence": {
+          "score": 0.94,
+          "outcome": "enforce"
+        },
+        "enforcement": {
+          "backend": "ids_agent_proxy",
+          "rule_id": "agent-5c5875aa62"
+        }
+      },
+      "reasoning": [
+        "[graph] Containment scope: flow (distinct_targets=1, ports_on_this_target=1, crown_jewel_path_open_under_flow_scope=yes).",
+        "The policy matrix explicitly DENYs any WEB\u2192DB\u2011OLTP traffic; this flow is therefore a policy violation (cross_zone_policy_violation +4).",
+        "SID\u202f9000001 is a P1 signature for micro\u2011segmentation bypass (cross_zone_violation_web_to_db) with confidence anchor\u202f0.95; the alert matches exactly the signature (TCP SYN from 10.1.100.0/24 to 10.1.200.0/24:5432).",
+        "Baseline analysis shows no legitimate traffic of this type; the flow is not in the production baseline (baseline\u202f=\u202fnone).",
+        "Reputation data shows the source host has a very low score (0.00) and is a repeat offender (14 TP / 27 unlabeled in last hour), reinforcing the malicious hypothesis.",
+        "Historical enforcement data shows 20 prior identical SID alerts all resulted in DROP with confidence\u202f0.94; this strong precedent pushes the decision toward a targeted block.",
+        "Graph analytics indicate that a targeted DROP (src\u202f+\u202fdst\u202f+\u202fport) cuts zero legitimate flows, preserving the critical web\u2011to\u2011APP\u2011GW path while stopping the illicit connection.",
+        "The remaining crown\u2011jewel path (WEB\u2192APP\u2011GW\u2192APP\u2011CORE\u2192DB\u2011OLTP) is still reachable for legitimate traffic; blocking only the offending flow limits blast radius to medium while preventing lateral movement.",
+        "Thus the chosen containment scope is a targeted DROP of 10.1.100.10/32 \u2192 10.1.200.10/32:5432 with TTL\u202f3600\u202fs."
+      ],
+      "hypotheses": [
+        {
+          "name": "web_to_db_direct_bypass",
+          "description": "web_to_db_direct_bypass (probability=0.85) \u2014 The source web-01 is attempting a prohibited direct connection to DB-OLTP, violating micro\u2011segmentation policy. Evidence: SID\u202f9000001 P1 alert, policy matrix DENY, no baseline traffic, repeat offender score\u202f0.00, prior 20 enforced drops for same SID. Counter: No legitimate migration or monitoring tool known in this environment.",
+          "probability": 0.85,
+          "supporting_evidence": [],
+          "disconfirming_evidence": []
+        },
+        {
+          "name": "false_positive_migration",
+          "description": "false_positive_migration (probability=0.10) \u2014 A scheduled DB migration script could be running from the web host, temporarily needing DB access. Evidence: FP scenario listed for cross_zone_violation_web_to_db. Counter: Such scripts are extremely rare, source zone is WEB (untrusted) and no change\u2011window announced; historical data shows only malicious use.",
+          "probability": 0.1,
+          "supporting_evidence": [],
+          "disconfirming_evidence": []
+        },
+        {
+          "name": "potential_scan",
+          "description": "potential_scan (probability=0.05) \u2014 The flow could be part of a broader port\u2011scan from the web host. Evidence: Multiple recent alerts (SID\u202f9000002,\u202f9000040) indicate scanning activity. Counter: Only a single destination observed, no multi\u2011port or multi\u2011host pattern; score\u202f0.94 confidence for drop remains high.",
+          "probability": 0.05,
+          "supporting_evidence": [],
+          "disconfirming_evidence": []
+        }
+      ],
+      "rollback_plan": {
+        "trigger": "Trigger: detection of legitimate service restoration (e.g., confirmed successful DB migration from approved MGT host). Action: DELETE /rules/{rule_id} to revoke the DROP. Monitor: 60\u202fs for traffic resumption and service health.",
+        "action": "Trigger: detection of legitimate service restoration (e.g., confirmed successful DB migration from approved MGT host). Action: DELETE /rules/{rule_id} to revoke the DROP. Monitor: 60\u202fs for traffic resumption and service health.",
+        "monitor_seconds": 300
+      },
+      "rule_id": "agent-5c5875aa62",
+      "ttl_seconds": 3600,
+      "latency_ms": 3489.250835031271,
+      "created_at": "2026-10-26T12:36:22.257653+00:00",
+      "dry_run": false,
+      "retrospective_outcome": null,
+      "trace_id": "25b44bd2-b5a8-4414-8bd0-1d6aa32452ec",
+      "primary_hypothesis": "web_to_db_direct_bypass",
+      "alternative_actions": [
+        {
+          "trigger_condition": "if source initiates additional ports to DB\u2011OLTP then expand block to src\u202f+\u202fdst any port because pattern would indicate broader lateral movement.",
+          "action": "log_only",
+          "rationale": "if source initiates additional ports to DB\u2011OLTP then expand block to src\u202f+\u202fdst any port because pattern would indicate broader lateral movement."
+        },
+        {
+          "trigger_condition": "if traffic volume spikes >180/min from 10.1.100.10 then block entire source (/32) to mitigate potential DoS, acknowledging higher blast radius but protecting crown\u2011jewel.",
+          "action": "log_only",
+          "rationale": "if traffic volume spikes >180/min from 10.1.100.10 then block entire source (/32) to mitigate potential DoS, acknowledging higher blast radius but protecting crown\u2011jewel."
+        }
+      ],
+      "follow_up_actions": [
+        "watch app-gw-01 (APP\u2011GW:8080) \u2014 next hop toward APP\u2011CORE if attacker attempts to pivot via legitimate WEB\u2192APP\u2011GW path.",
+        "watch app-core-01 (APP\u2011CORE:5432) \u2014 potential lateral move from APP\u2011GW to DB\u2011OLTP.",
+        "watch db-analytics-01 (DB\u2011ANALYTICS:5432) \u2014 monitor for exfiltration attempts if attacker reaches DB tier."
+      ],
+      "mitre_technique": "T1021",
+      "mitre_tactic": "TA0008",
+      "reasoning_completed_at": "2026-10-26T12:36:22.237575+00:00",
+      "reasoning_loading": false,
+      "retrospective_notes": null,
+      "labeled_at": null,
+      "notification_title": null,
+      "notification_body": null,
+      "notification_severity": null
+    }
+  },
+  "cold_run": {
+    "outcome": "enforced",
+    "confidence": 0.94,
+    "blocked": "10.1.100.10",
+    "stage3_decision_raw": {
+      "id": "4d9cf10a-46e9-451b-a5a0-036a5ffd79aa",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "enforced",
+      "action": "DROP",
+      "src_ip": "10.1.100.10/32",
+      "dst_ip": "10.1.200.10/32",
+      "confidence": 0.94,
+      "rejection_reason": "",
+      "latency_ms": 864.8493606597185,
+      "dry_run": false
+    }
+  },
+  "baseline_a": {
+    "sid": 9000001,
+    "action": "DROP",
+    "temporal_awareness": false,
+    "reason": "matched known-dangerous SID",
+    "note": "Correct mitigation on SID match but no escalation or correlation; output is identical regardless of whether STAGE1/STAGE2 preceded this alert."
+  }
+}

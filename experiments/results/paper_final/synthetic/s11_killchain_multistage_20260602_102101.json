@@ -1,0 +1,188 @@
+{
+  "summary": {
+    "fabric": "V2-8zone",
+    "kill_chain_src": "10.1.100.10",
+    "stages": {
+      "stage1": {
+        "sid": 9000041,
+        "sig": "Vertical port scan",
+        "src": "10.1.100.10",
+        "dst": "10.3.100.10",
+        "dport": 8080
+      },
+      "stage2": {
+        "sid": 9000002,
+        "sig": "WEB to APP/WORKER direct - skips APP-GW",
+        "src": "10.1.100.10",
+        "dst": "10.2.100.10",
+        "dport": 8090
+      },
+      "stage3": {
+        "sid": 9000001,
+        "sig": "WEB to DB direct - microsegmentation bypass",
+        "src": "10.1.100.10",
+        "dst": "10.1.200.10",
+        "dport": 5432
+      }
+    },
+    "proposed_sequence": {
+      "outcome": "enforced",
+      "confidence": 0.95,
+      "blocked": "10.1.100.10",
+      "correlation_detected": true
+    },
+    "proposed_cold": {
+      "outcome": "enforced",
+      "confidence": 0.95,
+      "blocked": "10.1.100.10"
+    },
+    "confidence_lift": 0.0,
+    "correlation_detected_in_sequence": true,
+    "baseline_a_temporal_awareness": false,
+    "baseline_a_action_stage3": "DROP",
+    "thesis_claim": "Proposed agent escalates with kill-chain context (higher confidence, correlation markers present); SOAR correctly mitigates on SID match but cannot escalate, correlate across stages, or distinguish cold vs. sequence."
+  },
+  "sequence_run": {
+    "outcome": "enforced",
+    "confidence": 0.95,
+    "blocked": "10.1.100.10",
+    "correlation_detected": true,
+    "stage3_decision_raw": {
+      "id": "882b8178-7d33-4828-abe4-64b2cbdaad84",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "enforced",
+      "action": "DROP",
+      "src_ip": "10.1.100.10/32",
+      "dst_ip": "10.1.200.10/32",
+      "confidence": 0.95,
+      "rejection_reason": "",
+      "latency_ms": 6857.777341036126,
+      "dry_run": false
+    },
+    "latest_decision_fetched": {
+      "id": "882b8178-7d33-4828-abe4-64b2cbdaad84",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "enforced",
+      "action": "DROP",
+      "src_ip": "10.1.100.10/32",
+      "dst_ip": "10.1.200.10/32",
+      "dst_port": 5432,
+      "confidence": 0.95,
+      "rejection_reason": "",
+      "safety_checks": {
+        "validators": {
+          "errors": [],
+          "warnings": []
+        },
+        "confidence": {
+          "score": 0.95,
+          "outcome": "enforce"
+        },
+        "enforcement": {
+          "backend": "ids_agent_proxy",
+          "rule_id": "agent-5c5875aa62"
+        }
+      },
+      "reasoning": [
+        "Flow violates explicit microsegmentation policy: WEB zone (10.1.100.10) \u2192 DB-OLTP zone (10.1.200.10:5432) is DENY in policy matrix. This is a hard architectural boundary - WEB tier must proxy through APP-GW \u2192 APP-CORE \u2192 DB-OLTP chain.",
+        "Flow is absent from production baselines: Legitimate WEB outbound is only to APP-GW (10.3.100.10:8080). DB-OLTP only accepts inbound from APP-CORE, WORKER, MGT, MONITORING. Direct WEB\u2192DB has zero legitimate runtime use case.",
+        "Source is a repeat offender: 10.1.100.10 has 36 prior SID 9000001 incidents (100% enforcement rate), trust score 0.39, runtime reputation 0.00 (very_low) with 11 true positives in last hour. This is not a first-time anomaly.",
+        "Multi-SID kill-chain signal: Recent alert sequence shows 9000001, 9000001, 9000901, 9000905, 9000002 - indicating active campaign progression across lateral movement stages, not isolated misconfiguration.",
+        "MITRE T1021/TA0008 classification: Suricata SID 9000001 explicitly maps to Remote Services lateral movement technique. The TCP SYN to PostgreSQL port (5432) matches the attack pattern of credential stuffing or direct connection attempt.",
+        "Targeted block preserves legitimate traffic: Dropping only 10.1.100.10\u219210.1.200.10:5432 maintains web-to-appgw-proxy (critical) while stopping the violation. Full-source block would cause user-facing outage.",
+        "Confidence calibrated at 0.95: Matches threat pattern cross_zone_violation_web_to_db with confidence anchor 0.95. No false-positive scenarios apply (no migration window, no MGT involvement, no monitoring baseline)."
+      ],
+      "hypotheses": [
+        {
+          "name": "Lateral movement from compromised web-01",
+          "description": "Lateral movement from compromised web-01 (probability=0.95) \u2014 WEB host attempting direct DB access to bypass application chain. Evidence: SID 9000001 trigger, policy violation (WEB\u2192DB=DENY), not in baseline, repeat offender with 36 prior exact-SID incidents. Counter: None significant - no legitimate use case for WEB\u2192DB direct.",
+          "probability": 0.95,
+          "supporting_evidence": [],
+          "disconfirming_evidence": []
+        },
+        {
+          "name": "Misconfigured monitoring tool",
+          "description": "Misconfigured monitoring tool (probability=0.03) \u2014 Monitoring agent incorrectly configured to probe DB from web tier. Evidence: None - no monitoring baseline includes WEB\u2192DB. Counter: Monitoring zone is separate (10.4.200.0/24) and would originate from MON, not WEB.",
+          "probability": 0.03,
+          "supporting_evidence": [],
+          "disconfirming_evidence": []
+        },
+        {
+          "name": "Pre-announced DB migration script",
+          "description": "Pre-announced DB migration script (probability=0.02) \u2014 Emergency maintenance script run from WEB host. Evidence: None - no change-window notification, no MGT involvement. Counter: DB migrations should originate from MGT zone per compliance policy.",
+          "probability": 0.02,
+          "supporting_evidence": [],
+          "disconfirming_evidence": []
+        }
+      ],
+      "rollback_plan": {
+        "trigger": "Trigger: Legitimate application chain verified (APP-GW\u2192APP-CORE\u2192DB-OLTP) and WEB\u2192DB flow confirmed as misconfiguration or approved change. Action: DELETE /rules/{rule_id} via SF REST API. Monitor: 60s for flow restoration and no re-alert.",
+        "action": "Trigger: Legitimate application chain verified (APP-GW\u2192APP-CORE\u2192DB-OLTP) and WEB\u2192DB flow confirmed as misconfiguration or approved change. Action: DELETE /rules/{rule_id} via SF REST API. Monitor: 60s for flow restoration and no re-alert.",
+        "monitor_seconds": 300
+      },
+      "rule_id": "agent-5c5875aa62",
+      "ttl_seconds": 3600,
+      "latency_ms": 6857.777341036126,
+      "created_at": "2026-06-02T10:20:09.631309+00:00",
+      "dry_run": false,
+      "retrospective_outcome": null,
+      "trace_id": "2e0d6b88-c233-4b2e-948e-b9da8b857426",
+      "primary_hypothesis": "Lateral movement from compromised web-01 attempting direct database access",
+      "alternative_actions": [
+        {
+          "trigger_condition": "if multi-destination fanout detected (unique_dst_ports > 10 in 60s) then FULL-SOURCE BLOCK (10.1.100.10/32 all destinations) because lateral scanning indicates host is fully compromised and targeted block insufficient.",
+          "action": "log_only",
+          "rationale": "if multi-destination fanout detected (unique_dst_ports > 10 in 60s) then FULL-SOURCE BLOCK (10.1.100.10/32 all destinations) because lateral scanning indicates host is fully compromised and targeted block insufficient."
+        },
+        {
+          "trigger_condition": "if additional SIDs 9000002 (WEB\u2192APP-CORE direct) or 9000003 (WEB\u2192MGT) appear within 5 minutes then ESCALATE TO HUMAN because kill-chain progression suggests active breach requiring incident response.",
+          "action": "ESCALATE_HUMAN",
+          "rationale": "if additional SIDs 9000002 (WEB\u2192APP-CORE direct) or 9000003 (WEB\u2192MGT) appear within 5 minutes then ESCALATE TO HUMAN because kill-chain progression suggests active breach requiring incident response."
+        }
+      ],
+      "follow_up_actions": [
+        "Monitor for SID 9000002 (WEB\u2192APP-CORE direct) - indicates attacker attempting alternate lateral path after DB block",
+        "Monitor for SID 9000003 (WEB\u2192MGT) - indicates control-plane breach attempt",
+        "Monitor for SID 9000062 (DB tier outbound to external) - indicates data exfiltration if DB already compromised",
+        "Check for C2 beacon patterns (periodic small outbound) from 10.1.100.10",
+        "Review web-01 logs for webshell or compromise indicators"
+      ],
+      "mitre_technique": "T1021",
+      "mitre_tactic": "TA0008",
+      "reasoning_completed_at": "2026-06-02T10:20:09.624375+00:00",
+      "reasoning_loading": false,
+      "retrospective_notes": null,
+      "labeled_at": null,
+      "notification_title": null,
+      "notification_body": null,
+      "notification_severity": null
+    }
+  },
+  "cold_run": {
+    "outcome": "enforced",
+    "confidence": 0.95,
+    "blocked": "10.1.100.10",
+    "stage3_decision_raw": {
+      "id": "7821f63e-cb19-4fc2-abf8-60e96cb7c13c",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "enforced",
+      "action": "DROP",
+      "src_ip": "10.1.100.10/32",
+      "dst_ip": "10.1.200.10/32",
+      "confidence": 0.95,
+      "rejection_reason": "",
+      "latency_ms": 856.2308128457516,
+      "dry_run": false
+    }
+  },
+  "baseline_a": {
+    "sid": 9000001,
+    "action": "DROP",
+    "temporal_awareness": false,
+    "reason": "matched known-dangerous SID",
+    "note": "Correct mitigation on SID match but no escalation or correlation; output is identical regardless of whether STAGE1/STAGE2 preceded this alert."
+  }
+}

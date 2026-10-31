@@ -1,0 +1,153 @@
+{
+  "compiled_at": "2026-10-27T05:08:35.700885+00:00",
+  "kb_root": "../intelligence-layer/knowledge_v2",
+  "kb_digest": "bb3edf83a797e9dd",
+  "model": "gpt-oss-120b",
+  "reasoning_effort": "medium",
+  "verified": true,
+  "rounds": [
+    {
+      "round": 0,
+      "latency_s": 2.33,
+      "prompt_tokens": 16003,
+      "completion_tokens": 2825,
+      "ok": true,
+      "points": 136080,
+      "realizable": 19824,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 13552,
+      "realizable_drop": 2576,
+      "realizable_abstain": 6272,
+      "coverage": 0.6836,
+      "dead_rules": []
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 16003,
+    "completion_tokens": 2825
+  },
+  "compile_seconds": 7.3,
+  "verification": {
+    "ok": true,
+    "points": 136080,
+    "realizable": 19824,
+    "violating_points": 0,
+    "violation_kinds": 0,
+    "provenance_errors": 0,
+    "realizable_decided": 13552,
+    "realizable_drop": 2576,
+    "realizable_abstain": 6272,
+    "coverage": 0.6836,
+    "dead_rules": []
+  },
+  "program": {
+    "rules": [
+      {
+        "id": "R0_PROTECT_SRC_PROTECTED",
+        "when": {
+          "src_protected": true
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 0.0
+        },
+        "rationale": "Never block sources that are in the never\u2011block whitelist (protected hosts, SVI gateways, management hosts). Blocking them would partition the fabric or kill audit/management functions.",
+        "kb_refs": [
+          "invariants.md never-block",
+          "assets.md WEB SVI gateway",
+          "assets.md DB\u2011OLTP SVI gateway",
+          "assets.md APP\u2011CORE SVI gateway",
+          "assets.md MGT SVI gateway",
+          "assets.md APP\u2011GW SVI gateway",
+          "assets.md DB\u2011ANALYTICS SVI gateway",
+          "assets.md WORKER SVI gateway",
+          "assets.md MONITORING SVI gateway",
+          "assets.md mgt\u201101 host",
+          "assets.md monitoring\u201101 host"
+        ]
+      },
+      {
+        "id": "R1_PROTECT_EXTERNAL_SRC",
+        "when": {
+          "src_zones": [
+            "EXTERNAL"
+          ]
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 0.0
+        },
+        "rationale": "External sources must never be dropped automatically \u2013 the fabric must remain reachable for legitimate north\u2011south traffic and to avoid accidental denial of service to external clients.",
+        "kb_refs": [
+          "policy-matrix.md EXTERNAL",
+          "zones.md EXTERNAL"
+        ]
+      },
+      {
+        "id": "R2_DROP_MALICIOUS",
+        "when": {
+          "sids": [
+            9000001,
+            9000002,
+            9000003,
+            9000004,
+            9000005,
+            9000006,
+            9000007,
+            9000008,
+            9000009,
+            9000010,
+            9000011,
+            9000012,
+            9000013,
+            9000050,
+            9000060,
+            9000062,
+            9000070,
+            9000071,
+            9000072
+          ],
+          "severity_min": 1,
+          "severity_max": 2
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "These signatures represent hard policy violations (micro\u2011segmentation bypasses), malicious payloads (SQL injection, destructive statements), outbound data\u2011exfil attempts from crown\u2011jewel tiers, and high\u2011confidence DoS/C2 beacons. Immediate containment by dropping the offending source is required.",
+        "kb_refs": [
+          "SID 9000001",
+          "SID 9000002",
+          "SID 9000003",
+          "SID 9000004",
+          "SID 9000005",
+          "SID 9000006",
+          "SID 9000007",
+          "SID 9000008",
+          "SID 9000009",
+          "SID 9000010",
+          "SID 9000011",
+          "SID 9000012",
+          "SID 9000013",
+          "SID 9000050",
+          "SID 9000060",
+          "SID 9000062",
+          "SID 9000070",
+          "SID 9000071",
+          "SID 9000072",
+          "policy-matrix.md",
+          "zones.md"
+        ]
+      }
+    ],
+    "notes": "Protective rules are placed first to guarantee that no later DROP rule can override them, satisfying the hard constraints. All DROP actions use flow scope, TTL 300\u202fs (within 60\u20113600\u202fs), and confidence 0.95 (\u2265\u202f0.85). No DROP is issued for protected sources or external sources, and no rule attempts to drop unknown signatures. Unmatched alerts will default to abstain."
+  }
+}

@@ -1,0 +1,142 @@
+{
+  "compiled_at": "2026-10-27T05:08:54.463893+00:00",
+  "kb_root": "../intelligence-layer/knowledge_v2",
+  "kb_digest": "bb3edf83a797e9dd",
+  "model": "gpt-oss-120b",
+  "reasoning_effort": "medium",
+  "verified": true,
+  "rounds": [
+    {
+      "round": 0,
+      "latency_s": 2.38,
+      "prompt_tokens": 16003,
+      "completion_tokens": 2857,
+      "ok": true,
+      "points": 136080,
+      "realizable": 19824,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 13552,
+      "realizable_drop": 2576,
+      "realizable_abstain": 6272,
+      "coverage": 0.6836,
+      "dead_rules": []
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 16003,
+    "completion_tokens": 2857
+  },
+  "compile_seconds": 7.4,
+  "verification": {
+    "ok": true,
+    "points": 136080,
+    "realizable": 19824,
+    "violating_points": 0,
+    "violation_kinds": 0,
+    "provenance_errors": 0,
+    "realizable_decided": 13552,
+    "realizable_drop": 2576,
+    "realizable_abstain": 6272,
+    "coverage": 0.6836,
+    "dead_rules": []
+  },
+  "program": {
+    "rules": [
+      {
+        "id": "R0",
+        "when": {
+          "src_protected": true
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 1.0
+        },
+        "rationale": "Never block sources that are in the never\u2011block whitelist (SVI gateways, management hosts, monitoring hosts). Blocking them would partition the fabric and break critical services.",
+        "kb_refs": [
+          "invariants.md never_block"
+        ]
+      },
+      {
+        "id": "R1",
+        "when": {
+          "src_zones": [
+            "EXTERNAL"
+          ]
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 1.0
+        },
+        "rationale": "External (north\u2011south) sources must never be dropped per hard\u2011constraint; they are logged for visibility only.",
+        "kb_refs": [
+          "policy-matrix.md EXTERNAL"
+        ]
+      },
+      {
+        "id": "R2",
+        "when": {
+          "sids": [
+            9000001,
+            9000002,
+            9000003,
+            9000004,
+            9000005,
+            9000006,
+            9000007,
+            9000008,
+            9000009,
+            9000010,
+            9000011,
+            9000012,
+            9000013,
+            9000050,
+            9000060,
+            9000062,
+            9000070,
+            9000071,
+            9000072
+          ],
+          "severity_min": 1,
+          "severity_max": 2,
+          "src_protected": false
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 600,
+          "confidence": 0.95
+        },
+        "rationale": "The signatures above indicate hard policy violations (micro\u2011segmentation bypass, unauthorized zone\u2011to\u2011zone traffic) or malicious payloads (SQL injection, exfiltration, DoS, C2 beacon). Dropping the source IP isolates the threat while respecting the narrowest possible scope.",
+        "kb_refs": [
+          "SID 9000001",
+          "SID 9000002",
+          "SID 9000003",
+          "SID 9000004",
+          "SID 9000005",
+          "SID 9000006",
+          "SID 9000007",
+          "SID 9000008",
+          "SID 9000009",
+          "SID 9000010",
+          "SID 9000011",
+          "SID 9000012",
+          "SID 9000013",
+          "SID 9000050",
+          "SID 9000060",
+          "SID 9000062",
+          "SID 9000070",
+          "SID 9000071",
+          "SID 9000072",
+          "policy-matrix.md"
+        ]
+      }
+    ],
+    "notes": "Protective rules (R0, R1) are placed first so later DROP rules cannot override them. All DROP actions use flow scope, ttl \u2264 1800, confidence \u2265 0.9, and severity 1\u20112, satisfying hard constraints. Unlisted or unknown signatures will fall through to abstain."
+  }
+}

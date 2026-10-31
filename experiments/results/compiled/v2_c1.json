@@ -1,0 +1,178 @@
+{
+  "compiled_at": "2026-10-27T05:04:06.335330+00:00",
+  "kb_root": "../intelligence-layer/knowledge_v2",
+  "kb_digest": "bb3edf83a797e9dd",
+  "model": "gpt-oss-120b",
+  "reasoning_effort": "medium",
+  "verified": true,
+  "rounds": [
+    {
+      "round": 0,
+      "latency_s": 3.12,
+      "prompt_tokens": 16003,
+      "completion_tokens": 2878,
+      "ok": true,
+      "points": 136080,
+      "realizable": 19824,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 16688,
+      "realizable_drop": 2576,
+      "realizable_abstain": 3136,
+      "coverage": 0.8418,
+      "dead_rules": []
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 16003,
+    "completion_tokens": 2878
+  },
+  "compile_seconds": 7.6,
+  "verification": {
+    "ok": true,
+    "points": 136080,
+    "realizable": 19824,
+    "violating_points": 0,
+    "violation_kinds": 0,
+    "provenance_errors": 0,
+    "realizable_decided": 16688,
+    "realizable_drop": 2576,
+    "realizable_abstain": 3136,
+    "coverage": 0.8418,
+    "dead_rules": []
+  },
+  "program": {
+    "rules": [
+      {
+        "id": "R0_protected_src",
+        "when": {
+          "src_protected": true
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "Never block sources that are in the never\u2011block whitelist (SVI gateways, management hosts) as defined in invariants.md.",
+        "kb_refs": [
+          "invariants.md never_block"
+        ]
+      },
+      {
+        "id": "R0_external_src",
+        "when": {
+          "src_zones": [
+            "EXTERNAL"
+          ]
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "External (north\u2011south) sources must never be dropped per hard\u2011constraint; they are logged for visibility only.",
+        "kb_refs": [
+          "policy-matrix.md EXTERNAL"
+        ]
+      },
+      {
+        "id": "R1_drop_malicious",
+        "when": {
+          "sids": [
+            9000001,
+            9000002,
+            9000003,
+            9000004,
+            9000005,
+            9000006,
+            9000007,
+            9000008,
+            9000009,
+            9000010,
+            9000011,
+            9000012,
+            9000013,
+            9000050,
+            9000060,
+            9000062,
+            9000070,
+            9000071,
+            9000072
+          ],
+          "severity_min": 1,
+          "severity_max": 2
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 1800,
+          "confidence": 0.9
+        },
+        "rationale": "All listed signatures are documented policy violations or malicious content (SQL\u2011i, sink\u2011role breach, unauthorized outbound, etc.) and the catalogue recommends DROP of the source IP.",
+        "kb_refs": [
+          "SID 9000001",
+          "SID 9000002",
+          "SID 9000003",
+          "SID 9000004",
+          "SID 9000005",
+          "SID 9000006",
+          "SID 9000007",
+          "SID 9000008",
+          "SID 9000009",
+          "SID 9000010",
+          "SID 9000011",
+          "SID 9000012",
+          "SID 9000013",
+          "SID 9000050",
+          "SID 9000060",
+          "SID 9000062",
+          "SID 9000070",
+          "SID 9000071",
+          "SID 9000072"
+        ]
+      },
+      {
+        "id": "R2_log_low_sev",
+        "when": {
+          "sids": [
+            9000040,
+            9000041,
+            9000042,
+            9000043,
+            9000044,
+            9000051,
+            9000052,
+            9000061,
+            9000080,
+            9000081
+          ],
+          "severity_min": 3,
+          "severity_max": 4
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "These signatures are reconnaissance, flooding, or audit events. The knowledge base recommends logging only; they do not constitute a direct policy breach requiring traffic drop.",
+        "kb_refs": [
+          "SID 9000040",
+          "SID 9000041",
+          "SID 9000042",
+          "SID 9000043",
+          "SID 9000044",
+          "SID 9000051",
+          "SID 9000052",
+          "SID 9000061",
+          "SID 9000080",
+          "SID 9000081"
+        ]
+      }
+    ],
+    "notes": "Protective rules are placed first to guarantee that never\u2011block sources and external origins are never dropped. All DROP rules use flow scope with TTL 1800\u202fs and confidence 0.9 to satisfy hard constraints. Log\u2011only rules cover recon, DoS contribution, and audit signatures as defined in the SID catalogue."
+  }
+}

@@ -1,0 +1,1681 @@
+{
+  "compiled_at": "2026-10-27T05:43:39.618344+00:00",
+  "kb_root": "compiled_policy/kb_variants/v2_new_zone",
+  "kb_digest": "42f9c57aa9675dd4",
+  "model": "gpt-oss-120b",
+  "reasoning_effort": "medium",
+  "temperature": 0.7,
+  "samples": 5,
+  "review": true,
+  "verified": true,
+  "rounds": [
+    {
+      "stage": "draft",
+      "round": 0,
+      "latency_s": 2.23,
+      "prompt_tokens": 23263,
+      "completion_tokens": 3148,
+      "ok": true,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 20839,
+      "realizable_drop": 3255,
+      "realizable_abstain": 3997,
+      "coverage": 0.8391,
+      "dead_rules": []
+    },
+    {
+      "stage": "review",
+      "round": 0,
+      "latency_s": 2.52,
+      "prompt_tokens": 26458,
+      "completion_tokens": 2650,
+      "ok": true,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 22554,
+      "realizable_drop": 3269,
+      "realizable_abstain": 2282,
+      "coverage": 0.9081,
+      "dead_rules": [],
+      "sample": 0
+    },
+    {
+      "stage": "draft",
+      "round": 0,
+      "latency_s": 3.29,
+      "prompt_tokens": 23263,
+      "completion_tokens": 6195,
+      "ok": false,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 672,
+      "violation_kinds": 4,
+      "provenance_errors": 0,
+      "realizable_decided": 20867,
+      "realizable_drop": 3283,
+      "realizable_abstain": 3969,
+      "coverage": 0.8402,
+      "dead_rules": []
+    },
+    {
+      "stage": "draft",
+      "round": 1,
+      "latency_s": 3.22,
+      "prompt_tokens": 27896,
+      "completion_tokens": 6190,
+      "ok": true,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 20867,
+      "realizable_drop": 3283,
+      "realizable_abstain": 3969,
+      "coverage": 0.8402,
+      "dead_rules": []
+    },
+    {
+      "stage": "review",
+      "round": 0,
+      "latency_s": 2.61,
+      "prompt_tokens": 29365,
+      "completion_tokens": 5395,
+      "ok": true,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 21434,
+      "realizable_drop": 3283,
+      "realizable_abstain": 3402,
+      "coverage": 0.863,
+      "dead_rules": [],
+      "sample": 1
+    },
+    {
+      "stage": "draft",
+      "round": 0,
+      "latency_s": 3.19,
+      "prompt_tokens": 23263,
+      "completion_tokens": 2620,
+      "ok": true,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 20853,
+      "realizable_drop": 2135,
+      "realizable_abstain": 3983,
+      "coverage": 0.8396,
+      "dead_rules": []
+    },
+    {
+      "stage": "review",
+      "round": 0,
+      "latency_s": 2.69,
+      "prompt_tokens": 26294,
+      "completion_tokens": 2849,
+      "ok": true,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 20853,
+      "realizable_drop": 2135,
+      "realizable_abstain": 3983,
+      "coverage": 0.8396,
+      "dead_rules": [],
+      "sample": 2
+    },
+    {
+      "stage": "draft",
+      "round": 0,
+      "latency_s": 2.24,
+      "prompt_tokens": 23263,
+      "completion_tokens": 2293,
+      "ok": true,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 20839,
+      "realizable_drop": 3255,
+      "realizable_abstain": 3997,
+      "coverage": 0.8391,
+      "dead_rules": []
+    },
+    {
+      "stage": "review",
+      "round": 0,
+      "latency_s": 2.12,
+      "prompt_tokens": 26676,
+      "completion_tokens": 2850,
+      "ok": true,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 20853,
+      "realizable_drop": 3269,
+      "realizable_abstain": 3983,
+      "coverage": 0.8396,
+      "dead_rules": [],
+      "sample": 3
+    },
+    {
+      "stage": "draft",
+      "round": 0,
+      "latency_s": 2.62,
+      "prompt_tokens": 23263,
+      "completion_tokens": 3783,
+      "ok": false,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 2856,
+      "violation_kinds": 1,
+      "provenance_errors": 0,
+      "realizable_decided": 21434,
+      "realizable_drop": 3283,
+      "realizable_abstain": 3402,
+      "coverage": 0.863,
+      "dead_rules": []
+    },
+    {
+      "stage": "draft",
+      "round": 1,
+      "latency_s": 2.01,
+      "prompt_tokens": 24796,
+      "completion_tokens": 2937,
+      "ok": false,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 2352,
+      "violation_kinds": 1,
+      "provenance_errors": 0,
+      "realizable_decided": 21434,
+      "realizable_drop": 3283,
+      "realizable_abstain": 3402,
+      "coverage": 0.863,
+      "dead_rules": []
+    },
+    {
+      "stage": "draft",
+      "round": 2,
+      "latency_s": 1.85,
+      "prompt_tokens": 26459,
+      "completion_tokens": 2925,
+      "ok": true,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 20951,
+      "realizable_drop": 2800,
+      "realizable_abstain": 3885,
+      "coverage": 0.8436,
+      "dead_rules": []
+    },
+    {
+      "stage": "review",
+      "round": 0,
+      "latency_s": 2.53,
+      "prompt_tokens": 26915,
+      "completion_tokens": 3032,
+      "ok": true,
+      "points": 179200,
+      "realizable": 24836,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 20951,
+      "realizable_drop": 2800,
+      "realizable_abstain": 3885,
+      "coverage": 0.8436,
+      "dead_rules": [],
+      "sample": 4
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 331174,
+    "completion_tokens": 46867
+  },
+  "compile_seconds": 180.6,
+  "verification": {
+    "ok": true,
+    "points": 179200,
+    "realizable": 24836,
+    "violating_points": 0,
+    "violation_kinds": 0,
+    "provenance_errors": 0,
+    "realizable_decided": 21434,
+    "realizable_drop": 3283,
+    "realizable_abstain": 3402,
+    "coverage": 0.863,
+    "dead_rules": []
+  },
+  "program": null,
+  "ensemble": [
+    {
+      "rules": [
+        {
+          "id": "R0",
+          "when": {
+            "src_protected": true
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 1.0
+          },
+          "rationale": "Never block protected sources (MGT, MONITORING) per invariants \u2013 they are in the never\u2011block whitelist.",
+          "kb_refs": [
+            "invariants.md"
+          ]
+        },
+        {
+          "id": "R_EXTERNAL",
+          "when": {
+            "src_zones": [
+              "EXTERNAL"
+            ]
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 1.0
+          },
+          "rationale": "External sources must not be dropped \u2013 hard constraint forbids DROP when src_zone is EXTERNAL.",
+          "kb_refs": [
+            "invariants.md"
+          ]
+        },
+        {
+          "id": "R_DROP_P1",
+          "when": {
+            "sids": [
+              9000001,
+              9000002,
+              9000003,
+              9000004,
+              9000005,
+              9000007,
+              9000008,
+              9000009,
+              9000010,
+              9000011,
+              9000012,
+              9000014,
+              9000015,
+              9000070,
+              9000071,
+              9000072,
+              9000062
+            ],
+            "severity_min": 1,
+            "severity_max": 1
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.9
+          },
+          "rationale": "All listed P1 signatures represent hard policy violations or malicious payloads. Dropping the source isolates the threat while respecting flow scope and confidence constraints.",
+          "kb_refs": [
+            "sids.md"
+          ]
+        },
+        {
+          "id": "R_DROP_P2_CORE",
+          "when": {
+            "sids": [
+              9000060
+            ],
+            "severity_min": 2,
+            "severity_max": 2
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.9
+          },
+          "rationale": "C2 beacon (9000060) is a high\u2011confidence exfiltration signal; block the source.",
+          "kb_refs": [
+            "sids.md"
+          ]
+        },
+        {
+          "id": "R_DROP_P2_FLOOD",
+          "when": {
+            "sids": [
+              9000050,
+              9000013
+            ],
+            "severity_min": 2,
+            "severity_max": 2
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.9
+          },
+          "rationale": "SYN flood (9000050) and WORKER\u2192DB\u2011ANALYTICS violation (9000013) are P2 threats that must be contained immediately.",
+          "kb_refs": [
+            "sids.md"
+          ]
+        },
+        {
+          "id": "R_LOG_DNS_BEACON",
+          "when": {
+            "sids": [
+              9000061
+            ],
+            "severity_min": 2,
+            "severity_max": 2
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 1.0
+          },
+          "rationale": "Large DNS responses (9000061) are informational per signature; they are logged but not blocked.",
+          "kb_refs": [
+            "sids.md"
+          ]
+        },
+        {
+          "id": "R_LOG_DDOS_CONTRIB",
+          "when": {
+            "sids": [
+              9000051
+            ],
+            "severity_min": 2,
+            "severity_max": 2
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 1.0
+          },
+          "rationale": "Per\u2011source DDoS contribution (9000051) is logged; aggregation is performed elsewhere.",
+          "kb_refs": [
+            "sids.md"
+          ]
+        },
+        {
+          "id": "R_LOG_UDP_FLOOD",
+          "when": {
+            "sids": [
+              9000052
+            ],
+            "severity_min": 2,
+            "severity_max": 2
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 1.0
+          },
+          "rationale": "UDP flood (9000052) is a DoS indicator; per signature it is logged (and may be escalated).",
+          "kb_refs": [
+            "sids.md"
+          ]
+        },
+        {
+          "id": "R_LOG_RECON_AND_AUDIT",
+          "when": {
+            "sids": [
+              9000040,
+              9000041,
+              9000042,
+              9000043,
+              9000044,
+              9000051,
+              9000052,
+              9000080,
+              9000081
+            ],
+            "severity_min": 3,
+            "severity_max": 4
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 1.0
+          },
+          "rationale": "Recon, flood\u2011contribution, and audit events are informational; they are logged without blocking.",
+          "kb_refs": [
+            "sids.md"
+          ]
+        }
+      ],
+      "notes": "Protective rules (R0, R_EXTERNAL) are first to satisfy hard constraints. All DROP actions use flow scope, ttl 1800\u202fs and confidence 0.9, meeting the required constraints. Specific log_only rules cover signatures whose documented response is logging. Unmatched alerts default to abstain."
+    },
+    {
+      "rules": [
+        {
+          "id": "R0",
+          "when": {
+            "src_protected": true
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.99
+          },
+          "rationale": "Never block sources that are in the never\u2011block set (e.g., MGT and MONITORING zones).",
+          "kb_refs": [
+            "invariants.md NEVER_BLOCK list"
+          ]
+        },
+        {
+          "id": "R1",
+          "when": {
+            "src_zones": [
+              "EXTERNAL"
+            ]
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.99
+          },
+          "rationale": "External sources are never dropped; they are logged for audit.",
+          "kb_refs": [
+            "invariants.md NEVER_BLOCK list"
+          ]
+        },
+        {
+          "id": "R2",
+          "when": {
+            "sids": [
+              9000001
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.93
+          },
+          "rationale": "WEB tier directly contacting DB tiers bypasses required APP\u2011GW \u2192 APP\u2011CORE mediation \u2013 a hard micro\u2011segmentation breach.",
+          "kb_refs": [
+            "SID 9000001",
+            "policy-matrix WEB->DB-OLTP",
+            "zones.md WEB",
+            "zones.md DB-OLTP"
+          ]
+        },
+        {
+          "id": "R3",
+          "when": {
+            "sids": [
+              9000002
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.92
+          },
+          "rationale": "WEB tier contacting APP\u2011CORE or WORKER without passing through APP\u2011GW violates the designed ingress path.",
+          "kb_refs": [
+            "SID 9000002",
+            "policy-matrix WEB->APP-GW",
+            "zones.md WEB",
+            "zones.md APP-CORE",
+            "zones.md WORKER"
+          ]
+        },
+        {
+          "id": "R4",
+          "when": {
+            "sids": [
+              9000003
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.94
+          },
+          "rationale": "Untrusted WEB tier attempting to reach control\u2011plane zones (MGT / MONITORING) is a high\u2011confidence compromise indicator.",
+          "kb_refs": [
+            "SID 9000003",
+            "policy-matrix WEB->MGT",
+            "policy-matrix WEB->MONITORING",
+            "zones.md WEB"
+          ]
+        },
+        {
+          "id": "R5",
+          "when": {
+            "sids": [
+              9000004
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.92
+          },
+          "rationale": "APP\u2011GW contacting DB tiers directly skips APP\u2011CORE mediation, violating the micro\u2011segmentation policy.",
+          "kb_refs": [
+            "SID 9000004",
+            "policy-matrix APP-GW->DB-OLTP",
+            "zones.md APP-GW"
+          ]
+        },
+        {
+          "id": "R6",
+          "when": {
+            "sids": [
+              9000005
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.91
+          },
+          "rationale": "APP\u2011GW initiating lateral moves to zones other than APP\u2011CORE (WEB, WORKER, MGT, MONITORING) is prohibited lateral movement.",
+          "kb_refs": [
+            "SID 9000005",
+            "policy-matrix APP-GW->APP-CORE",
+            "zones.md APP-GW"
+          ]
+        },
+        {
+          "id": "R7",
+          "when": {
+            "sids": [
+              9000006
+            ],
+            "severity_min": 2,
+            "severity_max": 2,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.93
+          },
+          "rationale": "APP\u2011CORE reverse calls to upstream zones (WEB / APP\u2011GW) indicate possible compromise or mis\u2011configuration.",
+          "kb_refs": [
+            "SID 9000006",
+            "policy-matrix APP-CORE->WEB",
+            "policy-matrix APP-CORE->APP-GW"
+          ]
+        },
+        {
+          "id": "R8",
+          "when": {
+            "sids": [
+              9000007
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.93
+          },
+          "rationale": "APP\u2011CORE reaching control\u2011plane zones (MGT / MONITORING) breaches control\u2011plane segregation.",
+          "kb_refs": [
+            "SID 9000007",
+            "policy-matrix APP-CORE->MGT",
+            "policy-matrix APP-CORE->MONITORING"
+          ]
+        },
+        {
+          "id": "R9",
+          "when": {
+            "sids": [
+              9000008
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.91
+          },
+          "rationale": "WORKER tier contacting any zone other than DB\u2011OLTP violates its strict outbound policy.",
+          "kb_refs": [
+            "SID 9000008",
+            "policy-matrix WORKER->DB-OLTP",
+            "zones.md WORKER"
+          ]
+        },
+        {
+          "id": "R10",
+          "when": {
+            "sids": [
+              9000009
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.94
+          },
+          "rationale": "DB\u2011OLTP initiating outbound to any zone except DB\u2011ANALYTICS violates the near\u2011sink role and signals possible data exfiltration.",
+          "kb_refs": [
+            "SID 9000009",
+            "policy-matrix DB-OLTP->DB-ANALYTICS",
+            "zones.md DB-OLTP"
+          ]
+        },
+        {
+          "id": "R11",
+          "when": {
+            "sids": [
+              9000010
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.95
+          },
+          "rationale": "DB\u2011ANALYTICS initiating any outbound traffic violates its pure\u2011sink invariant.",
+          "kb_refs": [
+            "SID 9000010",
+            "zones.md DB-ANALYTICS"
+          ]
+        },
+        {
+          "id": "R12",
+          "when": {
+            "sids": [
+              9000011
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.9
+          },
+          "rationale": "Inbound traffic to MGT from a non\u2011control zone is a generic escalation guard.",
+          "kb_refs": [
+            "SID 9000011",
+            "policy-matrix ANY->MGT"
+          ]
+        },
+        {
+          "id": "R13",
+          "when": {
+            "sids": [
+              9000012
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.9
+          },
+          "rationale": "DB\u2011tier connections from unauthorized zones breach defense\u2011in\u2011depth guard.",
+          "kb_refs": [
+            "SID 9000012",
+            "policy-matrix DB-OLTP->...",
+            "policy-matrix DB-ANALYTICS->..."
+          ]
+        },
+        {
+          "id": "R14",
+          "when": {
+            "sids": [
+              9000013
+            ],
+            "severity_min": 2,
+            "severity_max": 2,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.93
+          },
+          "rationale": "WORKER contacting DB\u2011ANALYTICS is prohibited; only APP\u2011CORE may write to the analytics tier.",
+          "kb_refs": [
+            "SID 9000013",
+            "policy-matrix WORKER->DB-ANALYTICS"
+          ]
+        },
+        {
+          "id": "R15",
+          "when": {
+            "sids": [
+              9000014
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.93
+          },
+          "rationale": "Unauthorized zones accessing the PCI\u2011scope PAYMENTS tier violate strict PCI segregation.",
+          "kb_refs": [
+            "SID 9000014",
+            "policy-matrix APP-CORE->PAYMENTS",
+            "policy-matrix MGT->PAYMENTS",
+            "policy-matrix MONITORING->PAYMENTS"
+          ]
+        },
+        {
+          "id": "R16",
+          "when": {
+            "sids": [
+              9000015
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.94
+          },
+          "rationale": "PAYMENTS tier initiating outbound connections outside its settlement path (DB\u2011OLTP) signals exfiltration risk.",
+          "kb_refs": [
+            "SID 9000015",
+            "policy-matrix PAYMENTS->DB-OLTP"
+          ]
+        },
+        {
+          "id": "R17",
+          "when": {
+            "sids": [
+              9000060
+            ],
+            "severity_min": 2,
+            "severity_max": 2,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.93
+          },
+          "rationale": "Periodic low\u2011volume outbound traffic to EXTERNAL_NET matches a C2 beacon pattern.",
+          "kb_refs": [
+            "SID 9000060",
+            "threat-patterns.md C2 heartbeat"
+          ]
+        },
+        {
+          "id": "R18",
+          "when": {
+            "sids": [
+              9000062
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.95
+          },
+          "rationale": "DB tiers (DB\u2011OLTP or DB\u2011ANALYTICS) initiating outbound connections to external networks violate the sink invariant and indicate high\u2011confidence exfiltration.",
+          "kb_refs": [
+            "SID 9000062",
+            "policy-matrix DB-OLTP->EXTERNAL",
+            "policy-matrix DB-ANALYTICS->EXTERNAL"
+          ]
+        },
+        {
+          "id": "R19",
+          "when": {
+            "sids": [
+              9000070
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.93
+          },
+          "rationale": "SQL injection pattern 'UNION SELECT' observed in traffic to DB ports is a critical exploit attempt.",
+          "kb_refs": [
+            "SID 9000070",
+            "threat-patterns.md SQL injection"
+          ]
+        },
+        {
+          "id": "R20",
+          "when": {
+            "sids": [
+              9000071
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.92
+          },
+          "rationale": "SQL injection pattern 'OR 1=1' detected in DB traffic indicates a high\u2011confidence injection attempt.",
+          "kb_refs": [
+            "SID 9000071",
+            "threat-patterns.md SQL injection"
+          ]
+        },
+        {
+          "id": "R21",
+          "when": {
+            "sids": [
+              9000072
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.94
+          },
+          "rationale": "Destructive SQL statements (DROP TABLE / TRUNCATE / DELETE FROM) detected in DB traffic constitute a data\u2011destruction attack.",
+          "kb_refs": [
+            "SID 9000072",
+            "threat-patterns.md Data destruction"
+          ]
+        },
+        {
+          "id": "R22",
+          "when": {
+            "sids": [
+              9000050
+            ],
+            "severity_min": 2,
+            "severity_max": 2,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.93
+          },
+          "rationale": "Sustained TCP SYN flood from a single source indicates a DoS attack; blocking the source\u2011destination pair mitigates impact.",
+          "kb_refs": [
+            "SID 9000050",
+            "threat-patterns.md SYN flood"
+          ]
+        },
+        {
+          "id": "R23",
+          "when": {
+            "sids": [
+              9000040
+            ],
+            "severity_min": 3,
+            "severity_max": 3
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.8
+          },
+          "rationale": "ICMP ping sweep is a reconnaissance activity; logged for visibility.",
+          "kb_refs": [
+            "SID 9000040",
+            "threat-patterns.md ICMP sweep"
+          ]
+        },
+        {
+          "id": "R24",
+          "when": {
+            "sids": [
+              9000041
+            ],
+            "severity_min": 3,
+            "severity_max": 3
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.78
+          },
+          "rationale": "Vertical port scan indicates network service enumeration; logged for visibility.",
+          "kb_refs": [
+            "SID 9000041",
+            "threat-patterns.md Vertical scan"
+          ]
+        },
+        {
+          "id": "R25",
+          "when": {
+            "sids": [
+              9000042
+            ],
+            "severity_min": 3,
+            "severity_max": 3
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.77
+          },
+          "rationale": "Probing of commonly\u2011exploited service ports is a reconnaissance signal; logged.",
+          "kb_refs": [
+            "SID 9000042",
+            "threat-patterns.md Service probe"
+          ]
+        },
+        {
+          "id": "R26",
+          "when": {
+            "sids": [
+              9000043
+            ],
+            "severity_min": 3,
+            "severity_max": 3
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.76
+          },
+          "rationale": "UDP port sweep is a reconnaissance activity; logged for visibility.",
+          "kb_refs": [
+            "SID 9000043",
+            "threat-patterns.md UDP sweep"
+          ]
+        },
+        {
+          "id": "R27",
+          "when": {
+            "sids": [
+              9000044
+            ],
+            "severity_min": 3,
+            "severity_max": 3
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.79
+          },
+          "rationale": "Multi\u2011stage probe (Infection Monkey\u2011style) is a reconnaissance pattern; logged.",
+          "kb_refs": [
+            "SID 9000044",
+            "threat-patterns.md Multi\u2011stage probe"
+          ]
+        },
+        {
+          "id": "R28",
+          "when": {
+            "sids": [
+              9000051
+            ],
+            "severity_min": 2,
+            "severity_max": 2
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.8
+          },
+          "rationale": "Per\u2011source SYN contribution signal for a DDoS; logged for correlation.",
+          "kb_refs": [
+            "SID 9000051",
+            "threat-patterns.md DDoS contribution"
+          ]
+        },
+        {
+          "id": "R29",
+          "when": {
+            "sids": [
+              9000052
+            ],
+            "severity_min": 2,
+            "severity_max": 2
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.81
+          },
+          "rationale": "UDP packet flood towards a destination is a DDoS indicator; logged and escalated.",
+          "kb_refs": [
+            "SID 9000052",
+            "threat-patterns.md UDP flood"
+          ]
+        },
+        {
+          "id": "R30",
+          "when": {
+            "sids": [
+              9000061
+            ],
+            "severity_min": 2,
+            "severity_max": 2
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.8
+          },
+          "rationale": "Large DNS responses may indicate DNS tunneling or amplification; logged per signature recommendation.",
+          "kb_refs": [
+            "SID 9000061",
+            "threat-patterns.md DNS exfil"
+          ]
+        }
+      ],
+      "notes": "All DROP rules satisfy hard constraints: severity 1\u20112, confidence \u22650.90, ttl 1800\u202fs (within 60\u20113600\u202fs), flow scope, and never applied to protected or external sources. Protective rules are first to prevent accidental blocking of never\u2011block IPs. Unknown signatures default to abstain."
+    },
+    {
+      "rules": [
+        {
+          "id": "R001_protect_src",
+          "when": {
+            "src_protected": true
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 1.0
+          },
+          "rationale": "Never block IPs that are in the never\u2011block whitelist (invariants.md). These hosts are critical for fabric operation and must remain reachable.",
+          "kb_refs": [
+            "invariants.md never_block"
+          ]
+        },
+        {
+          "id": "R002_external_src",
+          "when": {
+            "src_zones": [
+              "EXTERNAL"
+            ]
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 1.0
+          },
+          "rationale": "External sources are never dropped automatically; they are logged for audit. This avoids accidental self\u2011DoS.",
+          "kb_refs": [
+            "policy-matrix.md EXTERNAL"
+          ]
+        },
+        {
+          "id": "R003_unknown_severity_high",
+          "when": {
+            "sid_known": false,
+            "severity_min": 1,
+            "severity_max": 2
+          },
+          "then": {
+            "action": "abstain",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.0
+          },
+          "rationale": "Signatures not present in the catalogue must never be dropped. For high\u2011severity unknown signatures we abstain and defer to a human analyst.",
+          "kb_refs": [
+            "sids.md catalogue"
+          ]
+        },
+        {
+          "id": "R004_unknown_severity_low",
+          "when": {
+            "sid_known": false,
+            "severity_min": 3,
+            "severity_max": 4
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.7
+          },
+          "rationale": "Unknown low\u2011severity alerts are only logged for visibility; they are not blocked.",
+          "kb_refs": [
+            "sids.md catalogue"
+          ]
+        },
+        {
+          "id": "R005_drop_violations",
+          "when": {
+            "sids": [
+              9000001,
+              9000002,
+              9000003,
+              9000004,
+              9000005,
+              9000006,
+              9000007,
+              9000008,
+              9000009,
+              9000010,
+              9000011,
+              9000012,
+              9000013,
+              9000014,
+              9000015,
+              9000070,
+              9000071,
+              9000072
+            ],
+            "severity_min": 1,
+            "severity_max": 2
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.9
+          },
+          "rationale": "These signatures represent hard policy violations or malicious payloads (e.g., micro\u2011segmentation bypass, unauthorized DB access, SQL injection, data exfiltration). Dropping the source at flow scope contains the threat while respecting the fabric\u2019s safety constraints.",
+          "kb_refs": [
+            "SID 9000001",
+            "SID 9000002",
+            "SID 9000003",
+            "SID 9000004",
+            "SID 9000005",
+            "SID 9000006",
+            "SID 9000007",
+            "SID 9000008",
+            "SID 9000009",
+            "SID 9000010",
+            "SID 9000011",
+            "SID 9000012",
+            "SID 9000013",
+            "SID 9000014",
+            "SID 9000015",
+            "SID 9000070",
+            "SID 9000071",
+            "SID 9000072",
+            "policy-matrix.md"
+          ]
+        },
+        {
+          "id": "R006_log_others",
+          "when": {
+            "severity_min": 3,
+            "severity_max": 4
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.7
+          },
+          "rationale": "All remaining alerts are informational, reconnaissance, or audit\u2011level events. They are recorded for visibility but not blocked.",
+          "kb_refs": [
+            "severity-scoring.md",
+            "baselines.md"
+          ]
+        }
+      ],
+      "notes": "Rules are ordered from most restrictive safety checks to containment actions. Protective rules (R001\u2011R002) guarantee that never\u2011block and external sources are never dropped, satisfying hard constraints. Unknown signatures are handled according to severity (R003\u2011R004). R005 drops only the signatures that the knowledge base explicitly requires a DROP, using flow scope, TTL 1800\u202fs, and confidence\u202f\u2265\u202f0.85. R006 logs all lower\u2011severity alerts. No DROP is defined for unknown signatures or for the DDoS/C2 signatures that the knowledge base marks for abstention, so the default \"abstain\" applies."
+    },
+    {
+      "rules": [
+        {
+          "id": "R0_PROTECT_SRC_PROTECTED",
+          "when": {
+            "src_protected": true
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "host",
+            "ttl_seconds": 0,
+            "confidence": 1.0
+          },
+          "rationale": "Never block sources that are in the never\u2011block whitelist (MGT, MONITORING, SVI gateways, management hosts). These zones are critical for fabric operation and must not be dropped.",
+          "kb_refs": [
+            "invariants.md Never-block CIDRs",
+            "assets.md MGT zone",
+            "assets.md MONITORING zone"
+          ]
+        },
+        {
+          "id": "R1_PROTECT_EXTERNAL_SRC",
+          "when": {
+            "src_zones": [
+              "EXTERNAL"
+            ]
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "host",
+            "ttl_seconds": 0,
+            "confidence": 1.0
+          },
+          "rationale": "External sources are outside the fabric; dropping them would violate the hard constraint that no DROP may be applied to EXTERNAL sources.",
+          "kb_refs": [
+            "policy-matrix.md External traffic is denied by default"
+          ]
+        },
+        {
+          "id": "R2_DROP_HIGH_SEVERITY",
+          "when": {
+            "sid_known": true,
+            "severity_min": 1,
+            "severity_max": 2,
+            "src_protected": false,
+            "sids": [
+              9000001,
+              9000002,
+              9000003,
+              9000004,
+              9000005,
+              9000007,
+              9000008,
+              9000009,
+              9000010,
+              9000011,
+              9000012,
+              9000013,
+              9000014,
+              9000015,
+              9000060,
+              9000050,
+              9000062,
+              9000070,
+              9000071,
+              9000072
+            ]
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.92
+          },
+          "rationale": "All listed signatures represent hard policy violations (DENY\u2011cell bypasses, sink\u2011role breaches, unauthorized PCI\u2011tier access, confirmed SQL\u2011injection or destructive statements, SYN\u2011flood, C2 heartbeat, or DB\u2011tier exfil). They are severity\u202fP1 or\u202fP2 with very low false\u2011positive likelihood, so the source IP is dropped for the narrowest possible flow.",
+          "kb_refs": [
+            "sids.md SID 9000001",
+            "sids.md SID 9000002",
+            "sids.md SID 9000003",
+            "sids.md SID 9000004",
+            "sids.md SID 9000005",
+            "sids.md SID 9000007",
+            "sids.md SID 9000008",
+            "sids.md SID 9000009",
+            "sids.md SID 9000010",
+            "sids.md SID 9000011",
+            "sids.md SID 9000012",
+            "sids.md SID 9000013",
+            "sids.md SID 9000014",
+            "sids.md SID 9000015",
+            "sids.md SID 9000060",
+            "sids.md SID 9000050",
+            "sids.md SID 9000062",
+            "sids.md SID 9000070",
+            "sids.md SID 9000071",
+            "sids.md SID 9000072",
+            "policy-matrix.md DENY cells"
+          ]
+        },
+        {
+          "id": "R3_LOG_RECON_AND_LOW_SEVERITY",
+          "when": {
+            "sid_known": true,
+            "severity_min": 3,
+            "severity_max": 4,
+            "src_protected": false,
+            "sids": [
+              9000040,
+              9000041,
+              9000042,
+              9000043,
+              9000044,
+              9000051,
+              9000052,
+              9000061,
+              9000080,
+              9000081
+            ]
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "host",
+            "ttl_seconds": 0,
+            "confidence": 0.8
+          },
+          "rationale": "These signatures are recon, flood\u2011contribution, DNS\u2011anomaly, or baseline audit alerts (P3/P4). They are informational or audit events and must be logged but not blocked.",
+          "kb_refs": [
+            "sids.md SID 9000040",
+            "sids.md SID 9000041",
+            "sids.md SID 9000042",
+            "sids.md SID 9000043",
+            "sids.md SID 9000044",
+            "sids.md SID 9000051",
+            "sids.md SID 9000052",
+            "sids.md SID 9000061",
+            "sids.md SID 9000080",
+            "sids.md SID 9000081",
+            "severity-scoring.md Action mapping for P3/P4"
+          ]
+        },
+        {
+          "id": "R4_ABSTAIN_DEFAULT",
+          "when": {},
+          "then": {
+            "action": "abstain",
+            "scope": "host",
+            "ttl_seconds": 0,
+            "confidence": 0.0
+          },
+          "rationale": "No rule matched; abstain is the safe default for unknown signatures or contexts not covered by the knowledge base.",
+          "kb_refs": [
+            "policy-matrix.md Default DENY"
+          ]
+        }
+      ],
+      "notes": "Protective rules are placed first to guarantee they cannot be overridden. All DROP rules use flow scope (narrowest containment) with TTL 1800\u202fs, confidence \u2265\u202f0.85, satisfying hard constraints. No DROP is issued for protected sources or external zones. All decisions now reflect the documented responses in the knowledge base."
+    },
+    {
+      "rules": [
+        {
+          "id": "R0",
+          "when": {
+            "src_protected": true
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "host",
+            "ttl_seconds": 0,
+            "confidence": 1.0
+          },
+          "rationale": "MGT and MONITORING zones are whitelisted in invariants.md and must never be dropped. Logging preserves visibility while keeping the fabric operational.",
+          "kb_refs": [
+            "invariants.md MGT never\u2011block",
+            "invariants.md MONITORING never\u2011block"
+          ]
+        },
+        {
+          "id": "R1",
+          "when": {
+            "src_zones": [
+              "EXTERNAL"
+            ]
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "host",
+            "ttl_seconds": 0,
+            "confidence": 1.0
+          },
+          "rationale": "External sources are outside the fabric; hard\u2011constraint forbids DROP on EXTERNAL source zones.",
+          "kb_refs": [
+            "policy-matrix.md EXTERNAL source"
+          ]
+        },
+        {
+          "id": "R2a",
+          "when": {
+            "sids": [
+              9000070,
+              9000071,
+              9000072
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.92
+          },
+          "rationale": "P1 content\u2011based SQL\u2011injection signatures fire on allowed DB traffic (e.g., APP\u2011CORE\u2192DB\u2011OLTP). The policy verdict for these flows is ALLOW, so the block must be flow\u2011scoped with TTL \u22641800 and confidence \u22650.90.",
+          "kb_refs": [
+            "SID 9000070",
+            "SID 9000071",
+            "SID 9000072"
+          ]
+        },
+        {
+          "id": "R2b",
+          "when": {
+            "sids": [
+              9000001,
+              9000002,
+              9000003,
+              9000004,
+              9000005,
+              9000007,
+              9000008,
+              9000009,
+              9000010,
+              9000011,
+              9000012,
+              9000014,
+              9000015
+            ],
+            "severity_min": 1,
+            "severity_max": 1,
+            "src_protected": false,
+            "verdicts": [
+              "DENY"
+            ]
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 3600,
+            "confidence": 0.92
+          },
+          "rationale": "P1 alerts that represent hard micro\u2011segmentation violations or unauthorized outbound connections have a DENY policy verdict; they can be blocked with a TTL up to 3600\u202fs.",
+          "kb_refs": [
+            "SID 9000001",
+            "SID 9000002",
+            "SID 9000003",
+            "SID 9000004",
+            "SID 9000005",
+            "SID 9000007",
+            "SID 9000008",
+            "SID 9000009",
+            "SID 9000010",
+            "SID 9000011",
+            "SID 9000012",
+            "SID 9000014",
+            "SID 9000015"
+          ]
+        },
+        {
+          "id": "R3",
+          "when": {
+            "sids": [
+              9000006,
+              9000013,
+              9000050,
+              9000060
+            ],
+            "severity_min": 2,
+            "severity_max": 2,
+            "src_protected": false,
+            "verdicts": [
+              "DENY"
+            ]
+          },
+          "then": {
+            "action": "DROP",
+            "scope": "flow",
+            "ttl_seconds": 1800,
+            "confidence": 0.92
+          },
+          "rationale": "P2 alerts indicate high\u2011confidence malicious activity (reverse calls, prohibited worker\u2192analytics, SYN flood, C2 beacon). All these flows have a DENY policy verdict, allowing TTL \u22641800\u202fs.",
+          "kb_refs": [
+            "SID 9000006",
+            "SID 9000013",
+            "SID 9000050",
+            "SID 9000060"
+          ]
+        },
+        {
+          "id": "R4",
+          "when": {
+            "sids": [
+              9000040,
+              9000041,
+              9000042,
+              9000043,
+              9000044
+            ],
+            "severity_min": 3,
+            "severity_max": 3
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.96
+          },
+          "rationale": "Recon\u2011type alerts (ICMP sweep, port scans, multi\u2011stage probes) are informational; they are logged per the signature definition.",
+          "kb_refs": [
+            "SID 9000040",
+            "SID 9000041",
+            "SID 9000042",
+            "SID 9000043",
+            "SID 9000044"
+          ]
+        },
+        {
+          "id": "R5",
+          "when": {
+            "sids": [
+              9000080,
+              9000081
+            ],
+            "severity_min": 4,
+            "severity_max": 4
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.99
+          },
+          "rationale": "Audit\u2011baseline alerts from MGT and MONITORING are required visibility signals; they must be logged, not blocked.",
+          "kb_refs": [
+            "SID 9000080",
+            "SID 9000081"
+          ]
+        },
+        {
+          "id": "R6",
+          "when": {
+            "sids": [
+              9000051
+            ],
+            "severity_min": 2,
+            "severity_max": 2
+          },
+          "then": {
+            "action": "log_only",
+            "scope": "flow",
+            "ttl_seconds": 0,
+            "confidence": 0.95
+          },
+          "rationale": "SID\u202f9000051 is a contribution\u2011signal for a DDoS; the agent must aggregate across sources, so it is logged only.",
+          "kb_refs": [
+            "SID 9000051"
+          ]
+        }
+      ],
+      "notes": "Rules are ordered from most restrictive (protective) to least. Unmatched alerts fall through to the default \"abstain\" behavior. All DROP actions respect hard constraints: no DROP when src_protected true or src_zone EXTERNAL, severity 1\u20112 only, confidence \u22650.85, TTL within [60,3600], flow scope for ALLOW\u2011verdict drops (handled by R2a), and each DROP rule includes rationale and at least one valid SID reference."
+    }
+  ]
+}

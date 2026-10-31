@@ -1,0 +1,11 @@
+{
+ "rows": 99,
+ "infra_error": 2,
+ "compiled": 45,
+ "runtime": 25,
+ "correct": 68,
+ "graded": 70,
+ "s7_violations": 0,
+ "persist_errors": 0,
+ "rules_left_on_fabric": 0
+}

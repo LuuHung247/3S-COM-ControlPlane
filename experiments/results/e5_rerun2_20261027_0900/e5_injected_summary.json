@@ -1,0 +1,11 @@
+{
+ "rows": 1,
+ "infra_error": 0,
+ "compiled": 0,
+ "runtime": 1,
+ "correct": 1,
+ "graded": 1,
+ "s7_violations": 0,
+ "persist_errors": 0,
+ "rules_left_on_fabric": 0
+}

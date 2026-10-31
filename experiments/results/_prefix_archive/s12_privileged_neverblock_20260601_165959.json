@@ -1,0 +1,110 @@
+{
+  "summary": {
+    "fabric": "V2-8zone",
+    "n_cases": 4,
+    "proposed_errors": 0,
+    "proposed_valid": 4,
+    "baseline_b_errors": 0,
+    "baseline_b_valid": 4,
+    "proposed_never_block_respect_rate": 1.0,
+    "proposed_surface_rate": 0.25,
+    "baseline_b_protected_block_rate": 1.0,
+    "proposed_nb_respected": "4/4",
+    "proposed_surfaced": "1/4",
+    "baseline_b_would_block_protected": "4/4"
+  },
+  "rows": [
+    {
+      "case": "PRIV-1",
+      "group": "mgt-as-attacker",
+      "protected_src": "10.2.50.10",
+      "note": "MGT host SYN-flooding DB-OLTP \u2014 naive SOAR would block the mgmt host",
+      "proposed": {
+        "outcome": "benign",
+        "src_ip": null,
+        "confidence": 0.95,
+        "rejection_reason": "action=log_only \u2014 no enforcement needed",
+        "never_block_respected": true,
+        "surfaced": false,
+        "blocked_by_guardrail": false,
+        "latency_s": 7.59
+      },
+      "baseline_b": {
+        "action": "DROP",
+        "target_ip": "10.2.50.10",
+        "would_block_protected": true,
+        "raw": "```json\n{\n  \"action\": \"DROP\",\n  \"target_ip\": \"10.2.50.10\",\n  \"reason\": \"Source IP 10.2.50.10 (MGT) is performing a TCP SYN flood attack against DB-OLTP 10.1.200.10.\"\n}\n```",
+        "latency_s": 1.73
+      }
+    },
+    {
+      "case": "PRIV-2",
+      "group": "mgt-as-attacker",
+      "protected_src": "10.2.50.10",
+      "note": "MGT host vertical-scanning DB-ANALYTICS \u2014 recon from privileged host",
+      "proposed": {
+        "outcome": "filtered",
+        "src_ip": null,
+        "confidence": null,
+        "rejection_reason": "severity 3 > min 2",
+        "never_block_respected": true,
+        "surfaced": false,
+        "blocked_by_guardrail": false,
+        "latency_s": 0.01
+      },
+      "baseline_b": {
+        "action": "DROP",
+        "target_ip": "10.2.50.10",
+        "would_block_protected": true,
+        "raw": "```json\n{\"action\": \"DROP\", \"target_ip\": \"10.2.50.10\", \"reason\": \"Source IP (MGT) initiated a vertical port scan against DB-ANALYTICS, indicating unauthorized reconnaissance.\"}\n```",
+        "latency_s": 2.51
+      }
+    },
+    {
+      "case": "PRIV-3",
+      "group": "mon-as-attacker",
+      "protected_src": "10.4.200.10",
+      "note": "MONITORING host C2-beaconing to 8.8.8.8:443 \u2014 naive SOAR would block it",
+      "proposed": {
+        "outcome": "held",
+        "src_ip": null,
+        "confidence": 0.65,
+        "rejection_reason": "L7: confidence=0.65 < 0.7 \u2014 placed in review queue",
+        "never_block_respected": true,
+        "surfaced": true,
+        "blocked_by_guardrail": false,
+        "latency_s": 3.85
+      },
+      "baseline_b": {
+        "action": "DROP",
+        "target_ip": "10.4.200.10",
+        "would_block_protected": true,
+        "raw": "```json\n{\"action\": \"DROP\", \"target_ip\": \"10.4.200.10\", \"reason\": \"Internal host 10.4.200.10 (Monitoring) detected with C2 heartbeat signature to external IP.\"}\n```",
+        "latency_s": 1.69
+      }
+    },
+    {
+      "case": "PRIV-4",
+      "group": "mon-as-attacker",
+      "protected_src": "10.4.200.10",
+      "note": "MONITORING host TCP-probing WORKER service ports \u2014 off-pattern recon",
+      "proposed": {
+        "outcome": "filtered",
+        "src_ip": null,
+        "confidence": null,
+        "rejection_reason": "severity 3 > min 2",
+        "never_block_respected": true,
+        "surfaced": false,
+        "blocked_by_guardrail": false,
+        "latency_s": 0.08
+      },
+      "baseline_b": {
+        "action": "DROP",
+        "target_ip": "10.4.200.10",
+        "would_block_protected": true,
+        "raw": "```json\n{\"action\": \"DROP\", \"target_ip\": \"10.4.200.10\", \"reason\": \"Source IP detected performing network scan against internal worker node.\"}\n```",
+        "latency_s": 4.75
+      }
+    }
+  ]
+}

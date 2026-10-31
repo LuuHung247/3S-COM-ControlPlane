@@ -1,0 +1,215 @@
+{
+ "kb_digest": "bb3edf83a797e9dd",
+ "baseline_c": {
+  "known_points": 15792,
+  "coverage": 1.0,
+  "accuracy_decided": 0.946,
+  "accuracy_all_known_abstain_as_wrong": 0.946,
+  "TP": 2738,
+  "FN": 566,
+  "FP": 286,
+  "TN": 12202,
+  "abstain": 0,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 518,
+  "errors_by_sid": {
+   "9000050:ALLOW:FN": 91,
+   "9000070:ALLOW:FN": 91,
+   "9000071:ALLOW:FN": 91,
+   "9000072:ALLOW:FN": 91,
+   "9000060:ALLOW:FN": 78,
+   "9000051:ALLOW:FP": 49,
+   "9000052:ALLOW:FP": 49,
+   "9000061:ALLOW:FP": 49,
+   "9000051:EXTERNAL:FP": 42,
+   "9000052:EXTERNAL:FP": 42,
+   "9000061:EXTERNAL:FP": 42,
+   "9000050:EXTERNAL:FN": 14,
+   "9000070:EXTERNAL:FN": 14,
+   "9000071:EXTERNAL:FN": 14,
+   "9000072:EXTERNAL:FN": 14
+  }
+ },
+ "baseline_c_host": {
+  "known_points": 15792,
+  "coverage": 1.0,
+  "accuracy_decided": 0.961,
+  "accuracy_all_known_abstain_as_wrong": 0.961,
+  "TP": 3304,
+  "FN": 0,
+  "FP": 616,
+  "TN": 11872,
+  "abstain": 0,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 532,
+  "errors_by_sid": {
+   "9000051:ALLOW:FP": 140,
+   "9000052:ALLOW:FP": 140,
+   "9000061:ALLOW:FP": 140,
+   "9000051:EXTERNAL:FP": 56,
+   "9000052:EXTERNAL:FP": 56,
+   "9000061:EXTERNAL:FP": 56,
+   "9000060:ALLOW:FP": 20,
+   "9000060:EXTERNAL:FP": 8
+  }
+ },
+ "v2_c1": {
+  "known_points": 15792,
+  "coverage": 0.9149,
+  "accuracy_decided": 0.9981,
+  "accuracy_all_known_abstain_as_wrong": 0.9131,
+  "TP": 2548,
+  "FN": 0,
+  "FP": 28,
+  "TN": 11872,
+  "abstain": 1344,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 0,
+  "errors_by_sid": {
+   "9000060:ALLOW:FP": 20,
+   "9000060:EXTERNAL:FP": 8
+  },
+  "verified": true,
+  "compile_tokens": {
+   "prompt_tokens": 16003,
+   "completion_tokens": 2878
+  }
+ },
+ "v2_high": {
+  "known_points": 15792,
+  "coverage": 0.9406,
+  "accuracy_decided": 0.9472,
+  "accuracy_all_known_abstain_as_wrong": 0.891,
+  "TP": 1610,
+  "FN": 756,
+  "FP": 28,
+  "TN": 12460,
+  "abstain": 938,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 0,
+  "errors_by_sid": {
+   "9000051:DENY:FN": 252,
+   "9000052:DENY:FN": 252,
+   "9000061:DENY:FN": 252,
+   "9000060:ALLOW:FP": 20,
+   "9000060:EXTERNAL:FP": 8
+  },
+  "verified": true,
+  "compile_tokens": {
+   "prompt_tokens": 32967,
+   "completion_tokens": 25496
+  }
+ },
+ "v2_t07_1": {
+  "known_points": 15792,
+  "coverage": 0.7163,
+  "accuracy_decided": 0.9975,
+  "accuracy_all_known_abstain_as_wrong": 0.7145,
+  "TP": 2548,
+  "FN": 0,
+  "FP": 28,
+  "TN": 8736,
+  "abstain": 4480,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 0,
+  "errors_by_sid": {
+   "9000060:ALLOW:FP": 20,
+   "9000060:EXTERNAL:FP": 8
+  },
+  "verified": true,
+  "compile_tokens": {
+   "prompt_tokens": 16003,
+   "completion_tokens": 4462
+  }
+ },
+ "v2_t07_2": {
+  "known_points": 15792,
+  "coverage": 0.7163,
+  "accuracy_decided": 0.9975,
+  "accuracy_all_known_abstain_as_wrong": 0.7145,
+  "TP": 2548,
+  "FN": 0,
+  "FP": 28,
+  "TN": 8736,
+  "abstain": 4480,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 0,
+  "errors_by_sid": {
+   "9000060:ALLOW:FP": 20,
+   "9000060:EXTERNAL:FP": 8
+  },
+  "verified": true,
+  "compile_tokens": {
+   "prompt_tokens": 16003,
+   "completion_tokens": 2825
+  }
+ },
+ "v2_t07_3": {
+  "known_points": 15792,
+  "coverage": 0.9716,
+  "accuracy_decided": 0.9653,
+  "accuracy_all_known_abstain_as_wrong": 0.9379,
+  "TP": 2548,
+  "FN": 504,
+  "FP": 28,
+  "TN": 12264,
+  "abstain": 448,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 0,
+  "errors_by_sid": {
+   "9000051:DENY:FN": 252,
+   "9000052:DENY:FN": 252,
+   "9000060:ALLOW:FP": 20,
+   "9000060:EXTERNAL:FP": 8
+  },
+  "verified": true,
+  "compile_tokens": {
+   "prompt_tokens": 16003,
+   "completion_tokens": 3444
+  }
+ },
+ "v2_t07_4": {
+  "known_points": 15792,
+  "coverage": 0.7163,
+  "accuracy_decided": 0.9975,
+  "accuracy_all_known_abstain_as_wrong": 0.7145,
+  "TP": 2548,
+  "FN": 0,
+  "FP": 28,
+  "TN": 8736,
+  "abstain": 4480,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 0,
+  "errors_by_sid": {
+   "9000060:ALLOW:FP": 20,
+   "9000060:EXTERNAL:FP": 8
+  },
+  "verified": true,
+  "compile_tokens": {
+   "prompt_tokens": 16003,
+   "completion_tokens": 2857
+  }
+ },
+ "v2_t07_5": {
+  "known_points": 15792,
+  "coverage": 0.8289,
+  "accuracy_decided": 0.9979,
+  "accuracy_all_known_abstain_as_wrong": 0.8271,
+  "TP": 1190,
+  "FN": 0,
+  "FP": 28,
+  "TN": 11872,
+  "abstain": 2702,
+  "unknown_points": 4032,
+  "unknown_auto_drop": 0,
+  "errors_by_sid": {
+   "9000060:ALLOW:FP": 20,
+   "9000060:EXTERNAL:FP": 8
+  },
+  "verified": true,
+  "compile_tokens": {
+   "prompt_tokens": 16003,
+   "completion_tokens": 2664
+  }
+ }
+}

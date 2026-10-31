@@ -1,0 +1,222 @@
+{
+  "compiled_at": "2026-10-27T05:44:06.075243+00:00",
+  "kb_root": "compiled_policy/kb_variants/v3_retune",
+  "kb_digest": "d8921f80a06bbb70",
+  "model": "gpt-oss-120b",
+  "reasoning_effort": "medium",
+  "temperature": 0.0,
+  "samples": 1,
+  "review": true,
+  "verified": true,
+  "rounds": [
+    {
+      "stage": "draft",
+      "round": 0,
+      "latency_s": 3.06,
+      "prompt_tokens": 22294,
+      "completion_tokens": 3967,
+      "ok": true,
+      "points": 136080,
+      "realizable": 19824,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 18032,
+      "realizable_drop": 2576,
+      "realizable_abstain": 1792,
+      "coverage": 0.9096,
+      "dead_rules": []
+    },
+    {
+      "stage": "review",
+      "round": 0,
+      "latency_s": 2.86,
+      "prompt_tokens": 25332,
+      "completion_tokens": 3490,
+      "ok": true,
+      "points": 136080,
+      "realizable": 19824,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 18032,
+      "realizable_drop": 2576,
+      "realizable_abstain": 1792,
+      "coverage": 0.9096,
+      "dead_rules": [],
+      "sample": 0
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 47626,
+    "completion_tokens": 7457
+  },
+  "compile_seconds": 24.1,
+  "verification": {
+    "ok": true,
+    "points": 136080,
+    "realizable": 19824,
+    "violating_points": 0,
+    "violation_kinds": 0,
+    "provenance_errors": 0,
+    "realizable_decided": 18032,
+    "realizable_drop": 2576,
+    "realizable_abstain": 1792,
+    "coverage": 0.9096,
+    "dead_rules": []
+  },
+  "program": {
+    "rules": [
+      {
+        "id": "R0",
+        "when": {
+          "src_protected": true
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "Protected source zones (MGT, MON) are whitelisted and must never be blocked; they are required for management and observability.",
+        "kb_refs": [
+          "invariants.md never_block"
+        ]
+      },
+      {
+        "id": "R1",
+        "when": {
+          "src_zones": [
+            "EXTERNAL"
+          ]
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "External sources are outside the fabric; dropping them would violate the zero\u2011trust policy and could cause unintended service disruption.",
+        "kb_refs": [
+          "policy-matrix.md EXTERNAL"
+        ]
+      },
+      {
+        "id": "R2",
+        "when": {
+          "sid_known": false
+        },
+        "then": {
+          "action": "abstain",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "Signature not present in the catalogue; without a known response the system must not enforce a DROP.",
+        "kb_refs": [
+          "sids.md"
+        ]
+      },
+      {
+        "id": "R_DROP_P1",
+        "when": {
+          "sids": [
+            9000001,
+            9000002,
+            9000003,
+            9000004,
+            9000005,
+            9000007,
+            9000008,
+            9000009,
+            9000010,
+            9000011,
+            9000012,
+            9000070,
+            9000071,
+            9000072,
+            9000062
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 1800,
+          "confidence": 0.9
+        },
+        "rationale": "Critical policy violations or malicious content (SQL injection, sink\u2011role breaches, unauthorized DB access, etc.) require immediate blocking of the offending source IP.",
+        "kb_refs": [
+          "sids.md"
+        ]
+      },
+      {
+        "id": "R_DROP_P2",
+        "when": {
+          "sids": [
+            9000006,
+            9000013,
+            9000052,
+            9000060
+          ],
+          "severity_min": 2,
+          "severity_max": 2
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 1800,
+          "confidence": 0.9
+        },
+        "rationale": "High\u2011severity alerts (reverse calls, unauthorized DB\u2011ANALYTICS access, UDP flood, C2 beacon) indicate compromised internal hosts; source IP must be blocked.",
+        "kb_refs": [
+          "sids.md"
+        ]
+      },
+      {
+        "id": "R_LOG",
+        "when": {
+          "sids": [
+            9000040,
+            9000041,
+            9000042,
+            9000043,
+            9000044,
+            9000050,
+            9000051,
+            9000061,
+            9000080,
+            9000081
+          ],
+          "severity_min": 2,
+          "severity_max": 4
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "Informational, reconnaissance, flooding, and audit signatures are logged for visibility but not blocked.",
+        "kb_refs": [
+          "sids.md"
+        ]
+      },
+      {
+        "id": "R_DEFAULT",
+        "when": {},
+        "then": {
+          "action": "abstain",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "No matching rule; defer to human analyst.",
+        "kb_refs": []
+      }
+    ],
+    "notes": "Rules are ordered from most restrictive (protective) to least. All DROP actions respect hard constraints: severity 1\u20112, confidence\u202f\u2265\u202f0.85, ttl\u202f1800\u202fs, flow scope. Protected sources and external zones are never dropped."
+  },
+  "ensemble": null
+}

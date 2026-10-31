@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""S15 — Reasoning-vs-Lookup Ablation (signature-hint ablation).
+"""S15 — Reasoning-vs-Lookup Ablation (signature-hint ablation) — V2 8-zone fabric.
 
 Answers the reviewer critique directly: "if the agent is handed a SID→action
 mapping, how is it different from a rule-based SOAR?" The codebase *does* inject a
@@ -8,7 +8,7 @@ prompt for KNOWN signatures (see docs/agent_reasoning_vs_lookup_findings.md). Th
 experiment removes that hint and measures whether the agent still decides correctly.
 
 Method: each malicious flow is presented at two hint levels —
-  • known   : the real SID (full SID→action hint in the prompt), and
+  • known   : the real V2 SID (full SID→action hint in the prompt), and
   • unknown : an out-of-table SID (sid_context = "Unknown SID") + a *generic*
               signature message + severity drawn from the alert only,
 so the agent must decide purely from the flow tuple + zone policy matrix +
@@ -21,16 +21,18 @@ Two systems are compared:
                  DROP; otherwise it does nothing. (Pure-Python lookup, no model.)
 
 Legitimate ALLOW-path flows are included at the unknown-SID level as controls: the
-correct decision is *not* to DROP. The killer comparison is M1-unknown (WEB→DB,
-must DROP) vs L1-unknown (APP→DB, must NOT DROP): identical metadata (unknown SID,
-generic msg, same severity) — only the source zone differs — so a correct split
-can only come from policy reasoning, not from any signature lookup.
+correct decision is *not* to DROP. The killer comparison is M1-unknown
+(WEB→DB-OLTP, must DROP) vs L1-unknown (APP-CORE→DB-OLTP, must NOT DROP): identical
+metadata (unknown SID, generic msg, same severity, SAME dst 10.1.200.10:5432) —
+only the source zone differs — so a correct split can only come from policy
+reasoning, not from any signature lookup.
 
 Metric: Mitigation Success Rate on the malicious flows (correctly DROPped), plus
 overall correct-decision rate including the legitimate controls.
 
-Zone policy matrix (knowledge/infra/policy-matrix.md): WEB→DB DENY, WEB→APP ALLOW,
-WEB→MGT DENY, APP→DB ALLOW, APP→MGT DENY.
+V2 zone policy matrix (knowledge_v2/infra/policy-matrix.md):
+  WEB→DB-OLTP DENY, WEB→APP-GW ALLOW, APP-GW→APP-CORE ALLOW, APP-GW→DB-OLTP DENY,
+  APP-CORE→DB-OLTP ALLOW, APP-CORE→WEB DENY (reverse-tier lateral).
 
 Agent runs LIVE (dry_run=false); enforced DROPs are removed in cleanup.
 """
@@ -49,11 +51,22 @@ RESULTS = ROOT / "results"
 INTEL = "http://localhost:8767"
 IDS_AGENT = "http://localhost:8766"
 
-WEB, DB, APP, MGT = "10.1.100.10", "10.1.200.10", "10.2.100.10", "10.2.50.10"
+# V2 8-zone fabric host IPs (primary host per zone)
+WEB       = "10.1.100.10"
+DB_OLTP   = "10.1.200.10"
+APP_CORE  = "10.2.100.10"
+MGT       = "10.2.50.10"
+APP_GW    = "10.3.100.10"
+DB_ANLT   = "10.3.200.10"
+WORKER    = "10.4.100.10"
+MON       = "10.4.200.10"
 
-# Baseline A's playbook: the signature IDs it knows are dangerous (mirrors the
-# system's own SID_KNOWLEDGE block-actions — a SOAR built on the same signatures).
-KNOWN_DANGEROUS_SIDS = {9000001, 9000002, 9000030, 9000031, 9000032, 9000033, 9000035}
+# Baseline A's playbook: the V2 signature IDs it knows are dangerous (mirrors the
+# system's own policy DROP-action SIDs — a SOAR built on the same signatures).
+KNOWN_DANGEROUS_SIDS = {
+    9000001, 9000002, 9000003, 9000004, 9000005, 9000006, 9000007, 9000008,
+    9000009, 9000010, 9000012, 9000013, 9000070, 9000071, 9000072,
+}
 
 GENERIC_MSG = "Generic protocol anomaly detected"
 GENERIC_CAT = "Misc activity"
@@ -71,23 +84,33 @@ def _alert(sid, sev, src, dst, dport, sig, cat):
 # id, class, expected, true_src, hint, alert
 CASES = [
     # ── malicious DENY-path flows — expected DROP ──
-    dict(id="M1-known",   cls="malicious", expected="DROP", true_src=WEB, hint="known SID 9000001",
-         alert=_alert(9000001, 1, WEB, DB, 5432, "WEB direct access to DB (lateral movement)", "Potentially Bad Traffic")),
+    # M1: WEB → DB-OLTP microsegmentation bypass (cell DENY)
+    dict(id="M1-known",   cls="malicious", expected="DROP", true_src=WEB, hint="known V2 SID 9000001",
+         alert=_alert(9000001, 1, WEB, DB_OLTP, 5432, "WEB to DB direct - microsegmentation bypass", "Potentially Bad Traffic")),
     dict(id="M1-unknown", cls="malicious", expected="DROP", true_src=WEB, hint="unknown SID + generic msg",
-         alert=_alert(9000901, 2, WEB, DB, 5432, GENERIC_MSG, GENERIC_CAT)),
-    dict(id="M2-known",   cls="malicious", expected="DROP", true_src=APP, hint="known SID 9000035",
-         alert=_alert(9000035, 1, APP, MGT, 22, "Cross-tier SSH (workload-to-workload lateral movement)", "Attempted Administrator Privilege Gain")),
-    dict(id="M2-unknown", cls="malicious", expected="DROP", true_src=APP, hint="unknown SID + generic msg",
-         alert=_alert(9000902, 2, APP, MGT, 22, GENERIC_MSG, GENERIC_CAT)),
-    dict(id="M3-known",   cls="malicious", expected="DROP", true_src=WEB, hint="known SID 9000035",
-         alert=_alert(9000035, 1, WEB, MGT, 22, "Cross-tier SSH (workload-to-workload lateral movement)", "Attempted Administrator Privilege Gain")),
-    dict(id="M3-unknown", cls="malicious", expected="DROP", true_src=WEB, hint="unknown SID + generic msg",
-         alert=_alert(9000903, 2, WEB, MGT, 22, GENERIC_MSG, GENERIC_CAT)),
+         alert=_alert(9000901, 2, WEB, DB_OLTP, 5432, GENERIC_MSG, GENERIC_CAT)),
+    # M2: APP-GW → DB-OLTP tier-skip (cell DENY; APP-GW may only reach APP-CORE)
+    dict(id="M2-known",   cls="malicious", expected="DROP", true_src=APP_GW, hint="known V2 SID 9000004",
+         alert=_alert(9000004, 1, APP_GW, DB_OLTP, 5432, "APP-GW to DB direct - skips APP-CORE", "Potentially Bad Traffic")),
+    dict(id="M2-unknown", cls="malicious", expected="DROP", true_src=APP_GW, hint="unknown SID + generic msg",
+         alert=_alert(9000902, 2, APP_GW, DB_OLTP, 5432, GENERIC_MSG, GENERIC_CAT)),
+    # M3: APP-CORE → WEB:22 reverse-tier lateral (cell DENY; business flow is one-way)
+    dict(id="M3-known",   cls="malicious", expected="DROP", true_src=APP_CORE, hint="known V2 SID 9000006",
+         alert=_alert(9000006, 2, APP_CORE, WEB, 22, "APP-CORE reverse call to WEB/GW - lateral movement", "Attempted Administrator Privilege Gain")),
+    dict(id="M3-unknown", cls="malicious", expected="DROP", true_src=APP_CORE, hint="unknown SID + generic msg",
+         alert=_alert(9000903, 2, APP_CORE, WEB, 22, GENERIC_MSG, GENERIC_CAT)),
+
     # ── legitimate ALLOW-path flows — expected NOT-DROP (control) ──
-    dict(id="L1-unknown", cls="legit", expected="log_only", true_src=APP, hint="unknown SID + generic msg",
-         alert=_alert(9000904, 2, APP, DB, 5432, GENERIC_MSG, GENERIC_CAT)),
-    dict(id="L2-unknown", cls="legit", expected="log_only", true_src=WEB, hint="unknown SID + generic msg",
-         alert=_alert(9000905, 2, WEB, APP, 8080, GENERIC_MSG, GENERIC_CAT)),
+    # L1: APP-CORE → DB-OLTP (cell ALLOW). KILLER control vs M1-unknown: identical
+    #     dst 10.1.200.10:5432 + identical generic metadata; only source zone differs.
+    dict(id="L1-unknown", cls="legit", expected="log_only", true_src=APP_CORE, hint="unknown SID + generic msg (ALLOW path)",
+         alert=_alert(9000904, 2, APP_CORE, DB_OLTP, 5432, GENERIC_MSG, GENERIC_CAT)),
+    # L2: WEB → APP-GW (cell ALLOW — legitimate north-south ingress to gateway)
+    dict(id="L2-unknown", cls="legit", expected="log_only", true_src=WEB, hint="unknown SID + generic msg (ALLOW path)",
+         alert=_alert(9000905, 2, WEB, APP_GW, 8080, GENERIC_MSG, GENERIC_CAT)),
+    # L3: APP-GW → APP-CORE (cell ALLOW — legitimate gateway→business-logic transit)
+    dict(id="L3-unknown", cls="legit", expected="log_only", true_src=APP_GW, hint="unknown SID + generic msg (ALLOW path)",
+         alert=_alert(9000906, 2, APP_GW, APP_CORE, 8090, GENERIC_MSG, GENERIC_CAT)),
 ]
 
 
@@ -176,7 +199,7 @@ def cleanup(quiet=False):
 
 
 def main():
-    print(f"S15 Reasoning-vs-Lookup Ablation — proposed @ {INTEL} | Baseline A = signature-keyed SOAR")
+    print(f"S15 Reasoning-vs-Lookup Ablation (V2 8-zone) — proposed @ {INTEL} | Baseline A = signature-keyed SOAR")
     print(f"Cases: {len(CASES)} ({sum(c['cls']=='malicious' for c in CASES)} malicious, "
           f"{sum(c['cls']=='legit' for c in CASES)} legit controls)\n")
     rows = []
@@ -207,6 +230,7 @@ def main():
     p_all = rate(rows, "proposed"); b_all = rate(rows, "baseline_a")
 
     summary = {
+        "fabric": "V2-8zone",
         "n_cases": len(rows), "n_malicious": len(mal), "n_malicious_unknown": len(mal_unknown),
         "mitigation_success_proposed": f"{p_msr[0]}/{p_msr[1]}",
         "mitigation_success_baseline_a": f"{b_msr[0]}/{b_msr[1]}",

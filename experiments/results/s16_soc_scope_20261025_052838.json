@@ -1,0 +1,199 @@
+{
+  "summary": {
+    "n_cases": 5,
+    "proposed_scope_correct": 3,
+    "soar_host_scope_correct": 2,
+    "rule_flow_scope_correct": 2,
+    "graph_rule_scope_correct": 5
+  },
+  "rows": [
+    {
+      "id": "SC1-permitted-abuse",
+      "expected_scope": "flow",
+      "proposed": {
+        "outcome": "enforced",
+        "scope": "flow",
+        "scope_correct": true,
+        "blocked": "10.2.100.10",
+        "confidence": 0.93,
+        "legit_flows_cut": 1,
+        "max_cut_criticality": "critical",
+        "crown_jewels_still_reachable": 2,
+        "root_cause_named": null,
+        "followup": null,
+        "reject": ""
+      },
+      "baselines": {
+        "soar_host": {
+          "scope": "host",
+          "scope_correct": false,
+          "legit_flows_cut": 7,
+          "crown_jewels_still_reachable": 0
+        },
+        "rule_flow": {
+          "scope": "flow",
+          "scope_correct": true,
+          "legit_flows_cut": 1,
+          "crown_jewels_still_reachable": 2
+        },
+        "graph_rule": {
+          "scope": "flow",
+          "scope_correct": true,
+          "legit_flows_cut": 1,
+          "crown_jewels_still_reachable": 2
+        }
+      }
+    },
+    {
+      "id": "SC2-single-violation",
+      "expected_scope": "flow",
+      "proposed": {
+        "outcome": "enforced",
+        "scope": "flow",
+        "scope_correct": true,
+        "blocked": "10.3.100.10",
+        "confidence": 0.94,
+        "legit_flows_cut": 0,
+        "max_cut_criticality": "none",
+        "crown_jewels_still_reachable": 2,
+        "root_cause_named": null,
+        "followup": null,
+        "reject": ""
+      },
+      "baselines": {
+        "soar_host": {
+          "scope": "host",
+          "scope_correct": false,
+          "legit_flows_cut": 4,
+          "crown_jewels_still_reachable": 0
+        },
+        "rule_flow": {
+          "scope": "flow",
+          "scope_correct": true,
+          "legit_flows_cut": 0,
+          "crown_jewels_still_reachable": 2
+        },
+        "graph_rule": {
+          "scope": "flow",
+          "scope_correct": true,
+          "legit_flows_cut": 0,
+          "crown_jewels_still_reachable": 2
+        }
+      }
+    },
+    {
+      "id": "SC3-multiport-probe",
+      "expected_scope": "pair",
+      "proposed": {
+        "outcome": "enforced",
+        "scope": "flow",
+        "scope_correct": false,
+        "blocked": "10.4.100.10",
+        "confidence": 0.92,
+        "legit_flows_cut": 0,
+        "max_cut_criticality": "none",
+        "crown_jewels_still_reachable": 2,
+        "root_cause_named": null,
+        "followup": null,
+        "reject": ""
+      },
+      "baselines": {
+        "soar_host": {
+          "scope": "host",
+          "scope_correct": false,
+          "legit_flows_cut": 4,
+          "crown_jewels_still_reachable": 0
+        },
+        "rule_flow": {
+          "scope": "flow",
+          "scope_correct": false,
+          "legit_flows_cut": 0,
+          "crown_jewels_still_reachable": 2
+        },
+        "graph_rule": {
+          "scope": "pair",
+          "scope_correct": true,
+          "legit_flows_cut": 0,
+          "crown_jewels_still_reachable": 2
+        }
+      }
+    },
+    {
+      "id": "SC4-fanout-spreading",
+      "expected_scope": "host",
+      "proposed": {
+        "outcome": "enforced",
+        "scope": "flow",
+        "scope_correct": false,
+        "blocked": "10.2.100.10",
+        "confidence": 0.94,
+        "legit_flows_cut": 0,
+        "max_cut_criticality": "none",
+        "crown_jewels_still_reachable": 2,
+        "root_cause_named": null,
+        "followup": null,
+        "reject": ""
+      },
+      "baselines": {
+        "soar_host": {
+          "scope": "host",
+          "scope_correct": true,
+          "legit_flows_cut": 7,
+          "crown_jewels_still_reachable": 0
+        },
+        "rule_flow": {
+          "scope": "flow",
+          "scope_correct": false,
+          "legit_flows_cut": 0,
+          "crown_jewels_still_reachable": 2
+        },
+        "graph_rule": {
+          "scope": "host",
+          "scope_correct": true,
+          "legit_flows_cut": 7,
+          "crown_jewels_still_reachable": 0
+        }
+      }
+    },
+    {
+      "id": "SC5-pivot",
+      "expected_scope": "host",
+      "proposed": {
+        "outcome": "enforced",
+        "scope": "host",
+        "scope_correct": true,
+        "blocked": "10.3.100.10",
+        "confidence": 0.94,
+        "legit_flows_cut": 4,
+        "max_cut_criticality": "critical",
+        "crown_jewels_still_reachable": 0,
+        "root_cause_named": false,
+        "followup": {
+          "outcome": "suppressed",
+          "contained": true
+        },
+        "reject": ""
+      },
+      "baselines": {
+        "soar_host": {
+          "scope": "host",
+          "scope_correct": true,
+          "legit_flows_cut": 4,
+          "crown_jewels_still_reachable": 0
+        },
+        "rule_flow": {
+          "scope": "flow",
+          "scope_correct": false,
+          "legit_flows_cut": 0,
+          "crown_jewels_still_reachable": 2
+        },
+        "graph_rule": {
+          "scope": "host",
+          "scope_correct": true,
+          "legit_flows_cut": 4,
+          "crown_jewels_still_reachable": 0
+        }
+      }
+    }
+  ]
+}

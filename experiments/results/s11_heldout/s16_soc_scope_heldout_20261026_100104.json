@@ -1,0 +1,242 @@
+{
+  "summary": {
+    "n_cases": 6,
+    "proposed_scope_correct": 6,
+    "soar_host_scope_correct": 2,
+    "rule_flow_scope_correct": 3,
+    "graph_rule_scope_correct": 6
+  },
+  "rows": [
+    {
+      "id": "H1-single-lateral",
+      "expected_scope": "flow",
+      "proposed": {
+        "outcome": "enforced",
+        "scope": "flow",
+        "scope_correct": true,
+        "blocked": "10.4.100.11",
+        "confidence": 0.93,
+        "legit_flows_cut": 0,
+        "max_cut_criticality": "none",
+        "crown_jewels_still_reachable": 2,
+        "root_cause_named": null,
+        "followup": null,
+        "steps_pre_contained": 0,
+        "reject": ""
+      },
+      "baselines": {
+        "soar_host": {
+          "scope": "host",
+          "scope_correct": false,
+          "legit_flows_cut": 2,
+          "crown_jewels_still_reachable": 0
+        },
+        "rule_flow": {
+          "scope": "flow",
+          "scope_correct": true,
+          "legit_flows_cut": 0,
+          "crown_jewels_still_reachable": 2
+        },
+        "graph_rule": {
+          "scope": "flow",
+          "scope_correct": true,
+          "legit_flows_cut": 0,
+          "crown_jewels_still_reachable": 2
+        }
+      }
+    },
+    {
+      "id": "H2-permitted-abuse",
+      "expected_scope": "flow",
+      "proposed": {
+        "outcome": "enforced",
+        "scope": "flow",
+        "scope_correct": true,
+        "blocked": "10.4.100.10",
+        "confidence": 0.94,
+        "legit_flows_cut": 1,
+        "max_cut_criticality": "high",
+        "crown_jewels_still_reachable": 2,
+        "root_cause_named": null,
+        "followup": null,
+        "steps_pre_contained": 0,
+        "reject": ""
+      },
+      "baselines": {
+        "soar_host": {
+          "scope": "host",
+          "scope_correct": false,
+          "legit_flows_cut": 4,
+          "crown_jewels_still_reachable": 0
+        },
+        "rule_flow": {
+          "scope": "flow",
+          "scope_correct": true,
+          "legit_flows_cut": 1,
+          "crown_jewels_still_reachable": 2
+        },
+        "graph_rule": {
+          "scope": "flow",
+          "scope_correct": true,
+          "legit_flows_cut": 1,
+          "crown_jewels_still_reachable": 2
+        }
+      }
+    },
+    {
+      "id": "H3-multiport-probe",
+      "expected_scope": "pair",
+      "proposed": {
+        "outcome": "enforced",
+        "scope": "pair",
+        "scope_correct": true,
+        "blocked": "10.3.100.11",
+        "confidence": 0.94,
+        "legit_flows_cut": 0,
+        "max_cut_criticality": "none",
+        "crown_jewels_still_reachable": 2,
+        "root_cause_named": null,
+        "followup": null,
+        "steps_pre_contained": 1,
+        "reject": ""
+      },
+      "baselines": {
+        "soar_host": {
+          "scope": "host",
+          "scope_correct": false,
+          "legit_flows_cut": 2,
+          "crown_jewels_still_reachable": 0
+        },
+        "rule_flow": {
+          "scope": "flow",
+          "scope_correct": false,
+          "legit_flows_cut": 0,
+          "crown_jewels_still_reachable": 2
+        },
+        "graph_rule": {
+          "scope": "pair",
+          "scope_correct": true,
+          "legit_flows_cut": 0,
+          "crown_jewels_still_reachable": 2
+        }
+      }
+    },
+    {
+      "id": "H4-fanout-spreading",
+      "expected_scope": "host",
+      "proposed": {
+        "outcome": "enforced",
+        "scope": "host",
+        "scope_correct": true,
+        "blocked": "10.4.100.11",
+        "confidence": 0.93,
+        "legit_flows_cut": 2,
+        "max_cut_criticality": "high",
+        "crown_jewels_still_reachable": 0,
+        "root_cause_named": null,
+        "followup": null,
+        "steps_pre_contained": 0,
+        "reject": ""
+      },
+      "baselines": {
+        "soar_host": {
+          "scope": "host",
+          "scope_correct": true,
+          "legit_flows_cut": 2,
+          "crown_jewels_still_reachable": 0
+        },
+        "rule_flow": {
+          "scope": "flow",
+          "scope_correct": false,
+          "legit_flows_cut": 0,
+          "crown_jewels_still_reachable": 2
+        },
+        "graph_rule": {
+          "scope": "host",
+          "scope_correct": true,
+          "legit_flows_cut": 2,
+          "crown_jewels_still_reachable": 0
+        }
+      }
+    },
+    {
+      "id": "H5-pivot",
+      "expected_scope": "host",
+      "proposed": {
+        "outcome": "enforced",
+        "scope": "host",
+        "scope_correct": true,
+        "blocked": "10.4.100.11",
+        "confidence": 0.92,
+        "legit_flows_cut": 2,
+        "max_cut_criticality": "high",
+        "crown_jewels_still_reachable": 0,
+        "root_cause_named": true,
+        "followup": {
+          "outcome": "suppressed",
+          "contained": true
+        },
+        "steps_pre_contained": 0,
+        "reject": ""
+      },
+      "baselines": {
+        "soar_host": {
+          "scope": "host",
+          "scope_correct": true,
+          "legit_flows_cut": 2,
+          "crown_jewels_still_reachable": 0
+        },
+        "rule_flow": {
+          "scope": "flow",
+          "scope_correct": false,
+          "legit_flows_cut": 0,
+          "crown_jewels_still_reachable": 2
+        },
+        "graph_rule": {
+          "scope": "host",
+          "scope_correct": true,
+          "legit_flows_cut": 2,
+          "crown_jewels_still_reachable": 0
+        }
+      }
+    },
+    {
+      "id": "H6-fanout-sink",
+      "expected_scope": "flow",
+      "proposed": {
+        "outcome": "enforced",
+        "scope": "flow",
+        "scope_correct": true,
+        "blocked": "10.3.200.11",
+        "confidence": 0.94,
+        "legit_flows_cut": 0,
+        "max_cut_criticality": "none",
+        "crown_jewels_still_reachable": 0,
+        "root_cause_named": null,
+        "followup": null,
+        "steps_pre_contained": 0,
+        "reject": ""
+      },
+      "baselines": {
+        "soar_host": {
+          "scope": "host",
+          "scope_correct": false,
+          "legit_flows_cut": 2,
+          "crown_jewels_still_reachable": 0
+        },
+        "rule_flow": {
+          "scope": "flow",
+          "scope_correct": true,
+          "legit_flows_cut": 0,
+          "crown_jewels_still_reachable": 0
+        },
+        "graph_rule": {
+          "scope": "flow",
+          "scope_correct": true,
+          "legit_flows_cut": 0,
+          "crown_jewels_still_reachable": 0
+        }
+      }
+    }
+  ]
+}

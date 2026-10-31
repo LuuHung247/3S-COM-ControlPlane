@@ -1,0 +1,23 @@
+[
+  {
+    "run_num": 1,
+    "started_at": "2026-10-27T09:03:24Z",
+    "outcome": "enforced",
+    "mttd_s": 2.8,
+    "enforce_latency_ms": 3402.5,
+    "total_latency_s": 6.2,
+    "confidence": 0.9,
+    "alert_count_p1": 1,
+    "rule_pushed": true,
+    "rule_id": "nos-iptables/rule[rule-id=agent-5c5875aa62]",
+    "rejection_reason": "",
+    "dry_run": false,
+    "checks_pass": 5,
+    "checks_total": 5,
+    "passed": true,
+    "notes": "",
+    "t_alert_to_decision_s": 3.4,
+    "t_decision_to_enforce_ms": 1863.1,
+    "enforcement_correct": true
+  }
+]

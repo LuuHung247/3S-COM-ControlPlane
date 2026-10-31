@@ -1,0 +1,23 @@
+[
+  {
+    "run_num": 1,
+    "started_at": "2026-06-02T03:32:44Z",
+    "outcome": "rejected",
+    "mttd_s": 15.6,
+    "enforce_latency_ms": 3560.3,
+    "total_latency_s": 19.16,
+    "confidence": null,
+    "alert_count_p1": 1,
+    "rule_pushed": false,
+    "rule_id": "",
+    "rejection_reason": "L3: Conflict: APP-CORE\u2192DB-OLTP is ALLOW in policy matrix but proposed action is DROP (would break legitimate traffic)",
+    "dry_run": false,
+    "checks_pass": 3,
+    "checks_total": 5,
+    "passed": false,
+    "notes": "",
+    "t_alert_to_decision_s": 3.56,
+    "t_decision_to_enforce_ms": null,
+    "enforcement_correct": true
+  }
+]

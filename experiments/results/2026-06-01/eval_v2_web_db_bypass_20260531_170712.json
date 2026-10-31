@@ -1,0 +1,23 @@
+[
+  {
+    "run_num": 1,
+    "started_at": "2026-05-31T17:07:44Z",
+    "outcome": "rejected",
+    "mttd_s": 17.7,
+    "enforce_latency_ms": 5921.3,
+    "total_latency_s": 23.62,
+    "confidence": null,
+    "alert_count_p1": 1,
+    "rule_pushed": false,
+    "rule_id": "",
+    "rejection_reason": "L1: policy_decision LLM failed after retries \u2014 HTTPStatusError: Client error '402 Payment Required' for url 'https://api.cerebras.ai/v1/chat/completions'\nFor more information check: https://developer.mozi",
+    "dry_run": true,
+    "checks_pass": 4,
+    "checks_total": 5,
+    "passed": false,
+    "notes": "",
+    "t_alert_to_decision_s": 5.92,
+    "t_decision_to_enforce_ms": null,
+    "enforcement_correct": null
+  }
+]

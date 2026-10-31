@@ -1,0 +1,483 @@
+{
+  "compiled_at": "2026-10-27T05:08:25.910705+00:00",
+  "kb_root": "../intelligence-layer/knowledge_v2",
+  "kb_digest": "bb3edf83a797e9dd",
+  "model": "gpt-oss-120b",
+  "reasoning_effort": "medium",
+  "verified": true,
+  "rounds": [
+    {
+      "round": 0,
+      "latency_s": 2.59,
+      "prompt_tokens": 16003,
+      "completion_tokens": 4462,
+      "ok": true,
+      "points": 136080,
+      "realizable": 19824,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 13552,
+      "realizable_drop": 2576,
+      "realizable_abstain": 6272,
+      "coverage": 0.6836,
+      "dead_rules": []
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 16003,
+    "completion_tokens": 4462
+  },
+  "compile_seconds": 7.9,
+  "verification": {
+    "ok": true,
+    "points": 136080,
+    "realizable": 19824,
+    "violating_points": 0,
+    "violation_kinds": 0,
+    "provenance_errors": 0,
+    "realizable_decided": 13552,
+    "realizable_drop": 2576,
+    "realizable_abstain": 6272,
+    "coverage": 0.6836,
+    "dead_rules": []
+  },
+  "program": {
+    "rules": [
+      {
+        "id": "R0",
+        "when": {
+          "src_protected": true
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 0.0
+        },
+        "rationale": "Never block sources that are in the never\u2011block whitelist (protected assets).",
+        "kb_refs": [
+          "invariants.md never_block"
+        ]
+      },
+      {
+        "id": "R1",
+        "when": {
+          "src_zones": [
+            "EXTERNAL"
+          ]
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 0.0
+        },
+        "rationale": "External sources are never dropped \u2013 they are outside the fabric and must be handled by perimeter controls.",
+        "kb_refs": [
+          "policy-matrix.md EXTERNAL"
+        ]
+      },
+      {
+        "id": "R2",
+        "when": {
+          "sids": [
+            9000001
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "WEB directly contacting DB tiers bypasses the required APP\u2011GW \u2192 APP\u2011CORE path \u2013 a hard micro\u2011segmentation violation (SID 9000001).",
+        "kb_refs": [
+          "SID 9000001",
+          "policy-matrix WEB->DB-OLTP"
+        ]
+      },
+      {
+        "id": "R3",
+        "when": {
+          "sids": [
+            9000002
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "WEB skipping APP\u2011GW to reach APP\u2011CORE or WORKER violates the enforced ingress point (SID 9000002).",
+        "kb_refs": [
+          "SID 9000002",
+          "policy-matrix WEB->APP-GW"
+        ]
+      },
+      {
+        "id": "R4",
+        "when": {
+          "sids": [
+            9000003
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "WEB attempting to reach control/observability zones (MGT or MON) is unauthorized (SID 9000003).",
+        "kb_refs": [
+          "SID 9000003",
+          "policy-matrix WEB->MGT"
+        ]
+      },
+      {
+        "id": "R5",
+        "when": {
+          "sids": [
+            9000004
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "APP\u2011GW directly contacting DB tiers skips APP\u2011CORE, breaking business\u2011logic mediation (SID 9000004).",
+        "kb_refs": [
+          "SID 9000004",
+          "policy-matrix APP-GW->DB-OLTP"
+        ]
+      },
+      {
+        "id": "R6",
+        "when": {
+          "sids": [
+            9000005
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "APP\u2011GW initiating lateral moves to zones other than APP\u2011CORE is a policy violation (SID 9000005).",
+        "kb_refs": [
+          "SID 9000005",
+          "policy-matrix APP-GW->APP-CORE"
+        ]
+      },
+      {
+        "id": "R7",
+        "when": {
+          "sids": [
+            9000006
+          ],
+          "severity_min": 2,
+          "severity_max": 2
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "APP\u2011CORE reverse calls to upstream zones (WEB or APP\u2011GW) indicate compromise (SID 9000006).",
+        "kb_refs": [
+          "SID 9000006",
+          "policy-matrix APP-CORE->WEB"
+        ]
+      },
+      {
+        "id": "R8",
+        "when": {
+          "sids": [
+            9000007
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "APP\u2011CORE contacting MGT or MON is unauthorized (SID 9000007).",
+        "kb_refs": [
+          "SID 9000007",
+          "policy-matrix APP-CORE->MGT"
+        ]
+      },
+      {
+        "id": "R9",
+        "when": {
+          "sids": [
+            9000008
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "WORKER reaching any zone other than DB\u2011OLTP violates its strict outbound policy (SID 9000008).",
+        "kb_refs": [
+          "SID 9000008",
+          "policy-matrix WORKER->DB-OLTP"
+        ]
+      },
+      {
+        "id": "R10",
+        "when": {
+          "sids": [
+            9000009
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "DB\u2011OLTP initiating outbound traffic to zones other than DB\u2011ANALYTICS breaches its near\u2011sink invariant (SID 9000009).",
+        "kb_refs": [
+          "SID 9000009",
+          "policy-matrix DB-OLTP->DB-ANALYTICS"
+        ]
+      },
+      {
+        "id": "R11",
+        "when": {
+          "sids": [
+            9000010
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "Any outbound from DB\u2011ANALYTICS violates its pure\u2011sink role (SID 9000010).",
+        "kb_refs": [
+          "SID 9000010",
+          "invariants.md DB-ANALYTICS pure sink"
+        ]
+      },
+      {
+        "id": "R12",
+        "when": {
+          "sids": [
+            9000011
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "Inbound traffic to MGT from non\u2011control zones is prohibited (SID 9000011).",
+        "kb_refs": [
+          "SID 9000011",
+          "policy-matrix *->MGT"
+        ]
+      },
+      {
+        "id": "R13",
+        "when": {
+          "sids": [
+            9000012
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "DB connection from an unauthorized zone indicates lateral movement (SID 9000012).",
+        "kb_refs": [
+          "SID 9000012",
+          "policy-matrix DB-OLTP->*"
+        ]
+      },
+      {
+        "id": "R14",
+        "when": {
+          "sids": [
+            9000013
+          ],
+          "severity_min": 2,
+          "severity_max": 2
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "WORKER contacting DB\u2011ANALYTICS is not allowed; only APP\u2011CORE may write there (SID 9000013).",
+        "kb_refs": [
+          "SID 9000013",
+          "policy-matrix WORKER->DB-ANALYTICS"
+        ]
+      },
+      {
+        "id": "R15",
+        "when": {
+          "sids": [
+            9000050
+          ],
+          "severity_min": 2,
+          "severity_max": 2
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "High\u2011rate SYN flood from a single source is a DoS attack (SID 9000050).",
+        "kb_refs": [
+          "SID 9000050",
+          "category Flooding"
+        ]
+      },
+      {
+        "id": "R16",
+        "when": {
+          "sids": [
+            9000060
+          ],
+          "severity_min": 2,
+          "severity_max": 2
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "Periodic low\u2011size outbound traffic to EXTERNAL_NET matches a C2 beacon pattern (SID 9000060).",
+        "kb_refs": [
+          "SID 9000060",
+          "category C2 / tunneling"
+        ]
+      },
+      {
+        "id": "R17",
+        "when": {
+          "sids": [
+            9000062
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "Any outbound from DB tiers to external networks breaches crown\u2011jewel exfil invariant (SID 9000062).",
+        "kb_refs": [
+          "SID 9000062",
+          "invariants.md DB tier outbound"
+        ]
+      },
+      {
+        "id": "R18",
+        "when": {
+          "sids": [
+            9000070
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "SQL injection pattern \u2018UNION SELECT\u2019 detected in DB traffic (SID 9000070).",
+        "kb_refs": [
+          "SID 9000070",
+          "category DB content"
+        ]
+      },
+      {
+        "id": "R19",
+        "when": {
+          "sids": [
+            9000071
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "SQL injection tautology \u2018OR 1=1\u2019 detected in DB traffic (SID 9000071).",
+        "kb_refs": [
+          "SID 9000071",
+          "category DB content"
+        ]
+      },
+      {
+        "id": "R20",
+        "when": {
+          "sids": [
+            9000072
+          ],
+          "severity_min": 1,
+          "severity_max": 1
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.95
+        },
+        "rationale": "Destructive SQL statements (DROP TABLE / TRUNCATE / DELETE FROM) observed in DB traffic (SID 9000072).",
+        "kb_refs": [
+          "SID 9000072",
+          "category DB content"
+        ]
+      }
+    ],
+    "notes": "Protective rules (R0, R1) are placed first to guarantee they cannot be overridden. All DROP actions respect hard constraints: severity 1\u20112, confidence \u22650.85, ttl 300\u202fs (within 60\u20113600\u202fs), flow scope, and never applied to protected sources or external zones. Log\u2011only actions are used for recon/flood\u2011aggregation signatures that are not classified as immediate threats."
+  }
+}

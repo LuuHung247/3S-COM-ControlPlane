@@ -1,0 +1,179 @@
+{
+  "summary": {
+    "fabric": "V2-8zone",
+    "kill_chain_src": "10.1.100.10",
+    "stages": {
+      "stage1": {
+        "sid": 9000041,
+        "sig": "Vertical port scan",
+        "src": "10.1.100.10",
+        "dst": "10.3.100.10",
+        "dport": 8080
+      },
+      "stage2": {
+        "sid": 9000002,
+        "sig": "WEB to APP/WORKER direct - skips APP-GW",
+        "src": "10.1.100.10",
+        "dst": "10.2.100.10",
+        "dport": 8090
+      },
+      "stage3": {
+        "sid": 9000001,
+        "sig": "WEB to DB direct - microsegmentation bypass",
+        "src": "10.1.100.10",
+        "dst": "10.1.200.10",
+        "dport": 5432
+      }
+    },
+    "proposed_sequence": {
+      "outcome": "enforced",
+      "confidence": 0.94,
+      "blocked": "10.1.100.10",
+      "correlation_detected": true
+    },
+    "proposed_cold": {
+      "outcome": "enforced",
+      "confidence": 0.94,
+      "blocked": "10.1.100.10"
+    },
+    "confidence_lift": 0.0,
+    "correlation_detected_in_sequence": true,
+    "baseline_a_temporal_awareness": false,
+    "baseline_a_action_stage3": "DROP",
+    "thesis_claim": "Proposed agent escalates with kill-chain context (higher confidence, correlation markers present); SOAR correctly mitigates on SID match but cannot escalate, correlate across stages, or distinguish cold vs. sequence."
+  },
+  "sequence_run": {
+    "outcome": "enforced",
+    "confidence": 0.94,
+    "blocked": "10.1.100.10",
+    "correlation_detected": true,
+    "stage3_decision_raw": {
+      "id": "39ebeb19-ec2c-4b18-9450-c284bcc64be5",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "enforced",
+      "action": "DROP",
+      "src_ip": "10.1.100.10/32",
+      "dst_ip": "10.1.200.10/32",
+      "confidence": 0.94,
+      "rejection_reason": "",
+      "latency_ms": 5637.6022435724735,
+      "dry_run": false
+    },
+    "latest_decision_fetched": {
+      "id": "39ebeb19-ec2c-4b18-9450-c284bcc64be5",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "enforced",
+      "action": "DROP",
+      "src_ip": "10.1.100.10/32",
+      "dst_ip": "10.1.200.10/32",
+      "dst_port": 5432,
+      "confidence": 0.94,
+      "rejection_reason": "",
+      "safety_checks": {
+        "validators": {
+          "errors": [],
+          "warnings": []
+        },
+        "confidence": {
+          "score": 0.94,
+          "outcome": "enforce"
+        },
+        "enforcement": {
+          "backend": "ids_agent_proxy",
+          "rule_id": "agent-5c5875aa62"
+        }
+      },
+      "reasoning": [
+        "[graph] Containment scope: flow (distinct_targets=1, ports_on_this_target=1, crown_jewel_path_open_under_flow_scope=yes).",
+        "1. Alert metadata shows SID 9000001 with severity P1, matching the cross\u2011zone policy violation pattern (WEB\u2192DB\u2011OLTP on port 5432).",
+        "2. Policy matrix explicitly DENY for WEB\u2192DB\u2011OLTP; this flow is therefore a microsegmentation breach.",
+        "3. Baseline analysis confirms no legitimate traffic of this type; the flow is absent from production baselines.",
+        "4. Reputation data shows source 10.1.100.10 has a very low score (0.00) and a history of 36 prior enforced drops for the same SID, indicating a repeat offender.",
+        "5. Graph analytics show that a targeted DROP of src\u202f=\u202f10.1.100.10, dst\u202f=\u202f10.1.200.10, port\u202f=\u202f5432 cuts zero legitimate flows, preserving the critical web\u2011to\u2011APP\u2011GW path.",
+        "6. Containment scope chosen: flow\u2011pair (src\u202f+\u202fdst\u202f+\u202fport) to minimize blast radius while fully blocking the policy violation.",
+        "7. Remaining crown\u2011jewel paths (WEB\u2192APP\u2011GW\u2192APP\u2011CORE\u2192DB\u2011OLTP) remain intact, allowing legitimate traffic; attacker cannot pivot further via this blocked flow."
+      ],
+      "hypotheses": [
+        {
+          "name": "cross_zone_violation_web_to_db",
+          "description": "cross_zone_violation_web_to_db (probability=0.9) \u2014 Direct WEB\u2192DB-OLTP connection violates microsegmentation policy. Evidence: SID 9000001 P1 alert, policy matrix DENY, no baseline traffic, repeated alerts, low reputation score. Counter: None credible; FP scenarios unlikely (no announced migration).",
+          "probability": 0.9,
+          "supporting_evidence": [],
+          "disconfirming_evidence": []
+        },
+        {
+          "name": "false_positive_scenario",
+          "description": "false_positive_scenario (probability=0.1) \u2014 Legitimate admin script mistakenly run from web host. Evidence: Possible but no admin port, no MGT source, low reputation. Counter: Source is WEB zone, admin actions should originate from MGT, no prior similar FP.",
+          "probability": 0.1,
+          "supporting_evidence": [],
+          "disconfirming_evidence": []
+        }
+      ],
+      "rollback_plan": {
+        "trigger": "Trigger: No further alerts for this src\u2011dst pair within 10\u202fmin. Action: DELETE rule via /rules/{id}. Monitor: 300\u202fs for traffic resumption.",
+        "action": "Trigger: No further alerts for this src\u2011dst pair within 10\u202fmin. Action: DELETE rule via /rules/{id}. Monitor: 300\u202fs for traffic resumption.",
+        "monitor_seconds": 300
+      },
+      "rule_id": "agent-5c5875aa62",
+      "ttl_seconds": 3600,
+      "latency_ms": 5637.6022435724735,
+      "created_at": "2026-10-26T13:30:30.533001+00:00",
+      "dry_run": false,
+      "retrospective_outcome": null,
+      "trace_id": "548fe2a8-0e94-4e51-9519-b238759bb4ff",
+      "primary_hypothesis": "cross_zone_violation_web_to_db",
+      "alternative_actions": [
+        {
+          "trigger_condition": "if reputation score improves to >0.5 and no further alerts in 5\u202fmin then downgrade to log_only because risk appears transient",
+          "action": "log_only",
+          "rationale": "if reputation score improves to >0.5 and no further alerts in 5\u202fmin then downgrade to log_only because risk appears transient"
+        },
+        {
+          "trigger_condition": "if multiple distinct DB targets appear from the same source then expand block to host\u2011wide DROP 10.1.100.10/32 to prevent scanning",
+          "action": "DROP",
+          "rationale": "if multiple distinct DB targets appear from the same source then expand block to host\u2011wide DROP 10.1.100.10/32 to prevent scanning"
+        }
+      ],
+      "follow_up_actions": [
+        "watch app-gw-01 (APP\u2011GW:8080) \u2014 next hop toward APP\u2011CORE if attacker attempts lateral movement",
+        "watch app-core-01 (APP\u2011CORE:5432) \u2014 potential pivot to DB\u2011OLTP after bypassing APP\u2011GW"
+      ],
+      "mitre_technique": "T1021",
+      "mitre_tactic": "TA0008",
+      "reasoning_completed_at": "2026-10-26T13:30:30.529787+00:00",
+      "reasoning_loading": false,
+      "retrospective_notes": null,
+      "labeled_at": null,
+      "notification_title": null,
+      "notification_body": null,
+      "notification_severity": null
+    }
+  },
+  "cold_run": {
+    "outcome": "enforced",
+    "confidence": 0.94,
+    "blocked": "10.1.100.10",
+    "stage3_decision_raw": {
+      "id": "49f9b3b2-fa53-43ad-837b-b39c3ce17628",
+      "alert_sid": 9000001,
+      "alert_src_ip": "10.1.100.10",
+      "outcome": "enforced",
+      "action": "DROP",
+      "src_ip": "10.1.100.10/32",
+      "dst_ip": "10.1.200.10/32",
+      "confidence": 0.94,
+      "rejection_reason": "",
+      "latency_ms": 1084.0844511985779,
+      "dry_run": false
+    }
+  },
+  "baseline_a": {
+    "sid": 9000001,
+    "action": "DROP",
+    "temporal_awareness": false,
+    "reason": "matched known-dangerous SID",
+    "note": "Correct mitigation on SID match but no escalation or correlation; output is identical regardless of whether STAGE1/STAGE2 preceded this alert."
+  }
+}

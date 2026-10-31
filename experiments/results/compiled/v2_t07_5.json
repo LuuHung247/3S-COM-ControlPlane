@@ -1,0 +1,224 @@
+{
+  "compiled_at": "2026-10-27T05:09:04.042862+00:00",
+  "kb_root": "../intelligence-layer/knowledge_v2",
+  "kb_digest": "bb3edf83a797e9dd",
+  "model": "gpt-oss-120b",
+  "reasoning_effort": "medium",
+  "verified": true,
+  "rounds": [
+    {
+      "round": 0,
+      "latency_s": 1.99,
+      "prompt_tokens": 16003,
+      "completion_tokens": 2664,
+      "ok": true,
+      "points": 136080,
+      "realizable": 19824,
+      "violating_points": 0,
+      "violation_kinds": 0,
+      "provenance_errors": 0,
+      "realizable_decided": 15330,
+      "realizable_drop": 1218,
+      "realizable_abstain": 4494,
+      "coverage": 0.7733,
+      "dead_rules": []
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 16003,
+    "completion_tokens": 2664
+  },
+  "compile_seconds": 7.1,
+  "verification": {
+    "ok": true,
+    "points": 136080,
+    "realizable": 19824,
+    "violating_points": 0,
+    "violation_kinds": 0,
+    "provenance_errors": 0,
+    "realizable_decided": 15330,
+    "realizable_drop": 1218,
+    "realizable_abstain": 4494,
+    "coverage": 0.7733,
+    "dead_rules": []
+  },
+  "program": {
+    "rules": [
+      {
+        "id": "R0_protect_src_protected",
+        "when": {
+          "src_protected": true
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "Never drop traffic from never\u2011block sources (gateways, management hosts, monitoring host, etc.) \u2013 these CIDRs are whitelisted in invariants.md.",
+        "kb_refs": [
+          "invariants.md never_block list"
+        ]
+      },
+      {
+        "id": "R1_protect_external_src",
+        "when": {
+          "src_zones": [
+            "EXTERNAL"
+          ]
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "External sources are not part of the internal fabric; dropping them would violate the \u201cno DROP when source zone is EXTERNAL\u201d hard constraint.",
+        "kb_refs": [
+          "policy-matrix.md EXTERNAL handling"
+        ]
+      },
+      {
+        "id": "R2_policy_violations_drop",
+        "when": {
+          "sids": [
+            9000001,
+            9000002,
+            9000003,
+            9000004,
+            9000005,
+            9000006,
+            9000007,
+            9000008,
+            9000009,
+            9000010,
+            9000011,
+            9000012,
+            9000013
+          ],
+          "severity_min": 1,
+          "severity_max": 2,
+          "verdicts": [
+            "DENY"
+          ]
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.9
+        },
+        "rationale": "These signatures represent hard policy violations (micro\u2011segmentation bypasses, illegal lateral moves, sink\u2011role breaches, and unauthorized DB connections). Dropping the source IP contains the threat with the narrowest possible scope \u2013 the offending flow only.",
+        "kb_refs": [
+          "SID 9000001",
+          "SID 9000002",
+          "SID 9000003",
+          "SID 9000004",
+          "SID 9000005",
+          "SID 9000006",
+          "SID 9000007",
+          "SID 9000008",
+          "SID 9000009",
+          "SID 9000010",
+          "SID 9000011",
+          "SID 9000012",
+          "SID 9000013",
+          "policy-matrix.md"
+        ]
+      },
+      {
+        "id": "R3_syn_flood_drop",
+        "when": {
+          "sids": [
+            9000050
+          ],
+          "severity_min": 2,
+          "severity_max": 2
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.9
+        },
+        "rationale": "TCP SYN flood (SID 9000050) is a high\u2011severity DoS indicator. Dropping the source stops the attack while respecting all hard constraints.",
+        "kb_refs": [
+          "SID 9000050",
+          "policy-matrix.md"
+        ]
+      },
+      {
+        "id": "R4_c2_heartbeat_drop",
+        "when": {
+          "sids": [
+            9000060
+          ],
+          "severity_min": 2,
+          "severity_max": 2
+        },
+        "then": {
+          "action": "DROP",
+          "scope": "flow",
+          "ttl_seconds": 300,
+          "confidence": 0.9
+        },
+        "rationale": "Low\u2011and\u2011slow C2 beacon to external network (SID 9000060) is a P2 indicator of compromise. Blocking the source prevents exfiltration.",
+        "kb_refs": [
+          "SID 9000060",
+          "policy-matrix.md"
+        ]
+      },
+      {
+        "id": "R5_recon_log",
+        "when": {
+          "sids": [
+            9000040,
+            9000041,
+            9000042,
+            9000043,
+            9000044
+          ],
+          "severity_min": 3,
+          "severity_max": 3
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "Reconnaissance signatures are informational; they are logged for visibility but not blocked to avoid disrupting legitimate scanning activity.",
+        "kb_refs": [
+          "SID 9000040",
+          "SID 9000041",
+          "SID 9000042",
+          "SID 9000043",
+          "SID 9000044"
+        ]
+      },
+      {
+        "id": "R6_audit_log",
+        "when": {
+          "sids": [
+            9000080,
+            9000081
+          ],
+          "severity_min": 4,
+          "severity_max": 4
+        },
+        "then": {
+          "action": "log_only",
+          "scope": "flow",
+          "ttl_seconds": 0,
+          "confidence": 1.0
+        },
+        "rationale": "Management\u2011zone (SID 9000080) and monitoring\u2011zone (SID 9000081) traffic are baseline audit events; they are logged only.",
+        "kb_refs": [
+          "SID 9000080",
+          "SID 9000081"
+        ]
+      }
+    ],
+    "notes": "The program follows the priority order: protected sources are never dropped; only policy\u2011violation and high\u2011severity DoS/C2 alerts are dropped with flow\u2011scope TTL 300\u202fs and confidence 0.9. All other alerts are logged. This respects every hard constraint and the invariants of the fabric."
+  }
+}

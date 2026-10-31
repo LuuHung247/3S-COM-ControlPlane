@@ -1,0 +1,214 @@
+{
+  "summary": {
+    "fabric": "V2-8zone",
+    "n_cases": 9,
+    "n_malicious": 6,
+    "n_malicious_unknown": 3,
+    "mitigation_success_proposed": "6/6",
+    "mitigation_success_baseline_a": "3/6",
+    "mitigation_success_unknown_proposed": "3/3",
+    "mitigation_success_unknown_baseline_a": "0/3",
+    "correct_decision_proposed": "9/9",
+    "correct_decision_baseline_a": "6/9"
+  },
+  "rows": [
+    {
+      "id": "M1-known",
+      "cls": "malicious",
+      "expected": "DROP",
+      "hint": "known V2 SID 9000001",
+      "true_src": "10.1.100.10",
+      "proposed": {
+        "outcome": "enforced",
+        "decision": "DROP",
+        "blocked": "10.1.100.10",
+        "confidence": 0.95,
+        "correct": true,
+        "reject": "",
+        "latency_s": 7.67
+      },
+      "baseline_a": {
+        "sid": 9000001,
+        "action": "DROP",
+        "correct": true,
+        "reason": "matched known-dangerous SID"
+      }
+    },
+    {
+      "id": "M1-unknown",
+      "cls": "malicious",
+      "expected": "DROP",
+      "hint": "unknown SID + generic msg",
+      "true_src": "10.1.100.10",
+      "proposed": {
+        "outcome": "enforced",
+        "decision": "DROP",
+        "blocked": "10.1.100.10",
+        "confidence": 0.93,
+        "correct": true,
+        "reject": "",
+        "latency_s": 7.99
+      },
+      "baseline_a": {
+        "sid": 9000901,
+        "action": "no-action",
+        "correct": false,
+        "reason": "no rule for this SID \u2014 ignored"
+      }
+    },
+    {
+      "id": "M2-known",
+      "cls": "malicious",
+      "expected": "DROP",
+      "hint": "known V2 SID 9000004",
+      "true_src": "10.3.100.10",
+      "proposed": {
+        "outcome": "enforced",
+        "decision": "DROP",
+        "blocked": "10.3.100.10",
+        "confidence": 0.94,
+        "correct": true,
+        "reject": "",
+        "latency_s": 6.98
+      },
+      "baseline_a": {
+        "sid": 9000004,
+        "action": "DROP",
+        "correct": true,
+        "reason": "matched known-dangerous SID"
+      }
+    },
+    {
+      "id": "M2-unknown",
+      "cls": "malicious",
+      "expected": "DROP",
+      "hint": "unknown SID + generic msg",
+      "true_src": "10.3.100.10",
+      "proposed": {
+        "outcome": "enforced",
+        "decision": "DROP",
+        "blocked": "10.3.100.10",
+        "confidence": 0.94,
+        "correct": true,
+        "reject": "",
+        "latency_s": 6.37
+      },
+      "baseline_a": {
+        "sid": 9000902,
+        "action": "no-action",
+        "correct": false,
+        "reason": "no rule for this SID \u2014 ignored"
+      }
+    },
+    {
+      "id": "M3-known",
+      "cls": "malicious",
+      "expected": "DROP",
+      "hint": "known V2 SID 9000006",
+      "true_src": "10.2.100.10",
+      "proposed": {
+        "outcome": "enforced",
+        "decision": "DROP",
+        "blocked": "10.2.100.10",
+        "confidence": 0.92,
+        "correct": true,
+        "reject": "",
+        "latency_s": 10.15
+      },
+      "baseline_a": {
+        "sid": 9000006,
+        "action": "DROP",
+        "correct": true,
+        "reason": "matched known-dangerous SID"
+      }
+    },
+    {
+      "id": "M3-unknown",
+      "cls": "malicious",
+      "expected": "DROP",
+      "hint": "unknown SID + generic msg",
+      "true_src": "10.2.100.10",
+      "proposed": {
+        "outcome": "enforced",
+        "decision": "DROP",
+        "blocked": "10.2.100.10",
+        "confidence": 0.92,
+        "correct": true,
+        "reject": "",
+        "latency_s": 8.35
+      },
+      "baseline_a": {
+        "sid": 9000903,
+        "action": "no-action",
+        "correct": false,
+        "reason": "no rule for this SID \u2014 ignored"
+      }
+    },
+    {
+      "id": "L1-unknown",
+      "cls": "legit",
+      "expected": "log_only",
+      "hint": "unknown SID + generic msg (ALLOW path)",
+      "true_src": "10.2.100.10",
+      "proposed": {
+        "outcome": "rejected",
+        "decision": "no-drop",
+        "blocked": null,
+        "confidence": 0.85,
+        "correct": true,
+        "reject": "L3: Conflict: APP-CORE\u2192DB-OLTP is ALLOW in policy matrix but proposed action is DROP (would break le",
+        "latency_s": 3.65
+      },
+      "baseline_a": {
+        "sid": 9000904,
+        "action": "no-action",
+        "correct": true,
+        "reason": "no rule for this SID \u2014 ignored"
+      }
+    },
+    {
+      "id": "L2-unknown",
+      "cls": "legit",
+      "expected": "log_only",
+      "hint": "unknown SID + generic msg (ALLOW path)",
+      "true_src": "10.1.100.10",
+      "proposed": {
+        "outcome": "held",
+        "decision": "no-drop",
+        "blocked": null,
+        "confidence": 0.65,
+        "correct": true,
+        "reject": "L7: confidence=0.65 < 0.7 \u2014 placed in review queue",
+        "latency_s": 11.98
+      },
+      "baseline_a": {
+        "sid": 9000905,
+        "action": "no-action",
+        "correct": true,
+        "reason": "no rule for this SID \u2014 ignored"
+      }
+    },
+    {
+      "id": "L3-unknown",
+      "cls": "legit",
+      "expected": "log_only",
+      "hint": "unknown SID + generic msg (ALLOW path)",
+      "true_src": "10.3.100.10",
+      "proposed": {
+        "outcome": "held",
+        "decision": "no-drop",
+        "blocked": null,
+        "confidence": 0.65,
+        "correct": true,
+        "reject": "L7: confidence=0.65 < 0.7 \u2014 placed in review queue",
+        "latency_s": 12.5
+      },
+      "baseline_a": {
+        "sid": 9000906,
+        "action": "no-action",
+        "correct": true,
+        "reason": "no rule for this SID \u2014 ignored"
+      }
+    }
+  ]
+}
