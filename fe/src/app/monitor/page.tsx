@@ -43,16 +43,23 @@ const PRIORITY_BADGE: Record<number, string> = {
 const PRIORITY_LABEL: Record<number, string> = {
   1: "P1 CRIT", 2: "P2 HIGH", 3: "P3 INFO", 4: "P4 AUDIT",
 };
-const ZONES = ["ALL", "WEB", "DB", "APP", "MGT"] as const;
+// V2 topology — 8 zones (4 LEAFs × 2 zones each), 2 hosts per zone.
+// Short labels kept where original (WEB/DB/APP/MGT) for backward-compat with
+// scenarios/agent; new zones use compact abbreviations to fit grid.
+const ZONES = ["ALL", "WEB", "DB", "APP", "MGT", "APP-GW", "DB-ANLT", "WORKER", "MON"] as const;
 type Zone = (typeof ZONES)[number];
 type Priority = 0 | 1 | 2 | 3 | 4;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function ipZone(ip: string): string {
   if (ip?.startsWith("10.1.100.")) return "WEB";
-  if (ip?.startsWith("10.1.200.")) return "DB";
-  if (ip?.startsWith("10.2.100.")) return "APP";
+  if (ip?.startsWith("10.1.200.")) return "DB";          // DB-OLTP
+  if (ip?.startsWith("10.2.100.")) return "APP";         // APP-CORE
   if (ip?.startsWith("10.2.50."))  return "MGT";
+  if (ip?.startsWith("10.3.100.")) return "APP-GW";      // NEW
+  if (ip?.startsWith("10.3.200.")) return "DB-ANLT";     // NEW
+  if (ip?.startsWith("10.4.100.")) return "WORKER";      // NEW
+  if (ip?.startsWith("10.4.200.")) return "MON";         // NEW
   return "EXT";
 }
 
@@ -316,17 +323,23 @@ export default function MonitorPage() {
     p4: violations.filter(a => a.alert?.severity === 4).length,
   };
 
-  // Group by zone — node is "monitored" if any service in that zone has traffic
-  const NODE_INFO: Record<string, { host: string; ip: string }> = {
-    WEB: { host: "Alpine-Linux-1", ip: "10.1.100.10" },
-    DB:  { host: "Alpine-Linux-2", ip: "10.1.200.10" },
-    APP: { host: "Alpine-Linux-3", ip: "10.2.100.10" },
-    MGT: { host: "Alpine-Linux-5", ip: "10.2.50.10"  },
+  // V2 — 8 zones, 2 hosts mỗi zone. Node "monitored" nếu có traffic gần đây
+  // từ/đến bất kỳ host nào trong zone đó (Suricata passive mirror).
+  const NODE_INFO: Record<string, { hosts: string; ips: string }> = {
+    WEB:       { hosts: "WEB-1/2",         ips: "10.1.100.10, .11" },
+    DB:        { hosts: "DB-OLTP-1/2",     ips: "10.1.200.10, .11" },
+    APP:       { hosts: "APP-CORE-1/2",    ips: "10.2.100.10, .11" },
+    MGT:       { hosts: "MGT-1/2",         ips: "10.2.50.10, .11"  },
+    "APP-GW":  { hosts: "APP-GW-1/2",      ips: "10.3.100.10, .11" },
+    "DB-ANLT": { hosts: "DB-ANALYTICS-1/2", ips: "10.3.200.10, .11" },
+    WORKER:    { hosts: "WORKER-1/2",      ips: "10.4.100.10, .11" },
+    MON:       { hosts: "MONITORING-1/2",  ips: "10.4.200.10, .11" },
   };
-  const nodeStatus = (["WEB","DB","APP","MGT"] as const).map(zone => {
-    const svcs = Array.from(services.values()).filter(s => s.zone === zone);
-    const monitored = svcs.some(s => s.status === "up");
-    return { zone, monitored, ...NODE_INFO[zone] };
+  const ZONE_KEYS = ["WEB","DB","APP","MGT","APP-GW","DB-ANLT","WORKER","MON"] as const;
+  const nodeStatus = ZONE_KEYS.map(zone => {
+    // Monitored = có flow/alert event nào từ src hoặc dst thuộc zone trong cửa sổ 3 min.
+    const hasTraffic = feed.some(ev => ipZone(ev.src_ip) === zone || ipZone(ev.dest_ip) === zone);
+    return { zone, monitored: hasTraffic, ...NODE_INFO[zone] };
   });
   const monitoredCount = nodeStatus.filter(n => n.monitored).length;
 
@@ -382,11 +395,11 @@ export default function MonitorPage() {
               passive IDS · Suricata flow records · 3 min window
             </span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2">
             {nodeStatus.map(node => (
               <div key={node.zone}
                 title={node.monitored
-                  ? `Traffic observed from/to ${node.ip} in last 3 min (Suricata passive monitor)`
+                  ? `Traffic observed from/to ${node.ips} in last 3 min (Suricata passive monitor)`
                   : `No recent traffic observed — node may be idle`}
                 className={`rounded-lg border px-3 py-2.5 flex items-center gap-3 transition-all cursor-default ${
                   node.monitored
@@ -398,8 +411,8 @@ export default function MonitorPage() {
                 }`} />
                 <div className="min-w-0">
                   <div className="text-xs font-mono font-bold text-white">{node.zone}</div>
-                  <div className="text-xs font-mono text-tc-text-dim">{node.host}</div>
-                  <div className="text-xs font-mono text-tc-text-dim/60">{node.ip}</div>
+                  <div className="text-xs font-mono text-tc-text-dim truncate">{node.hosts}</div>
+                  <div className="text-xs font-mono text-tc-text-dim/60 truncate">{node.ips}</div>
                 </div>
               </div>
             ))}

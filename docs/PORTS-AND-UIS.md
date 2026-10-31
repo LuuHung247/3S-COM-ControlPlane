@@ -1,6 +1,7 @@
 # Ports & UIs — Map Toàn Hệ Thống
 
-> Last verified: 2026-05-06 (V3 + Asset Reputation + pgvector multi-strategy + decisions_history dual-write)
+> Last verified: 2026-05-31 (V2 fabric: 4 LEAFs / 8 zones, FE 3-page nav: Dashboard/Monitor/Policy, per-LEAF rules display, AgentNotificationFeed filter+dedup)
+> Previous: 2026-05-06 (V3 + Asset Reputation + pgvector multi-strategy + decisions_history dual-write)
 
 Ghi nhanh tất cả services, ports, URLs để tra cứu khi cần. Stack chạy bằng
 `docker compose` từ `/home/dis/deploy/zerotrust/`.
@@ -11,10 +12,9 @@ Ghi nhanh tất cả services, ports, URLs để tra cứu khi cần. Stack ch�
 
 | URL | Service | Mục đích | Auth |
 |-----|---------|----------|------|
-| **http://localhost:3000** | **fe (Next.js)** | Frontend dashboard — Live Monitor, Policy page với 🧠 Reasoning button, Topology, Rules | none |
-| http://localhost:3000/monitor | fe → ids-agent SSE + Redis DB 1 | Real-time alerts + flows, server-side buffer 7 ngày, theme toggle Dark/Light | none |
-| http://localhost:3000/policy | fe → SF + intel | Active rules, manual block, **Agent Policy History với Reasoning modal** | none |
-| http://localhost:3000/topology | fe | Network topology view | none |
+| **http://localhost:3000** | **fe (Next.js)** | Frontend dashboard — 3 pages: `/`, `/monitor`, `/policy` (V2 — Topology/Rules/Knowledge nav đã bỏ) | none |
+| http://localhost:3000/monitor | fe → ids-agent SSE + Redis DB 1 | Real-time alerts + flows **8 zones V2** (WEB/DB/APP/MGT/APP-GW/DB-ANLT/WORKER/MON), theme toggle Dark/Light | none |
+| http://localhost:3000/policy | fe → SF + intel | Active rules **chia per-LEAF** (LEAF-1..4), manual push, **Agent Policy History với Reasoning modal**, Raw gNMI modal | none |
 | **http://localhost:3001** | **Langfuse v2** | LLM observability — trace tree per alert, token cost, prompt+completion, retrospective scores | login |
 | **http://localhost:8767/kg/visualize** | intelligence-layer | Knowledge Graph interactive HTML — 30 nodes (zones, assets, leafs, SIDs, kill chains, baselines), 43 edges | none |
 | http://localhost:8767/docs | intelligence-layer | FastAPI auto-generated Swagger UI | none |
@@ -62,7 +62,7 @@ Network: `ztnet` bridge. Inter-container DNS qua container name.
 | http://10.10.6.238:9090 | Secure Framework REST | Enforcement (`POST /api/rules`) — container `nos-sf` trên gns3vm |
 | 10.10.6.238:6513 | SF NETCONF/TLS | ONAP SDNC path (không dùng trong intel) |
 | 10.10.6.238:9339 | gNMI mTLS (SF→LEAF) | Internal, không expose ra agent |
-| 192.168.122.20 / .21 | LEAF-1 / LEAF-2 mgmt | nos-acl-bridge gNMI :9339, không trực tiếp |
+| 192.168.122.20 / .21 / .22 / .23 | LEAF-1 / LEAF-2 / LEAF-3 / LEAF-4 mgmt (V2) | nos-acl-bridge gNMI :9339, TLS hostname `sonic-leaf-{1..4}`, không trực tiếp |
 | Suricata IDS console | telnet `112.137.129.232:5018` | GNS3 console (debugging) |
 | Alpine console (WEB/DB/APP/MGT) | telnet `:5008/5011/5014/5016` | GNS3 console (scenario triggers) |
 
@@ -338,18 +338,22 @@ curl -s http://localhost:8767/events/stats
 
 ### Frontend (`fe`) — http://localhost:3000
 
-**Pages**:
-- `/dashboard` — system status overview
-- `/monitor` — real-time alerts + flows feed, **theme toggle Dark/Light**, **auto-follow toggle**, server buffer Redis DB 1 (F5 không mất data)
+**Pages (V2 — chỉ 3 entry trong nav)**:
+- `/` — Dashboard landing
+- `/monitor` — real-time alerts + flows feed, **theme toggle Dark/Light**, server buffer Redis DB 1 (F5 không mất data)
   - **Alerts**: live qua SSE từ ids-agent `/events` (Suricata broadcasts alerts only)
   - **Flows**: poll mỗi 5s từ `/api/intel/events?kind=flow` (Suricata không broadcast flows qua SSE — rate quá cao, sẽ flood). De-dup by `(flow_id, timestamp, src_ip, src_port)`.
-  - **Zone filter**: ALL / WEB / DB / APP / MGT — filter theo src zone
+  - **Zone filter V2**: ALL / WEB / DB / APP / MGT / APP-GW / DB-ANLT / WORKER / MON — 8 zones, mapping qua `ipZone()` ([monitor/page.tsx:54](../fe/src/app/monitor/page.tsx#L54))
   - **Priority filter**: ALL / P1 / P2 / P3 / P4 — chọn 1 priority cụ thể sẽ **ẩn flow events** (chỉ show alerts cùng priority); chọn ALL hiện cả flows
   - **Traffic ON/OFF**: toggle visibility flow events (chỉ hiệu lực khi P=ALL)
-- `/policy` — Active Rules table + Agent Policy History với **🧠 Reasoning button** mỗi row → modal full hypothesis + reasoning + alternatives + rollback + follow-up + MITRE
+  - **AgentNotificationFeed (bottom-right)**: chỉ hiện enforced-DROP, dedup theo `(attacker_ip, action, block_dst)` window 60s, không có severity badges (đã bỏ)
+- `/policy` — Active Rules **chia per-LEAF** (LEAF-1..4 mỗi block riêng) + Agent Policy History với **💡 Reasoning button** mỗi row → modal full hypothesis + reasoning + alternatives + rollback + follow-up + MITRE
+  - **Raw gNMI modal**: top button + per-LEAF "raw" → hiện response gốc gNMI Get
+  - **YANG instance modal**: click rule-id → hiện `val{}` JSON-IETF
   - **Delete rule confirm dialog**: ấn `Del`/`Delete` button → `window.confirm()` show ID + action summary (`DROP src → dst:port`) + source — chống xoá nhầm
-- `/topology` — network topology view
-- `/rules` — ZT baseline + agent rules
+  - **Polling 8s** — re-fetch rules + autoblock + agent health + decisions
+
+**Bỏ khỏi nav (V2)**: `/topology`, `/rules`, `/knowledge` — KG vẫn truy cập trực tiếp http://localhost:8767/kg/visualize.
 
 **Theme toggle**: nút `☀ Light` / `🌙 Dark` ở navbar (cả desktop + mobile). Persist `localStorage.zt-theme`. Light mode dùng GitHub Primer + IBM Carbon palette — print-safe cho thesis screenshot.
 

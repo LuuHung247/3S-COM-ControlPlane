@@ -400,7 +400,7 @@ export default function PolicyPage() {
                     </button>
                   </div>
                   {/* Column header */}
-                  <div className="hidden sm:grid grid-cols-[1fr_80px_160px_140px_80px_80px_60px] gap-2 border-b border-tc-border/30 px-4 py-2 text-xs font-mono text-tc-text-dim/70">
+                  <div className="hidden sm:grid grid-cols-[minmax(180px,1.2fr)_70px_140px_minmax(180px,2fr)_70px_60px_50px] gap-2 border-b border-tc-border/30 px-4 py-2 text-xs font-mono text-tc-text-dim/70">
                     <span>Rule ID</span><span>Action</span><span>Src IP</span>
                     <span>Comment</span><span>Src</span><span>Priority</span><span></span>
                   </div>
@@ -410,7 +410,7 @@ export default function PolicyPage() {
                   ) : leafRules.map(rule => (
                     <div key={`${leafName}-${rule["rule-id"]}`}
                       className={`border-b border-tc-border/20 last:border-b-0 px-4 py-3 hover:bg-tc-green/5 transition-colors ${rule.source === "agent" ? "bg-orange-900/5" : ""}`}>
-                      <div className="hidden sm:grid grid-cols-[1fr_80px_160px_140px_80px_80px_60px] gap-2 items-center">
+                      <div className="hidden sm:grid grid-cols-[minmax(180px,1.2fr)_70px_140px_minmax(180px,2fr)_70px_60px_50px] gap-2 items-center">
                         <button
                           onClick={() => setRawModal({
                             title: `YANG instance · ${leafName} · /nos-iptables:acl/rule[rule-id=${rule["rule-id"]}]`,
@@ -424,7 +424,11 @@ export default function PolicyPage() {
                           {rule.action}
                         </span>
                         <span className="text-xs font-mono text-tc-text-dim">{rule["src-prefix"] ?? rule["src-ip"] ?? "—"}</span>
-                        <span className="text-xs text-tc-text-dim truncate">{rule.comment ?? "—"}</span>
+                        <span
+                          className="text-xs text-tc-text-dim break-words"
+                          title={rule.comment ?? ""}>
+                          {rule.comment ?? "—"}
+                        </span>
                         <span className={`px-1.5 py-0.5 rounded border text-xs font-mono w-fit ${SOURCE_BADGE[rule.source ?? "manual"] ?? SOURCE_BADGE.manual}`}>
                           {rule.source ?? "—"}
                         </span>
@@ -660,10 +664,6 @@ function ReasoningModal({
     };
   }, [decisionId, onClose]);
 
-  const langfuseUrl = detail?.trace_id
-    ? `http://localhost:3001/trace/${detail.trace_id}`
-    : null;
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
@@ -686,17 +686,6 @@ function ReasoningModal({
             )}
           </div>
           <div className="flex items-center gap-2">
-            {langfuseUrl && (
-              <a
-                href={langfuseUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-mono px-2 py-1 rounded border border-tc-border/50 hover:text-tc-green hover:border-tc-green/50 transition-colors"
-                title="Open Langfuse trace"
-              >
-                📊 Trace
-              </a>
-            )}
             <button
               onClick={onClose}
               className="text-xs font-mono px-2 py-1 rounded border border-tc-border/50 hover:text-red-400 hover:border-red-500/50 transition-colors"
@@ -786,10 +775,24 @@ function ReasoningModal({
                   {/* Rollback */}
                   {(detail.rollback_plan && (typeof detail.rollback_plan === "string" || (detail.rollback_plan.action || detail.rollback_plan.trigger))) && (
                     <Section title="Rollback plan">
-                      <div className="text-xs text-yellow-300">
-                        {typeof detail.rollback_plan === "string"
-                          ? detail.rollback_plan
-                          : `Trigger: ${detail.rollback_plan.trigger || "—"}. Action: ${detail.rollback_plan.action || "—"}. Monitor ${detail.rollback_plan.monitor_seconds || 300}s.`}
+                      <div className="text-xs text-yellow-300 whitespace-pre-line">
+                        {(() => {
+                          const rp = detail.rollback_plan;
+                          if (typeof rp === "string") return rp;
+                          const trig = (rp.trigger || "").trim();
+                          const act  = (rp.action  || "").trim();
+                          const mon  = rp.monitor_seconds || 300;
+                          // Defensive: LLM occasionally jams the whole plan into a
+                          // single field (trigger/action contain "Action:" /
+                          // "Monitor:" prefixes). Detect and render raw to avoid
+                          // double-prefixing.
+                          const looksJammed = /\b(Action|Monitor)\s*:/i.test(trig) || /\b(Trigger|Monitor)\s*:/i.test(act);
+                          if (looksJammed) {
+                            const text = trig.length >= act.length ? trig : act;
+                            return text || "—";
+                          }
+                          return `Trigger: ${trig || "—"}\nAction: ${act || "—"}\nMonitor: ${mon}s`;
+                        })()}
                       </div>
                     </Section>
                   )}

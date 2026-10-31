@@ -1,7 +1,8 @@
 # Secure Framework — Pipeline Architecture
 
 > Mô tả chi tiết kiến trúc và luồng đẩy policy từ Control Plane → Dataplane
-> Last updated: 2026-05-05 (V3 schema split, Langfuse, EventsStore)
+> Last updated: 2026-05-31 (**V2 fabric — 4 LEAFs / 8 zones**, source-based routing: sdnc=broadcast, agent=zone-route, CamelCase rule IDs)
+> Previous: 2026-05-05 (V3 schema split, Langfuse, EventsStore)
 
 ---
 
@@ -46,7 +47,10 @@
 │   │                      │  gNMI Set (mTLS :9339)               │           │
 │   │           ┌──────────▼──────────────────┐                   │           │
 │   │           │  nos_gnmi_pool.py            │                   │           │
-│   │           │  Zone routing: src-ip→LEAF   │                   │           │
+│   │           │  Source-based routing:       │                   │           │
+│   │           │    sdnc  → broadcast 4 LEAFs │                   │           │
+│   │           │    agent → ip_to_leaf(src)   │                   │           │
+│   │           │    manual→ get_any_client()  │                   │           │
 │   │           └──────┬──────────────┬────────┘                   │           │
 │   └──────────────────┼──────────────┼────────────────────────────┘           │
 │                      │              │                                        │
@@ -67,8 +71,43 @@
 │   │  iptables      │     │  iptables      │  (FORWARD chain)                │
 │   │  FORWARD chain │     │  FORWARD chain │                                 │
 │   └────────────────┘     └────────────────┘                                 │
+│                                                                              │
+│   ⚠ V2 (2026-05-31): pool nay co 4 LEAFs (.20/.21/.22/.23) chu khong phai 2.│
+│   LEAF-3/4 deploy them voi nos-acl-bridge tuong tu, mTLS gNMI:9339, server  │
+│   cert SAN=IP do ONAP-SONiC-CA ky. So do truc giac giu nguyen — chi mo rong │
+│   fan-out. See §7 cho zone map day du va §3 cho source-based routing.       │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 1.b V2 fabric — 4 LEAFs / 8 zones (2026-05-31)
+
+Cập nhật từ V1 (2 LEAFs / 4 zones) → V2 (4 LEAFs / 8 zones). Mọi pipeline + RBAC + YANG schema giữ nguyên; chỉ scale-out gNMI pool và mở rộng zone map.
+
+| LEAF | mgmt IP | TLS hostname (cert SAN) | Zones |
+|---|---|---|---|
+| LEAF-1 | 192.168.122.20 | `sonic-leaf-1` | WEB (10.1.100.0/24), DB-OLTP (10.1.200.0/24) |
+| LEAF-2 | 192.168.122.21 | `sonic-leaf-2` | APP-CORE (10.2.100.0/24), MGT (10.2.50.0/24) |
+| LEAF-3 ✦ | 192.168.122.22 | `sonic-leaf-3` | APP-GW (10.3.100.0/24), DB-ANLT (10.3.200.0/24) |
+| LEAF-4 ✦ | 192.168.122.23 | `sonic-leaf-4` | WORKER (10.4.100.0/24), MON (10.4.200.0/24) |
+
+✦ = V2 new.
+
+CLI args để thêm/skip LEAF khi start SF ([app.py:58-65](../secure-framework/app.py#L58)):
+
+```bash
+python3 app.py \
+  --leaf1-host 192.168.122.20 \
+  --leaf2-host 192.168.122.21 \
+  --leaf3-host 192.168.122.22 \
+  --leaf4-host 192.168.122.23 \
+  --client-cert ./certificate/generate/output_3snos/agent-ids/client.crt \
+  --client-key  ./certificate/generate/output_3snos/agent-ids/client.key \
+  --client-ca   ./certificate/generate/output_3snos/agent-ids/trustedCertificates.crt
+```
+
+Truyền `--leaf3-host ''` để skip LEAF chưa deploy bridge.
 
 ---
 
@@ -156,7 +195,7 @@ Python 3.11, container `nos-sf` trên dataplane (10.10.6.238).
 
 ### 2.4 nos-acl-bridge (trên mỗi LEAF)
 
-Python systemd service tại `/opt/nos-acl-bridge/`, chạy trên LEAF-1 (192.168.122.20) và LEAF-2 (192.168.122.21).
+Python systemd service tại `/opt/nos-acl-bridge/`, chạy trên 4 LEAFs (V2): LEAF-1..4 tại 192.168.122.20/21/22/23.
 
 **Vai trò:** gNMI server nhận Set/Get từ SF → validate → ghi vào ConfigDB DB4 → apply iptables FORWARD.
 
@@ -185,15 +224,30 @@ User điền form /policy → nhấn "Push Rule"
         │  POST http://10.10.6.238:9090/api/rules
         │  body: {rule_id, action, src_ip, priority, source="manual", comment}
         ▼
-  Secure Framework  role_api.py → _handle_post_rule()
+  Secure Framework  role_api.py → _handle_post_rule()  (line 486)
         │
         ├─ Validate action ∈ {ACCEPT, DROP, RETURN}
-        ├─ ip_to_leaf(src_ip) → chọn LEAF đích
-        │       10.1.100.x / 10.1.200.x → LEAF-1  (192.168.122.20)
-        │       10.2.100.x / 10.2.50.x  → LEAF-2  (192.168.122.21)
-        │       src_ip rỗng hoặc không match → broadcast cả hai
+        ├─ Source-based routing (V2 — role_api.py:522-534):
         │
-        │  gNMI Set (mTLS, cert OU=sdnc → ADMIN role)
+        │   if body.source == "sdnc":
+        │       clients = ALL LEAFs in pool   ← broadcast (defense-in-depth baseline)
+        │   elif body.source == "agent":
+        │       leaf_ip = ip_to_leaf(src_ip)
+        │       clients = [single LEAF that owns src zone]
+        │   else:  # source=="manual" or missing
+        │       clients = [get_any_client()]  ← fallback LEAF-1 mặc định
+        │
+        │  V2 zone map (8 zones → 4 LEAFs):
+        │   10.1.100.0/24 WEB     → LEAF-1 (192.168.122.20)
+        │   10.1.200.0/24 DB-OLTP → LEAF-1
+        │   10.2.100.0/24 APP-CORE→ LEAF-2 (192.168.122.21)
+        │   10.2.50.0/24  MGT     → LEAF-2
+        │   10.3.100.0/24 APP-GW  → LEAF-3 (192.168.122.22) ✦
+        │   10.3.200.0/24 DB-ANLT → LEAF-3                  ✦
+        │   10.4.100.0/24 WORKER  → LEAF-4 (192.168.122.23) ✦
+        │   10.4.200.0/24 MON     → LEAF-4                  ✦
+        │
+        │  gNMI Set (mTLS, cert OU=auto → AGENT role mặc định khi chạy với agent-ids cert)
         │  path: /nos-iptables:acl/rule[rule-id={id}]
         │  encoding: json_ietf
         ▼
@@ -384,38 +438,78 @@ Nếu IDS Agent push thẳng gNMI (bỏ qua SF) mới cần cert AGENT.
 
 ## 7. gNMI Connection Pool
 
-`nos_gnmi_pool.py` quản lý pool kết nối tới các LEAF.
+[`nos_gnmi_pool.py`](../secure-framework/nos_gnmi_pool.py) quản lý pool kết nối tới các LEAF. V2 mở rộng từ 2 → 4 LEAFs.
 
 ```python
-# Zone routing — src-ip → LEAF
-ZONE_MAP = {
-    "10.1.100.": "192.168.122.20",   # WEB  → LEAF-1
-    "10.1.200.": "192.168.122.20",   # DB   → LEAF-1
-    "10.2.100.": "192.168.122.21",   # APP  → LEAF-2
-    "10.2.50.":  "192.168.122.21",   # MGT  → LEAF-2
+# Zone routing — src prefix → LEAF (nos_gnmi_pool.py:29)
+ZONE_TO_LEAF = {
+    # LEAF-1 (V1)
+    "10.1.100.0/24": "192.168.122.20",   # WEB
+    "10.1.200.0/24": "192.168.122.20",   # DB-OLTP
+    # LEAF-2 (V1)
+    "10.2.100.0/24": "192.168.122.21",   # APP-CORE
+    "10.2.50.0/24":  "192.168.122.21",   # MGT
+    # LEAF-3 (V2) ✦
+    "10.3.100.0/24": "192.168.122.22",   # APP-GW
+    "10.3.200.0/24": "192.168.122.22",   # DB-ANLT
+    # LEAF-4 (V2) ✦
+    "10.4.100.0/24": "192.168.122.23",   # WORKER
+    "10.4.200.0/24": "192.168.122.23",   # MON
 }
 
-def ip_to_leaf(src_ip: str) -> Optional[str]:
-    for prefix, leaf_ip in ZONE_MAP.items():
-        if src_ip.startswith(prefix):
+# TLS hostname override per LEAF — phải match SAN DNS trong bridge server cert
+LEAF_TLS_HOSTNAME = {
+    "192.168.122.20": "sonic-leaf-1",
+    "192.168.122.21": "sonic-leaf-2",
+    "192.168.122.22": "sonic-leaf-3",    # V2 ✦
+    "192.168.122.23": "sonic-leaf-4",    # V2 ✦
+}
+
+def ip_to_leaf(src: str) -> Optional[str]:
+    """Map src IP/prefix → LEAF owning its zone. CIDR subnet_of check."""
+    net = ipaddress.ip_network(src, strict=False)
+    for zone_net, leaf_ip in _ZONE_NETWORKS.items():
+        if net.subnet_of(zone_net):
             return leaf_ip
     return None
 ```
 
-Nếu `src_ip` không match zone nào (hoặc rỗng) → `get_any_client()` → push tới LEAF đang available.
+Nếu `src_ip` không match zone nào (hoặc rỗng) → `get_any_client()` → push tới LEAF đang available (mặc định LEAF-1).
 
-**pygnmi params quan trọng:**
+**pygnmi params quan trọng (per-LEAF):**
 
 ```python
 SonicGnmiClient(
     host=(leaf_ip, 9339),
-    path_cert=client_cert_path,   # client cert (OU=sdnc)
+    path_cert=client_cert_path,    # OU=auto (AGENT) hoặc OU=sdnc (ADMIN)
     path_key=client_key_path,
-    path_root=ca_cert_path,       # CA để verify bridge server cert
-    override="sonic",             # TLS hostname override
-    grpc_options=[("grpc.ssl_target_name_override", "sonic")]
+    path_root=ca_cert_path,        # ONAP-SONiC-CA verify bridge server cert
+    override=LEAF_TLS_HOSTNAME[leaf_ip],     # sonic-leaf-1..4
+    grpc_options=[("grpc.ssl_target_name_override", LEAF_TLS_HOSTNAME[leaf_ip])]
 )
 ```
+
+**Cert signing cho LEAF mới (PKI workflow):**
+- CA hiện hành: `CN=ONAP-SONiC-CA, O=ONAP, OU=Network` (notBefore Apr 4 2026)
+- ca.key path: `/home/dis/deploy/acl_policy/certificate/generate/output/ca.key` (KHÔNG phải `/3s-com/...` default)
+- Sign cert cho LEAF-N: SAN phải bao gồm `IP:192.168.122.{20+N-1}` để gNMI mTLS verify pass
+
+---
+
+## 7.b Cert role mapping (ai chạy SF với cert gì)
+
+Bridge enforce RBAC bằng cert OU — SF không thể bypass.
+
+| Cert subject OU | Role | Use case |
+|---|---|---|
+| `OU=internal` hoặc `OU=sdnc` | ADMIN | Push ZT baseline (source=sdnc, broadcast 4 LEAFs); manual delete; SDNC NETCONF path |
+| `OU=aws` | OPERATOR | Read + Set, no delete; chỉ source=sdnc |
+| `OU=auto` | AGENT | DROP-only, chỉ source=agent; zone-routed |
+
+**Quirk hiện tại (2026-05-31):**
+- SF đang chạy với cert `agent-ids/client.crt` (OU=auto, AGENT). Phù hợp cho agent zone-routed enforce.
+- Để push **baseline policy** (source=sdnc, broadcast), cần restart SF **tạm thời** với cert `sdnc/client.crt`, push xong → restart back với agent-ids.
+- Workflow: `--client-cert sdnc/client.crt --client-key sdnc/client.key --client-ca sdnc/trustedCertificates.crt` → push 21 baseline rules → restart back default.
 
 ---
 
@@ -544,20 +638,20 @@ networks:
 
 ---
 
-## 11. Dataplane deploy workflow
+## 11. Dataplane deploy workflow (V2 — 4 LEAFs)
 
 Sau khi thay đổi code SF hoặc bridge:
 
 ```bash
-# 1. Sync SF code lên dataplane
+# 1. Sync SF code lên dataplane (V2 path)
 rsync -av /home/dis/deploy/zerotrust/secure-framework/ \
-      dis@10.10.6.238:/3s-com/zma/secure-framework/
+      dis@10.10.6.238:/home/dis/deploy/zerotrust/secure-framework/
 
-# 2. Restart SF container
-ssh dis@10.10.6.238 "docker restart nos-sf"
+# 2. Restart SF container (đang chạy bằng docker compose trên gns3vm)
+ssh dis@10.10.6.238 "cd /home/dis/deploy/zerotrust && docker compose restart nos-sf"
 
-# 3. Sync bridge code (nếu thay đổi validators.py, iptables.py, ...)
-for leaf in 192.168.122.20 192.168.122.21; do
+# 3. Sync bridge code — V2 cần update 4 LEAFs
+for leaf in 192.168.122.20 192.168.122.21 192.168.122.22 192.168.122.23; do
   scp /home/dis/deploy/zerotrust/nos-acl-bridge/bridge/validators.py \
       admin@$leaf:/tmp/validators.py
   ssh admin@$leaf "sudo cp /tmp/validators.py /opt/nos-acl-bridge/bridge/ \
@@ -572,7 +666,7 @@ docker compose up -d <service>
 
 **Credentials:**
 - Dataplane host: `dis@10.10.6.238` / `httt@25`
-- LEAF-1/2: `admin@192.168.122.20` (và .21) / `YourPaSsWoRd`
+- LEAF-1..4: `admin@192.168.122.{20,21,22,23}` / `YourPaSsWoRd`
 - Kết nối LEAF qua jump host: từ 10.10.6.238, `ssh admin@192.168.122.x`
 
 ---
@@ -582,25 +676,26 @@ docker compose up -d <service>
 **A. Manual block (Frontend)**
 ```
 [Frontend /policy]
-        │ POST /api/ids/autoblock  {ip="x.x.x.x"}
+        │ POST /api/ids/autoblock  {src_ip="x.x.x.x"}      ← form hoặc "Manual block" button
         │
-[Next.js API]
+[Next.js API rules/route.ts POST]
         │ POST http://ids-agent:8766/autoblock
         │
-[IDS Agent]  pushBlockRule() → force source="manual"
+[IDS Agent autoblockHandler]  pushBlockRule() → body.source="manual"
         │ POST http://10.10.6.238:9090/api/rules
         │
-[SF role_api.py]
+[SF role_api.py _handle_post_rule]
   validate action
-  ip_to_leaf(src_ip) → 192.168.122.20
-        │ gNMI Set /nos-iptables:acl/rule[rule-id=x]  (mTLS OU=sdnc)
+  V2 routing: source=="manual" → get_any_client() → default LEAF-1 (192.168.122.20)
+        │ gNMI Set /nos-iptables:acl/rule[rule-id=x]  (mTLS OU=auto current default)
         │
 [nos-acl-bridge LEAF-1]
-  validate_rule() → OK  |  enforce_rbac(role=ADMIN) → OK
+  validate_rule() → OK  |  enforce_rbac(role=AGENT, source=manual) → OK (cho action=DROP)
   Redis DB4: NOS_IPTABLES_RULE|x = {...}
   iptables -I FORWARD ... -j DROP
         │
         ✓  Rule active trên LEAF-1 iptables FORWARD
+        ✗  Lưu ý V2: manual chỉ vào LEAF-1, không broadcast. Để baseline-style broadcast → source=sdnc.
 ```
 
 **B. Automated enforcement (Intelligence Layer V3 — schema split)**
@@ -632,7 +727,8 @@ docker compose up -d <service>
         │ POST http://10.10.6.238:9090/api/rules
         │
 [SF role_api.py]
-  ip_to_leaf(src_ip) → 192.168.122.20
+  V2 routing: source=="agent" → ip_to_leaf("10.1.100.10") → 192.168.122.20 (LEAF-1 owns WEB)
+  (Nếu src_ip=10.3.100.x → LEAF-3 v.v. — zone-awareness)
         │ gNMI Set (mTLS OU=auto → AGENT role, action=DROP enforced)
         │
 [nos-acl-bridge LEAF-1]
@@ -640,9 +736,28 @@ docker compose up -d <service>
   Redis DB4: NOS_IPTABLES_RULE|agent-... = {...}
   iptables -I FORWARD 1 -s 10.1.100.10/32 -d 10.1.200.10/32 --dport 5432 -j DROP
         │
-        ✓  Rule active priority=50 (top of chain — before nos:zt-default-drop)
+        ✓  Rule active priority=50 (top of chain — before Default-drop)
         ✓  TTL countdown 3600s → caller (agent) auto-revoke via DELETE
         ✓  Decision logged: Postgres audit + Redis cache + SSE /stream + Langfuse trace
+        ✓  V2 efficient: chỉ push 1 LEAF (so với V1 cũng 1 LEAF do zone routing đã có sẵn)
+```
+
+**C. SDNC baseline broadcast (V2 mới — defense-in-depth)**
+```
+[SF restart với --client-cert sdnc/client.crt]  (tạm thời chuyển role ADMIN)
+        │
+[ZT baseline 21 rules, source="sdnc"]
+        │ POST /api/rules × 21 (mỗi rule là 1 cell trong policy matrix V2)
+        │
+[SF role_api.py]
+  V2 routing: source=="sdnc" → broadcast TẤT CẢ 4 LEAFs
+        │ gNMI Set × 4 LEAFs (mTLS OU=sdnc → ADMIN role)
+        │
+[Tất cả LEAFs đồng đều có baseline]
+  iptables FORWARD priority=200 (Web-AppGw-allow, Mgt-DbAnlt-allow, Default-drop, ...)
+        │
+        ✓  Defense-in-depth: nếu agent rule miss, baseline ALLOW/DROP vẫn enforce
+        ✓  Rule IDs: CamelCase với dấu gạch ngang (Web-AppGw-allow, Default-drop)
 ```
 
 **Latency kết quả thực nghiệm (10 runs, 2026-05-05, V3 schema split):**
