@@ -95,10 +95,10 @@ BIZM complements rather than replaces east-west detection. The IDS supplies the 
 
 The main contributions of this paper are as follows:
 \begin{itemize}
-    \item \textbf{Bounded isolation}, a formulation of adaptive Zero Trust microsegmentation response as a safety-constrained problem, with a minimal action space and admissibility invariants for action restriction, target fidelity, protected-asset exclusion, bounded scope, confidence gating, and provenance-bound authorization that can be verified exhaustively over a finite alert domain.
-    \item \textbf{LLM response-policy compilation}, in which the LLM translates the architecture knowledge base into a program in a target-free response language, and counterexample-guided repair, self-review, and a majority ensemble produce a program that is verified on every input and activated only for the knowledge base it was compiled from.
-    \item \textbf{BIZM}, a two-speed architecture in which the compiled program answers covered alerts and a graph-grounded LLM agent reasons over the residual alerts, with both paths bound by the same fail-closed validation and least-privilege enforcement contract on the SONiC-based spine-leaf fabric.
-    \item An implementation and evaluation of BIZM on an SDN-based spine-leaf testbed with Suricata monitoring, covering exhaustive agreement with the knowledge base, recompilation under knowledge-base change, live closed-loop containment, adversarial alert manipulation, protected-asset invariants, and unknown signatures against signature-keyed, hand-written contextual, and guardrail-free LLM baselines.
+    \item We formulate \textbf{bounded isolation} as a safety-constrained response problem for adaptive Zero Trust microsegmentation, defining a minimal action space and admissibility invariants for action restriction, target fidelity, protected-asset exclusion, bounded scope, confidence gating, and provenance-bound authorization, and we show that the invariants can be verified exhaustively over a finite alert domain.
+    \item We introduce \textbf{LLM response-policy compilation}: the LLM translates the architecture knowledge base into a program in a target-free response language, and counterexample-guided repair, self-review, and a majority ensemble produce a program that is verified on every input and activated only for the knowledge base it was compiled from.
+    \item We design \textbf{BIZM}, a two-speed architecture in which the compiled program answers covered alerts and a graph-grounded LLM agent reasons over the residual alerts, with both paths bound by the same fail-closed validation and least-privilege enforcement contract on the SONiC-based spine-leaf fabric.
+    \item We implement and evaluate BIZM on an SDN-based spine-leaf testbed with Suricata monitoring. The evaluation covers exhaustive agreement with the knowledge base, recompilation under knowledge-base change, live closed-loop containment, adversarial alert manipulation, protected-asset invariants, and unknown signatures, against signature-keyed, hand-written contextual, and guardrail-free LLM baselines.
 \end{itemize}
 
 The rest of the paper is organized as follows. Section~\ref{sec:related} reviews related work. Section~\ref{sec:problem} formulates the bounded-isolation problem. Section~\ref{sec:method} presents the BIZM architecture and workflow. Section~\ref{sec:implementation_experiment} describes the implementation and experimental design. Section~\ref{sec:results_discussion} reports and discusses the evaluation results. Section~\ref{sec:conclusion} concludes the paper.
@@ -106,7 +106,7 @@ The rest of the paper is organized as follows. Section~\ref{sec:related} reviews
 \section{Related Work}
 \label{sec:related}
 
-This section reviews prior work along four lines: Zero Trust microsegmentation and east-west threat detection, LLM-assisted network operations, automated threat response and programmable mitigation, and least-privilege enforcement for network automation. It then summarizes the gap addressed by BIZM.
+We review prior work along four lines: Zero Trust microsegmentation and east-west threat detection, LLM-assisted network operations, automated threat response and programmable mitigation, and least-privilege enforcement for network automation. We then summarize the gap addressed by BIZM.
 
 \begin{table*}[t]
     \centering
@@ -208,13 +208,13 @@ The reviewed literature leaves a common gap: existing systems improve segmentati
 \subsection{System and Network Model}
 \label{sec:system_model}
 
-The data-center fabric is partitioned into a set of security zones $Z=\{z_1,\ldots,z_n\}$. Each zone groups workloads with a common operational role, such as web, application, database, monitoring, or management. The zones are interconnected through a spine-leaf fabric, where leaf switches serve as the primary enforcement points because they are closest to the workloads. A static microsegmentation policy is represented as
+We consider a data-center fabric partitioned into a set of security zones $Z=\{z_1,\ldots,z_n\}$. Each zone groups workloads with a common operational role, such as web, application, database, monitoring, or management. The zones are interconnected through a spine-leaf fabric, where leaf switches serve as the primary enforcement points because they are closest to the workloads. A static microsegmentation policy is represented as
 \[
 P: Z \times Z \rightarrow \{\textsc{allow},\textsc{deny}\},
 \]
 where the default decision is \textsc{deny}. A zone pair is permitted only if it is explicitly listed in $P$. The policy is compiled into data-plane rules on the leaf switches, so traffic on denied zone pairs is blocked independently of the response system.
 
-A network flow is modeled as $f=(s,d,\rho,\pi,\phi)$, where $s$ and $d$ are the source and destination addresses, $\rho$ is the transport protocol, $\pi$ is the destination service port, and $\phi$ denotes behavioral features such as connection rate, byte volume, session duration, periodicity, and request pattern. Let $z(s)$ and $z(d)$ denote the zones of the source and destination endpoints. A flow is statically permitted if $P(z(s),z(d))=\textsc{allow}$. Static permission, however, does not imply benign behavior. A legitimate communication model is therefore defined as
+A network flow is modeled as $f=(s,d,\rho,\pi,\phi)$, where $s$ and $d$ are the source and destination addresses, $\rho$ is the transport protocol, $\pi$ is the destination service port, and $\phi$ denotes behavioral features such as connection rate, byte volume, session duration, periodicity, and request pattern. Let $z(s)$ and $z(d)$ denote the zones of the source and destination endpoints. A flow is statically permitted if $P(z(s),z(d))=\textsc{allow}$. Static permission, however, does not imply benign behavior. We therefore define a legitimate communication model
 \[
 B \subseteq \{ f \mid P(z(s),z(d))=\textsc{allow}\},
 \]
@@ -229,15 +229,15 @@ where $\sigma$ is the signature identifier, $\ell$ is the severity level, $\kapp
 \subsection{Threat Model}
 \label{sec:threat_model}
 
-The adversary is assumed to have compromised one or more internal workloads and to operate over east-west traffic. The adversary may perform reconnaissance, lateral movement, privilege escalation, command-and-control communication, destructive queries, or data exfiltration. Two primary classes of malicious behavior are considered.
+We assume an adversary that has compromised one or more internal workloads and operates over east-west traffic. The adversary may perform reconnaissance, lateral movement, privilege escalation, command-and-control communication, destructive queries, or data exfiltration. We consider two primary classes of malicious behavior.
 
 The first class is a \emph{policy violation}. A compromised workload initiates traffic on a denied zone pair, such as a web host connecting directly to a database. The static policy may already block the violating packets, but the attempt still indicates a potentially compromised source. A response system must therefore decide whether the source itself should be temporarily isolated.
 
 The second class is \emph{permitted-path abuse}. A compromised workload uses an allowed zone pair but deviates from the legitimate communication model $B$. For example, an application service may be allowed to access a database, but the same path can be abused for high-rate extraction, destructive commands, or abnormal request sequences. Static microsegmentation cannot block such behavior without also disrupting legitimate service traffic, because the zone pair and service port may remain valid. A response decision must therefore account for baseline behavior, asset role, zone relationship, and the operational impact of isolation.
 
-The adversary may also attempt to manipulate the response layer. Alert fields such as $\tau$ and $\kappa$ may contain attacker-influenced text, including prompt-injection instructions that attempt to redirect isolation to a protected management host, an IDS component, or an unrelated workload. The source field may also reflect spoofing, detector error, or incomplete telemetry. Transport validity is therefore distinguished from semantic trust. The alert transport is assumed to be syntactically available, but alert content is treated as untrusted input to the decision component. The decision component is also treated as untrusted for enforcement: it may hallucinate, misinterpret context, produce malformed output, or select an unsafe target. No model output is allowed to reach the fabric unless it satisfies deterministic safety checks and least-privilege authorization.
+The adversary may also attempt to manipulate the response layer. Alert fields such as $\tau$ and $\kappa$ may contain attacker-influenced text, including prompt-injection instructions that attempt to redirect isolation to a protected management host, an IDS component, or an unrelated workload. The source field may also reflect spoofing, detector error, or incomplete telemetry. We therefore distinguish transport validity from semantic trust. The alert transport is assumed to be syntactically available, but alert content is treated as untrusted input to the decision component. The decision component is also treated as untrusted for enforcement: it may hallucinate, misinterpret context, produce malformed output, or select an unsafe target. No model output is allowed to reach the fabric unless it satisfies deterministic safety checks and least-privilege authorization.
 
-The enforcement layer is trusted to implement authentication, authorization, provenance stamping, and command-level rejection correctly. Compromise of the switch operating system or of the enforcement implementation itself, inspection of encrypted payloads beyond what the IDS can observe, and north-south traffic are not considered. These are important deployment concerns, but they are outside the scope of the bounded east-west response problem studied here.
+We trust the enforcement layer to implement authentication, authorization, provenance stamping, and command-level rejection correctly. We do not consider compromise of the switch operating system, compromise of the enforcement implementation itself, inspection of encrypted payloads beyond what the IDS can observe, or north-south traffic. These are important deployment concerns, but they are outside the scope of the bounded east-west response problem studied here.
 
 \subsection{Bounded-Isolation Decision Problem}
 \label{sec:problem_statement}
@@ -551,7 +551,7 @@ This workflow captures the main design principle of BIZM: use the LLM to compile
 \subsection{Testbed Implementation}
 \label{sec:testbed_implementation}
 
-BIZM is implemented on a virtualized spine-leaf data-center fabric emulated in GNS3. The data plane uses SONiC switches~\cite{sonic2026}. Static microsegmentation is enforced as deny-by-default rules on the leaf switches, while runtime containment is installed as a temporary source-side DROP rule at the leaf nearest the suspicious workload. Each automated rule carries a TTL and provenance metadata, and the agent revokes it when the TTL expires.
+We implement BIZM on a virtualized spine-leaf data-center fabric emulated in GNS3. The data plane uses SONiC switches~\cite{sonic2026}. Static microsegmentation is enforced as deny-by-default rules on the leaf switches, while runtime containment is installed as a temporary source-side DROP rule at the leaf nearest the suspicious workload. Each automated rule carries a TTL and provenance metadata, and the agent revokes it when the TTL expires.
 
 Suricata monitors mirrored east-west traffic and exports EVE JSON alerts~\cite{oisf2026suricata}. The IDS is placed off the forwarding path: it supplies the suspicious signal, while BIZM performs response-level decision making. This follows the common deployment pattern in which lightweight sensing or signature inspection provides the initial evidence, and deeper AI-based analysis or response logic runs outside the packet-forwarding path~\cite{cSDAID22,jSAID23,jAPELID24}. An IDS Agent subscribes to the alert stream, forwards normalized alerts to the BIZM decision plane, receives admissible DROP intents, and records live status for the operator dashboard.
 
@@ -605,7 +605,7 @@ Table~\ref{tab:scenarios} summarizes the testbed scenarios. Five scenarios use l
     \end{tabular}
 \end{table*}
 
-BIZM is compared against three baselines and one ablation.
+We compare BIZM against three baselines and one ablation.
 \begin{itemize}
     \item \emph{SOAR-A} is a signature-keyed responder that issues a DROP against the alert source for a fixed set of known-dangerous signatures and takes no action otherwise; a host-isolation variant is used in the matrix sweep. It evaluates contextual response beyond fixed playbooks.
     \item \emph{Baseline-B} uses the same LLM decision model as BIZM but removes deterministic safety validation and least-privilege enforcement. It receives raw alert text, emits an action directly, and isolates the contribution of the safety controls.
@@ -616,7 +616,7 @@ BIZM is compared against three baselines and one ablation.
 \subsection{Evaluation Metrics}
 \label{sec:evaluation_metrics}
 
-For response correctness, each labeled decision is classified as TP, FP, TN, or FN. A positive case is a true threat whose correct response is a bounded DROP decision \cite{jSAID23}. A negative case is benign, ambiguous, low-severity, or unsafe to enforce and should not trigger automated containment. Precision, threat-containment rate (TCR), F1-score, false positive rate (FPR), and accuracy are reported:
+For response correctness, each labeled decision is classified as TP, FP, TN, or FN. A positive case is a true threat whose correct response is a bounded DROP decision \cite{jSAID23}. A negative case is benign, ambiguous, low-severity, or unsafe to enforce and should not trigger automated containment. We report precision, threat-containment rate (TCR), F1-score, false positive rate (FPR), and accuracy:
 \[
 \mathrm{Precision}=\frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FP}},
 \quad
@@ -630,12 +630,12 @@ For response correctness, each labeled decision is classified as TP, FP, TN, or 
 \]
 TCR is a response-level metric: it measures the fraction of true threat cases for which the system correctly issues an admissible bounded DROP decision. It should not be interpreted as IDS detection rate, because BIZM operates after an alert has been generated.
 
-For RQ1 and RQ2, ground truth is derived mechanically from the knowledge base, never from a program. For an alert with a catalogued signature, the signature's documented response in the catalogue governs: a documented \textsc{drop} means contain, a documented log-only means do not contain, and a \textsc{drop} conditioned on correlation means contain only after a prior alert from the source. Protected or external sources and P3 or P4 alerts are never contained. Points the knowledge base does not settle are left ungraded: a correlation-conditioned signature with no prior alert, and a log-only signature of severity P1 or P2 on a denied pair, where the pair itself is a policy violation. Unknown signatures are reported separately. On the graded points, accuracy is reported over the points a system decides, together with coverage, the fraction it decides rather than abstains on. Because these results enumerate the domain rather than sample it, they carry no sampling interval.
+For RQ1 and RQ2, ground truth is derived mechanically from the knowledge base, never from a program. For an alert with a catalogued signature, the signature's documented response in the catalogue governs: a documented \textsc{drop} means contain, a documented log-only means do not contain, and a \textsc{drop} conditioned on correlation means contain only after a prior alert from the source. Protected or external sources and P3 or P4 alerts are never contained. Points the knowledge base does not settle are left ungraded: a correlation-conditioned signature with no prior alert, and a log-only signature of severity P1 or P2 on a denied pair, where the pair itself is a policy violation. Unknown signatures are reported separately. On the graded points we report accuracy over the points a system decides and coverage, the fraction it decides rather than abstains on. Because these results enumerate the domain rather than sample it, they carry no sampling interval.
 
-The remaining metrics are as follows.
+We also report the following metrics.
 \begin{itemize}
-    \item \textbf{Latency.} Detection latency runs from traffic onset to the IDS alert, decision latency from alert ingestion to a decision accepted by the Secure Framework, and enforcement latency from that decision to rule visibility in the Secure Framework datastore of the leaf.
-    \item \textbf{Exposure.} For the matrix sweep, the service edges a rule closes and the legitimate baseline flows it cuts.
+    \item \textbf{Latency.} We decompose the closed-loop response into detection latency, from traffic onset to the IDS alert, decision latency, from alert ingestion to a decision accepted by the Secure Framework, and enforcement latency, from that decision to rule visibility in the Secure Framework datastore of the leaf.
+    \item \textbf{Exposure.} For the matrix sweep, we count the service edges a rule closes and the legitimate baseline flows it cuts.
     \item \textbf{Safety.} Safety-violation rate, protected-service availability, and never-block respect for protected assets.
     \item \textbf{Reasoning.} Correct-decision rates on known and unknown signatures.
     \item \textbf{Overhead.} Median and tail decision latency, model tokens per decision, and the one-time cost of compilation.
