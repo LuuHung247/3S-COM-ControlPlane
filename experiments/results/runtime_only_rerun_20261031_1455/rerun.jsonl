@@ -1,0 +1,1 @@
+{"scenario": "S6", "case": "D1-9000003", "expect_drop": true, "path": "runtime", "outcome": "enforced", "action": "DROP", "rule": "10.1.100.10/32->10.2.50.10/32:22", "agent_latency_ms": 5536.5, "http_s": 5.68, "attempts": 1, "reason": "", "persist_error": "", "rule_on_fabric": true, "blocked": "10.1.100.10", "correct": true, "config": "runtime-only"}

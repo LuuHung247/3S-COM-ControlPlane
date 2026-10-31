@@ -1,0 +1,3 @@
+{"replaces": {"file": "final_20261026_1023/synthetic/s13_matrix_fp_20261026_115008.json",
+              "case": "D1-9000003", "reason": "HTTP 500 from the agent service (technical fault, not a decision)"},
+ "runtime_only_S1_S6_after_replacement": {"TP": 89, "FN": 1, "FP": 0, "TN": 50}}

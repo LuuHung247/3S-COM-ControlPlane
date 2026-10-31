@@ -722,11 +722,11 @@ Table~\ref{tab:functional} reports the live scenarios. In the four threat scenar
 
 The compiled path reduces the median decision latency from 3.12 to 0.59 seconds, and the 95th percentile from 4.51 to 2.70 seconds; the remaining time is the Secure Framework round trip. The time until the rule is visible in the leaf datastore is similar on both paths, with medians of 5.03 and 5.22 seconds, because it is dominated by gNMI propagation and observation in the enforcement path rather than by the decision. Once the decision is compiled, the closed loop is bounded by the sensor and the enforcement path. This latency is not appropriate for packet-level mitigation, but it is suitable for containment of lateral movement and substantially faster than manual triage.
 
-Table~\ref{tab:confusion} reports response correctness over the labeled live and S6 decisions. BIZM makes no error in 77 decisions. The runtime-only configuration misses 2 of 90 threats in 140 decisions, one of them an inbound-management case answered log-only. In four of its forty legitimate S6 decisions the runtime LLM proposed a DROP, which the policy-conflict check (three) and the severity gate (one) rejected before enforcement. The intervals show that these figures are evidence of feasibility on this scenario set, not a guarantee of zero errors.
+Table~\ref{tab:confusion} reports response correctness over the labeled live and S6 decisions. BIZM makes no error in 77 decisions. The runtime-only configuration misses 1 of 90 threats in 140 decisions, an inbound-management case answered log-only. In four of its forty legitimate S6 decisions the runtime LLM proposed a DROP, which the policy-conflict check (three) and the severity gate (one) rejected before enforcement. The intervals show that these figures are evidence of feasibility on this scenario set, not a guarantee of zero errors.
 
 \begin{table}[t]
     \centering
-    \caption{Response correctness with 95\% Clopper-Pearson intervals. BIZM: 77 decisions (TP $=55$, FN $=0$, FP $=0$, TN $=22$). Runtime-only: 140 decisions (TP $=88$, FN $=2$, FP $=0$, TN $=50$).}
+    \caption{Response correctness with 95\% Clopper-Pearson intervals. BIZM: 77 decisions (TP $=55$, FN $=0$, FP $=0$, TN $=22$). Runtime-only: 140 decisions (TP $=89$, FN $=1$, FP $=0$, TN $=50$).}
     \label{tab:confusion}
     \small
     \setlength{\tabcolsep}{4pt}
@@ -735,10 +735,10 @@ Table~\ref{tab:confusion} reports response correctness over the labeled live and
         \textbf{Metric} & \textbf{BIZM} & \textbf{Runtime-only} \\
         \midrule
         Precision & 100.0\% [93.5, 100] & 100.0\% [95.9, 100] \\
-        TCR       & 100.0\% [93.5, 100] & 97.8\% [92.2, 99.7] \\
-        F1-score  & 100.0\%             & 98.9\% \\
+        TCR       & 100.0\% [93.5, 100] & 98.9\% [94.0, 100] \\
+        F1-score  & 100.0\%             & 99.4\% \\
         FPR       & 0.0\% [0.0, 15.4]   & 0.0\% [0.0, 7.1] \\
-        Accuracy  & 100.0\% [95.3, 100] & 98.6\% [94.9, 99.8] \\
+        Accuracy  & 100.0\% [95.3, 100] & 99.3\% [96.1, 100] \\
         \bottomrule
     \end{tabular}
 \end{table}
