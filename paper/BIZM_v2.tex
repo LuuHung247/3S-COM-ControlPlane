@@ -342,7 +342,7 @@ Figure~\ref{fig:architecture} shows the overall BIZM architecture and its six-st
 
 \begin{figure*}[t]
     \centering
-    \includegraphics[width=\linewidth]{figs/overview.pdf}
+    \includegraphics[width=\linewidth]{figs/overview_v2.pdf}
     \caption{Overall BIZM architecture and bounded-isolation workflow. Mirrored east-west traffic from the SONiC fabric is inspected by Suricata IDS, which generates EVE JSON alerts. The LLM Security Agent answers covered alerts from the compiled response policy and performs classification, graph-grounded context retrieval, and LLM reasoning for the remaining alerts, followed by safety validation, enforcement planning, and rule generation. Accepted DROP intents are submitted to the IDS Agent, mediated by the Secure Framework and ONAP SDN-C, and enforced on the SONiC fabric through the southbound management path. Alerts and flow events are streamed to the operator dashboard through SSE.}
     \label{fig:architecture}
 \end{figure*}
