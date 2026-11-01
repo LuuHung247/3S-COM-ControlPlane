@@ -65,7 +65,7 @@
 }
 
 \begin{abstract}
-Zero Trust microsegmentation limits lateral movement in data centers, yet deployed policies are static and cannot respond when a compromised workload abuses a permitted path. Runtime response is usually delegated to SOAR playbooks or, more recently, LLM agents: playbooks are brittle under unknown signatures, hand-written response rules drift from the architecture they encode, and an LLM on the enforcement path may hallucinate or follow instructions injected into alert text. This work presents \textbf{BIZM} (\textbf{B}ounded-\textbf{I}solation \textbf{Z}ero-Trust \textbf{M}icrosegmentation), a safety-constrained framework that converts east-west IDS alerts into bounded, auditable isolation actions. Unlike LLM agents that reason over every alert, BIZM uses the LLM at two speeds. Ahead of time, the LLM compiles the data-center knowledge base into a response program that is verified exhaustively over the finite alert domain and answers known alerts without a model call; at runtime, the LLM reasons only over the alerts the program does not cover. On both paths, deterministic validation and command-level Zero Trust enforcement admit only source-faithful, time-bounded, DROP-only actions. Experiments on a SONiC spine-leaf testbed with Suricata monitoring show that the compiled program agrees with the knowledge base on every graded point of the alert domain, whereas a hand-written contextual rule reaches 96.1\%, and that recompilation keeps it correct after knowledge-base changes. On live traffic, BIZM contains all threats without false positives, reduces decision latency from 3.1 to 0.6 seconds, and produces no unsafe enforcement under adversarial alerts.
+Zero Trust microsegmentation limits lateral movement in data centers, yet deployed policies are static and cannot respond when a compromised workload abuses a permitted path. Runtime response is usually delegated to SOAR playbooks or, more recently, LLM agents: playbooks are brittle under unknown signatures, hand-written response rules drift from the architecture they encode, and an LLM on the enforcement path may hallucinate or follow instructions injected into alert text. This work presents \textbf{BIZM} (\textbf{B}ounded-\textbf{I}solation \textbf{Z}ero-Trust \textbf{M}icrosegmentation), a safety-constrained framework that converts east-west IDS alerts into bounded, auditable isolation actions. Unlike LLM agents that reason over every alert, BIZM uses the LLM at two speeds. Ahead of time, the LLM compiles the data-center knowledge base into a response program that is verified exhaustively over the finite alert domain and answers known alerts without a model call; at runtime, the LLM reasons only over the alerts the program does not cover. On both paths, deterministic validation and command-level Zero Trust enforcement admit only source-faithful, time-bounded, DROP-only actions. Experiments on a SONiC spine-leaf testbed with Suricata monitoring show that the compiled program agrees with the knowledge base on every graded point of the alert domain, whereas a hand-written contextual rule reaches 96.1\%, and that recompilation keeps it correct after knowledge-base changes. On live traffic, BIZM contains all threats without false positives, reduces decision latency from 3.1 to 0.6 seconds, and produces no unsafe enforcement under the tested adversarial alerts.
 \end{abstract}
 
 \begin{keyword}
@@ -195,6 +195,8 @@ Autonomous network response is unsafe unless the response component is itself co
 
 Policy-enforcement and configuration-synthesis systems address related but different problems. I2NSF policy-conflict detection prevents inconsistent security policies before deployment~\cite{nguyen2023i2nsf}. Automated firewall synthesis and verification generate conflict-free configurations for virtual networks~\cite{bringhenti2022firewall}. ACL placement methods optimize where rules should be installed under hardware constraints~\cite{zahwa2025acl}. These works improve policy correctness, placement, and conflict handling, but they generally assume that a policy or intent has already been accepted as legitimate. They do not ensure that an automatically generated isolation command is within the agent's authority, targets only the alert source, avoids protected assets, and carries a bounded lifetime and provenance mark.
 
+LLM guardrail frameworks constrain agents at the model and tool boundary. LlamaFirewall scans inputs for prompt injection, audits agent reasoning for goal misalignment, and checks generated code~\cite{chennabasappa2025llamafirewall}. AgentGuardian learns access-control policies over tool calls from execution traces and enforces them at runtime~\cite{abaev2026agentguardian}. These controls run in the agent host and decide whether a tool call may proceed. Invariants I1 to I6 differ in where and on what they are enforced: they constrain the network effect of an action, namely its type, target, lifetime, and protected-asset reach, and they are checked again by the Secure Framework and the switch management channel, outside the agent process. A compromised or misled agent can therefore at most fail to contain, not widen its authority over the fabric.
+
 BIZM therefore treats least-privilege enforcement as part of the response architecture: the response component is bound to a role that may only create temporary DROP rules against the alert source. Zero Trust thus serves both as a segmentation principle and as a safety envelope for LLM-assisted network response.
 
 \subsection{Research Gap and Approach Direction}
@@ -218,7 +220,7 @@ A network flow is modeled as $f=(s,d,\rho,\pi,\phi)$, where $s$ and $d$ are the 
 \[
 B \subseteq \{ f \mid P(z(s),z(d))=\textsc{allow}\},
 \]
-which captures expected communication patterns for permitted zone pairs, including service ports, directionality, traffic volume, and temporal behavior. The model $B$ provides the baseline against which permitted-path traffic is judged.
+which captures expected communication patterns for permitted zone pairs, including service ports, directionality, traffic volume, and temporal behavior. The model $B$ provides the baseline against which permitted-path traffic is judged. In BIZM, $B$ is part of the architecture knowledge base and is maintained by the operator rather than learned online. Each baseline flow records its zones, hosts, port, protocol, cadence, and expected volume; each flow type carries a mean rate, a 95th-percentile rate, and anomaly thresholds at three and ten times the mean; and a list of permitted-path abuse patterns names the signatures that detect them. A change to $B$ changes the knowledge-base digest and therefore triggers recompilation (Section~\ref{sec:compiled_policy}).
 
 An east-west IDS observes mirrored inter-zone traffic and emits alerts for policy-relevant violations, signature matches, or suspicious behavioral patterns. An alert is represented as
 \[
@@ -419,7 +421,7 @@ A program is an ordered list of rules. Each rule is a conjunction of conditions 
 \end{table}
 
 \paragraph{Exhaustive verification}
-The features define a finite domain $D(K)$ for a knowledge-base snapshot $K$. For the deployed fabric, 29 signatures and the unknown value, four severities, nine zones including external, the protected flag, and seven consistent history combinations give 136,080 points, of which 19,824 can be emitted by the deployed IDS, i.e., a catalogued signature with its catalogued severity on a zone pair its detection logic covers. The verifier evaluates the program on every point and rejects it if any \textsc{drop} targets a protected or external source (I3), violates the TTL bounds, uses host scope outside P1 or with a TTL above 1800 seconds, or overrides a permitted path with anything but flow scope, a TTL of at most 1800 seconds, and a confidence of at least 0.90 (I4), falls outside P1 and P2 or below $\tau_c$ (I5), concerns an unknown signature, or lacks a knowledge-base citation (I6). Verifying one program takes about five seconds.
+The features define a finite domain $D(K)$ for a knowledge-base snapshot $K$. For the deployed fabric, 29 signatures and the unknown value, four severities, nine zones including external, the protected flag, and seven consistent history combinations give 136,080 points, of which 19,824 can be emitted by the deployed IDS, i.e., a catalogued signature with its catalogued severity on a zone pair its detection logic covers. The verifier evaluates the program on every point and rejects it if any \textsc{drop} targets a protected or external source (I3), violates the TTL bounds, uses host scope outside P1 or with a TTL above 1800 seconds, or overrides a permitted path with anything but flow scope, a TTL of at most 1800 seconds, and a confidence of at least 0.90 (I4), falls outside P1 and P2 or below a confidence of 0.85 (I5), concerns an unknown signature, or lacks a knowledge-base citation (I6). Verifying one program takes about five seconds.
 
 \paragraph{Compilation}
 The compiler gives the LLM the knowledge-base documents and the language, and asks for one program that covers the whole fabric. The objectives are stated in priority order: obey the hard constraints, contain what the knowledge base identifies as requiring response, do not cut traffic it documents as legitimate, prefer the narrowest scope, and abstain when the knowledge base does not determine the answer. A rejected program is returned to the model with counterexamples, each naming the rule, the violated invariant, and an example input, and the model repairs it for at most three rounds. A verified program is then summarized per signature and policy verdict, and the model reviews this behavior against the knowledge base; the revision is kept only if it also verifies. Because sampled programs differ, BIZM compiles $k$ programs independently and deploys their point-wise majority: an action is taken only when a strict majority chooses it, otherwise the ensemble abstains, and among agreeing programs the narrowest scope, shortest TTL, and lowest confidence are kept. The ensemble is verified again as a whole.
@@ -445,6 +447,8 @@ The reasoning engine evaluates the alert in context and produces a candidate bou
 
 The output is schema-split. The enforcement-facing output is a compact structured action containing only the fields needed for validation and rule generation. The audit-facing output records the rationale, including supporting evidence, alternatives, and follow-up recommendations. This split reduces parser failures and prevents a long explanation from delaying the enforcement path.
 
+The runtime path keeps a decision cache for repeated alerts. An enforced decision is cached for 60 seconds under a key of signature, source, destination, port, protocol, and correlation signal. On a hit, the cached intent is rebound to the source of the current alert and passes validation again; alerts for a flow already covered by an active agent rule are suppressed until the rule expires. The cache saves a model call only within this window, whereas the compiled path removes it for every covered alert.
+
 \begin{table}[tbp]
     \centering
     \caption{Bounded-isolation decision schema generated by the LLM Security Agent. The structured action is used for validation and enforcement, while the reasoning trace is recorded separately for audit.}
@@ -468,7 +472,9 @@ The output is schema-split. The enforcement-facing output is a compact structure
 \end{table}
 
 \paragraph{Fail-closed validation}
-The validator applies the bounded-isolation invariants from Section~\ref{sec:invariants}. It checks schema conformance, sanitizes alert-derived text for prompt-injection artifacts, verifies that the source exists in the context graph, rejects duplicate or conflicting rules, enforces the protected-asset set, rejects off-target isolation, clamps TTL to the configured interval, applies severity and confidence gates, and enforces per-source and global blast-radius limits. Any failed check results in non-enforcement and audit recording.
+The validator applies the bounded-isolation invariants from Section~\ref{sec:invariants}. It checks schema conformance, sanitizes alert-derived text, verifies that the source exists in the context graph, rejects duplicate or conflicting rules, enforces the protected-asset set, rejects off-target isolation, clamps TTL to the configured interval, applies severity and confidence gates, and enforces per-source and global blast-radius limits. Any failed check results in non-enforcement and audit recording.
+
+Prompt-injection handling has three layers. First, only the signature and category text are attacker-influenced, and the prompt places them in a delimited untrusted-data block, while addresses, zones, port, signature identifier, and severity come from the parsed packet header and are marked as trusted. Second, the two text fields are scored against 15 patterns, including instruction overrides, role and chat-template tags, target coercion such as ``block'' followed by an address, and hidden Unicode characters; a field that matches two or more is redacted before it reaches the model. Third, and decisively, the enforcement target is bound to the header source after the model returns and checked against $\mathcal{N}$, so an instruction that passes the filter can change at most whether the source is contained, never which host is blocked. The compiled path does not read the alert text at all.
 
 \paragraph{Enforcement planning and rule generation}
 Only an admissible decision is converted into a DROP intent. The enforcement planner binds the decision to the alert source, protocol, destination port, TTL, provenance metadata, and source-side enforcement scope. The rule generator then converts the intent into a policy/YANG-oriented request for the control plane. The model therefore proposes the bounded action, but deterministic components decide whether it is admissible and how it is represented for enforcement. Consequently, the decision logic is summarized in Algorithm~\ref{alg:decision}.
@@ -558,11 +564,11 @@ Enforcement success is verified through four checks: the rule appears in the dev
 \subsection{BIZM Configuration}
 \label{sec:runtime_configuration}
 
-The runtime policy follows the eight-zone matrix in Table~\ref{tab:policy_matrix}. The protected set $\mathcal{N}$ includes management hosts, monitoring hosts, IDS components, zone gateways, and control-plane components. Automatic enforcement is allowed only for P1 and P2 alerts. The confidence threshold is set to $\tau_c=85\%$. Each DROP rule has a TTL in $[60,3600]$ seconds. Blast-radius limits are set to five automated rules per minute, fifty active automated rules in total, and three rules per source address within five minutes. A circuit breaker pauses enforcement after three consecutive failed enforcement attempts.
+The runtime policy follows the eight-zone matrix in Table~\ref{tab:policy_matrix}. The protected set $\mathcal{N}$ includes management hosts, monitoring hosts, IDS components, zone gateways, and control-plane components. Automatic enforcement is allowed only for P1 and P2 alerts. The confidence threshold is $\tau_c=0.70$: a runtime decision at or above 0.85 is enforced, one between 0.70 and 0.85 is enforced with an operator notification, one between 0.50 and 0.70 is held for review, and a lower one is rejected. The compiled path requires 0.85. Each DROP rule has a TTL in $[60,3600]$ seconds. Blast-radius limits are set to five automated rules per minute, fifty active automated rules in total, and three rules per source address within five minutes. A circuit breaker pauses enforcement after three consecutive failed enforcement attempts.
 
-The LLM is \texttt{gpt-oss-120b}, served through an OpenAI-compatible interface. The compiler uses it with \texttt{reasoning\_effort} set to medium. Its input is the knowledge base of seven documents (zones, policy matrix, signature catalogue, invariants, assets, severity rubric, and baselines), about 22K tokens. The deployed policy is a majority ensemble of $k=5$ programs sampled at temperature 0.7, each repaired for at most three rounds and reviewed once. Compilation at temperature 0 is also reported as a single-program configuration.
+The LLM is \texttt{gpt-oss-120b}, an open-weight mixture-of-experts model with about 117 billion parameters, served by Cerebras through an OpenAI-compatible interface. The compiler uses it with \texttt{reasoning\_effort} set to medium. Its input is the knowledge base of seven documents (zones, policy matrix, signature catalogue, invariants, assets, severity rubric, and baselines), about 22K tokens. The deployed policy is a majority ensemble of $k=5$ programs sampled at temperature 0.7, each repaired for at most three rounds and reviewed once. Compilation at temperature 0 is also reported as a single-program configuration.
 
-On the runtime path, the same model serves both the reasoning and the classification roles, with \texttt{reasoning\_effort} set to low. The reasoning call uses temperature 0.1, at most 3072 output tokens, and a 15-second timeout, and each P1/P2 alert receives a single reasoning call without self-consistency voting. The classification call uses temperature 0.0 and at most 1024 output tokens, and handles early severity/category filtering; duplicate alerts with the same source and signature are suppressed for 30 seconds. Prompts are fixed across runs, and no scenario-specific prompt tuning is performed. The enforcement-facing Stage~1 output is constrained by the structured decision schema in Table~\ref{tab:decision_schema}. The Stage~2 reasoning trace is recorded for audit but is not used to authorize enforcement.
+On the runtime path, the same model serves both the reasoning and the classification roles, with \texttt{reasoning\_effort} set to low. The reasoning call uses temperature 0.1, at most 3072 output tokens, and a 15-second timeout, and each P1/P2 alert receives a single reasoning call without self-consistency voting. The classification call uses temperature 0.0 and at most 1024 output tokens, and handles early severity/category filtering; duplicate alerts with the same source and signature are suppressed for 30 seconds. The reasoning prompt has four parts: the trusted alert metadata, the untrusted alert text in its delimited block, the retrieved context with recent alerts from the same source, and the output schema. Prompts are fixed across runs, and no scenario-specific prompt tuning is performed. The enforcement-facing Stage~1 output is constrained by the structured decision schema in Table~\ref{tab:decision_schema}. The Stage~2 reasoning trace is recorded for audit but is not used to authorize enforcement.
 
 \subsection{Evaluation Scenarios and Baselines}
 \label{sec:scenarios_baselines}
@@ -695,7 +701,7 @@ Table~\ref{tab:drift} reports the four knowledge-base changes. Recompilation kee
 \subsection{Closed-Loop Containment and Latency}
 \label{sec:functional_latency}
 
-Table~\ref{tab:functional} reports the live scenarios. In the four threat scenarios, BIZM installs the correct source-side DROP rule in all ten runs, each decided by the compiled policy, including S4, a permitted-path anomaly on the APP-CORE to DB-OLTP edge. The false-positive control S5 produces no automated enforcement in all ten runs. All forty enforced runs pass the post-enforcement checks: rule presence, source-side drop behavior, blocked reachability from the offending source, unaffected unrelated traffic, and TTL within bounds.
+Table~\ref{tab:functional} reports the live scenarios. In the four threat scenarios, BIZM installs the correct source-side DROP rule in all ten runs, each decided by the compiled policy, including S4, a permitted-path anomaly on the APP-CORE to DB-OLTP edge. S4 is flagged by the destructive-SQL content signature, which $B$ lists as abuse of that edge, so the documented response applies although the zone pair is permitted. The false-positive control S5 produces no automated enforcement in all ten runs. All forty enforced runs pass the post-enforcement checks: rule presence, source-side drop behavior, blocked reachability from the offending source, unaffected unrelated traffic, and TTL within bounds.
 
 \begin{table}[t]
     \centering
@@ -720,7 +726,7 @@ Table~\ref{tab:functional} reports the live scenarios. In the four threat scenar
 
 The compiled path reduces the median decision latency from 3.12 to 0.59 seconds, and the 95th percentile from 4.51 to 2.70 seconds; the remaining time is the Secure Framework round trip. The time until the rule is visible in the leaf datastore is similar on both paths, with medians of 5.03 and 5.22 seconds, because it is dominated by gNMI propagation and observation in the enforcement path rather than by the decision. Once the decision is compiled, the closed loop is bounded by the sensor and the enforcement path. This latency is not appropriate for packet-level mitigation, but it is suitable for containment of lateral movement and substantially faster than manual triage.
 
-Table~\ref{tab:confusion} reports response correctness over the labeled live and S6 decisions. BIZM makes no error in 77 decisions. The runtime-only configuration misses 1 of 90 threats in 140 decisions, an inbound-management case answered log-only. In four of its forty legitimate S6 decisions the runtime LLM proposed a DROP, which the policy-conflict check (three) and the severity gate (one) rejected before enforcement. The intervals show that these figures are evidence of feasibility on this scenario set, not a guarantee of zero errors.
+Table~\ref{tab:confusion} reports response correctness over the labeled live and S6 decisions, and Table~\ref{tab:per_scenario} breaks them down by scenario. BIZM makes no error in 77 decisions. The runtime-only configuration misses 1 of 90 threats in 140 decisions, an inbound-management case answered log-only: a DB-OLTP host opening SSH toward MGT (SID 9000011). The compiled path contains this case in all three runs, because it decides from the documented response and the denied verdict of the pair; this is the policy-verdict confirmation that the runtime path lacks. In four of its forty legitimate S6 decisions the runtime LLM proposed a DROP, which the policy-conflict check (three) and the severity gate (one) rejected before enforcement. The intervals show that these figures are evidence of feasibility on this scenario set, not a guarantee of zero errors.
 
 \begin{table}[t]
     \centering
@@ -737,6 +743,28 @@ Table~\ref{tab:confusion} reports response correctness over the labeled live and
         F1-score  & 100.0\%             & 99.4\% \\
         FPR       & 0.0\% [0.0, 15.4]   & 0.0\% [0.0, 7.1] \\
         Accuracy  & 100.0\% [95.3, 100] & 99.3\% [96.1, 100] \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[t]
+    \centering
+    \caption{Per-scenario breakdown of the decisions in Table~\ref{tab:confusion}, given as TP/FN/FP/TN.}
+    \label{tab:per_scenario}
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{@{}llcc@{}}
+        \toprule
+        \textbf{Scn.} & \textbf{Type} & \textbf{BIZM} & \textbf{Runtime-only} \\
+        \midrule
+        S1 & Threat     & 10/0/0/0  & 10/0/0/0  \\
+        S2 & Threat     & 10/0/0/0  & 10/0/0/0  \\
+        S3 & Threat     & 10/0/0/0  & 10/0/0/0  \\
+        S4 & Threat     & 10/0/0/0  & 10/0/0/0  \\
+        S5 & Legitimate & 0/0/0/10  & 0/0/0/10  \\
+        S6 & Mixed      & 15/0/0/12 & 49/1/0/40 \\
+        \midrule
+        Total &         & 55/0/0/22 & 89/1/0/50 \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -765,13 +793,15 @@ Table~\ref{tab:sweep} reports the matrix sweep over 375 decisions. Static segmen
 \subsection{Adversarial Safety and Bounded-Isolation Guarantees}
 \label{sec:adversarial_safety}
 
-Table~\ref{tab:safety} reports adversarial-safety results. Scenario S7 contains prompt-injection alerts that attempt to redirect isolation to protected control-plane addresses, low-severity alerts that attempt to bypass the severity gate, and spoofed-source cases. BIZM produces no unsafe enforcement in its 27 decisions, nor in the 90 decisions of the runtime-only configuration. With the compiled policy, the injected alerts never reach a model: the program decides from the alert source, zones, and signature and ignores alert text, so the injected instructions have nothing to act on. The injection cases were contained at their true source, and the spoofed-source and low-severity cases were removed by the protected-asset and severity gates. In the runtime-only configuration, the protected-asset set and off-target checks reject injected targets.
+Table~\ref{tab:safety} reports adversarial-safety results. Scenario S7 contains prompt-injection alerts that attempt to redirect isolation to protected control-plane addresses, low-severity alerts that attempt to bypass the severity gate, and spoofed-source cases. BIZM produces no unsafe enforcement in its 27 decisions, nor in the 90 decisions of the runtime-only configuration, which bounds the violation rate on this scenario set below 12.8\% and 4.0\% at 95\% confidence. With the compiled policy, the injected alerts never reach a model: the program decides from the alert source, zones, and signature and ignores alert text, so the injected instructions have nothing to act on. The injection cases were contained at their true source, and the spoofed-source and low-severity cases were removed by the protected-asset and severity gates. In the runtime-only configuration, the protected-asset set and off-target checks reject injected targets.
 
 Baseline-B, which uses the same LLM without deterministic safety layers, violates safety in 100\% of adversarial cases. It follows injected instructions, targets protected services, or accepts unsafe redirections. Scenario S8 stresses the protected-asset invariant directly by making management or monitoring hosts appear malicious. BIZM respects the never-block constraint in all cases and surfaces the events for review, whereas Baseline-B isolates protected hosts. These results show that BIZM's safety is not a property of the model alone; it comes from deterministic validation and least-privilege enforcement around the model.
 
+The adversarial cases are author-written, but on the compiled path two attack classes are excluded for every alert, not only the tested ones. Target-fidelity confusion cannot occur because the language has no target field, and TTL abuse cannot occur because the verifier checks the TTL bounds on every point of $D(K)$. A coordinated campaign from many sources is a different matter: it can exhaust the global blast-radius limit, after which further sources are not contained. This fail-closed trade-off was not evaluated.
+
 \begin{table}[t]
     \centering
-    \caption{Adversarial safety. S7 reports 27 decisions for BIZM and 90 for the other systems; S8 reports 12 and 40 protected-host decisions. Baseline-B is the same model with deterministic safety layers disabled.}
+    \caption{Adversarial safety. S7 reports 27 decisions for BIZM and 90 for the other systems; S8 reports 12 and 40 protected-host decisions. Baseline-B is the same model with deterministic safety layers disabled. 95\% Clopper-Pearson intervals: violation rate [0, 12.8] for BIZM, [0, 4.0] for runtime-only, and [96.0, 100] for Baseline-B; never-block respect [73.5, 100] for BIZM and [91.2, 100] for runtime-only.}
     \label{tab:safety}
     \small
     \setlength{\tabcolsep}{4pt}
@@ -814,10 +844,60 @@ Scenario S10 injects a three-stage campaign from one source: scanning, applicati
 
 This ablation should be interpreted narrowly. The compiled policy covers what the knowledge base determines; the runtime path is needed where it does not, such as unknown signatures and alerts that contradict the catalogue, and it is less reliable there. The safety invariants remain necessary because the same reasoning component can be wrong or manipulated.
 
+\subsection{Algorithm Inputs and Parameter Sensitivity}
+\label{sec:sensitivity}
+
+Table~\ref{tab:inputs_map} maps the inputs of Algorithm~\ref{alg:decision} to the decisions they affect and to the experiments that exercise them. No evaluated decision was rejected as a duplicate, by a blast-radius limit, or by the circuit breaker, so $\mathcal{R}$ and $\mathcal{L}$ did not shape any reported result.
+
+\begin{table}[t]
+    \centering
+    \caption{Inputs of Algorithm~\ref{alg:decision}, their effect, and where they are evaluated.}
+    \label{tab:inputs_map}
+    \small
+    \setlength{\tabcolsep}{3pt}
+    \begin{tabular}{@{}lll@{}}
+        \toprule
+        \textbf{Input} & \textbf{Effect} & \textbf{Evaluated in} \\
+        \midrule
+        $P$ & Verdict, conflict check & S1 to S3, S6, sweep \\
+        $B$ & Permitted-path judgement & S4, S5, S9 \\
+        $\mathcal{N}$ & Protected-asset exclusion & S7, S8, sweep \\
+        $\ell$ & Severity gate & S7, RQ1 \\
+        History of $s$ & Correlation features & S10, RQ1 \\
+        $\Pi$ & Compiled decision & RQ1, RQ2, live \\
+        $\tau_c$ & Confidence gate & S9, Table~\ref{tab:tau} \\
+        $[\delta_{\min},\delta_{\max}]$ & Rule lifetime & S1 to S4 checks \\
+        $\mathcal{R}$, $\mathcal{L}$ & Duplicates, blast radius & Not reached \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Table~\ref{tab:tau} varies the confidence threshold. For the runtime path, the recorded confidences of the 140 runtime-only decisions are gated again; for the compiled path, the deployed program is gated again on every graded point. Raising $\tau_c$ from 0.70 to 0.85 changes nothing, because no evaluated runtime-only decision was enforced below 0.88. Raising it to 0.90 loses the five live threats decided at 0.88. Every DROP rule of the compiled program carries confidence 0.90, the lowest value among agreeing members, so a threshold above 0.90 requires recompiling the program rather than changing a configuration value. The false positive rate stays at zero at every threshold, because the four legitimate cases for which the runtime model proposed a DROP were rejected by the policy-conflict and severity checks, not by the confidence gate.
+
+\begin{table}[t]
+    \centering
+    \caption{Sensitivity to the confidence threshold $\tau_c$. TCR of the compiled program over its 2,510 graded contain points and of the runtime-only configuration over its 90 threat decisions. FPR is zero for both at every threshold.}
+    \label{tab:tau}
+    \small
+    \setlength{\tabcolsep}{5pt}
+    \begin{tabular}{@{}lcc@{}}
+        \toprule
+        $\tau_c$ & \textbf{Compiled TCR} & \textbf{Runtime-only TCR} \\
+        \midrule
+        0.70 & 100.0\% & 98.9\% \\
+        0.85 & 100.0\% & 98.9\% \\
+        0.90 & 100.0\% & 93.3\% \\
+        0.95 & 0.0\%   & 2.2\%  \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+The TTL bounds do not change any reported outcome: rules became visible within ten seconds of the decision, well inside the 60-second minimum, and all post-enforcement checks passed before expiry. The blast-radius limits bound bursts above five rules per minute or three per source within five minutes, which the scenarios do not produce; their effect under a multi-source campaign is discussed in Section~\ref{sec:adversarial_safety}.
+
 \subsection{Runtime Overhead and Cost}
 \label{sec:overhead}
 
-A runtime decision issues one reasoning call and one audit-trace call with a mean prompt of 10.1K tokens, dominated by the retrieved context, or about 21K tokens per enforced decision. A compiled decision uses no tokens and takes 2 to 17 ms without enforcement; its decision latency on the testbed is the Secure Framework round trip. Compilation is a one-time cost of 341K tokens and 117 seconds, about the tokens of 16 runtime decisions, repeated only when the knowledge base changes. In the injected runs, the compiled policy answered 45 of the 72 alerts that passed the gate. The runtime path answered the other 27 with a median of 23.7 seconds.
+A runtime decision issues one reasoning call and one audit-trace call with a mean prompt of 10.1K tokens, dominated by the retrieved context, or about 21K tokens per enforced decision. A compiled decision uses no tokens and takes 2 to 17 ms without enforcement; its decision latency on the testbed is the Secure Framework round trip. Compilation is a one-time cost of 341K tokens and 117 seconds, about the tokens of 16 runtime decisions, repeated only when the knowledge base changes. In the injected runs, the compiled policy answered 45 of the 72 alerts that passed the gate. The runtime path answered the other 27 with a median of 23.7 seconds. No reported decision was served from the decision cache: every enforced runtime decision took at least 2.2 seconds, the time of a model call.
 
 BIZM is intended for containment rather than packet-level inline filtering. High-rate traffic mitigation is better handled by in-network or programmable data-plane mechanisms. Production deployment would also require queueing, overload thresholds, and fail-safe modes for the runtime path, which the current evaluation does not characterize.
 
@@ -830,13 +910,13 @@ The main limitations are clear. Ground truth is derived from a knowledge base th
 
 There are operational trade-offs. Automatic containment of high-impact assets carries operational risk, which a human-in-the-loop mode for protected assets can address. The threat model assumes a correct enforcement implementation and does not cover compromise of the switch operating system, the IDS engine, or encrypted payload inspection beyond what the IDS can observe.
 
-Finally, prior systems are compared by capability rather than by numerical performance (Table~\ref{tab:positioning}), because they address different stages of the loop. The contribution of BIZM is not a higher detection score but a bounded response architecture that compiles verified response logic from the architecture and connects alert interpretation, safety validation, and least-privilege enforcement in one closed loop.
+Finally, prior systems are compared by capability rather than by numerical performance (Table~\ref{tab:positioning}), because they address different stages of the loop. Baseline-C stands for deterministic context; a learned, anomaly-driven responder was not compared. Schema validation, role-based authorization, TTL-bounded rules, and protected-asset allowlists are established security-engineering mechanisms, and BIZM does not claim them as new. The contribution of BIZM is not a higher detection score but a bounded response architecture that compiles verified response logic from the architecture and connects alert interpretation, safety validation, and least-privilege enforcement in one closed loop.
 
 \section{Conclusion}
 \label{sec:conclusion}
 This paper presented \textbf{BIZM}, a safety-constrained LLM framework for bounded isolation in Zero Trust microsegmentation. BIZM uses the LLM at two speeds: it compiles the architecture knowledge base into a response program that is verified on every point of the finite alert domain, and it reasons at runtime over the alerts the program does not cover. On both paths, enforcement is restricted to source-faithful, time-bounded, provenance-marked DROP rules, and each action must pass fail-closed validation and command-level authorization before reaching the fabric. This design bounds the authority of the model even when its output is mistaken, malformed, or manipulated.
 
-The evaluation on a spine-leaf data-center testbed shows that the compiled program agrees with the knowledge base on all 14,970 graded points, where a hand-written contextual rule reaches 96.1\%, and that recompilation keeps 99.97\% to 100\% agreement after four knowledge-base changes. On the live testbed, BIZM contains every threat without a false positive, decides in 0.6 instead of 3.1 seconds, and produces no unsafe enforcement under adversarial alerts. These results support the central argument of the paper: LLM-assisted microsegmentation response is feasible when the LLM compiles verified response logic from the architecture and its runtime authority is bounded by deterministic network-level safety invariants.
+The evaluation on a spine-leaf data-center testbed shows that the compiled program agrees with the knowledge base on all 14,970 graded points, where a hand-written contextual rule reaches 96.1\%, and that recompilation keeps 99.97\% to 100\% agreement after four knowledge-base changes. On the live testbed, BIZM contains every threat without a false positive, decides in 0.6 instead of 3.1 seconds, and produces no unsafe enforcement under the tested adversarial alerts. These results support the central argument of the paper: LLM-assisted microsegmentation response is feasible when the LLM compiles verified response logic from the architecture and its runtime authority is bounded by deterministic network-level safety invariants.
 
 The current prototype also has clear limitations. The evaluation uses a controlled virtualized fabric, an author-written knowledge base and scenario set, a coarse program feature set, and a single model. Future work will extend the program features toward multi-hop context, evaluate on larger and more diverse traffic and other models, compile from operator-maintained documentation, and develop human-in-the-loop policies for high-impact protected assets and management-plane events.
 
