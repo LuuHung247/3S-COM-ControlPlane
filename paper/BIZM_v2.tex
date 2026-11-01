@@ -110,7 +110,7 @@ We review prior work along four lines: Zero Trust microsegmentation and east-wes
 
 \begin{table*}[t]
     \centering
-    \caption{Positioning of BIZM against related systems.}
+    \caption{Comparison of related work against BIZM.}
     \label{tab:positioning}
     \small
     \setlength{\tabcolsep}{4.5pt}
@@ -369,7 +369,7 @@ Table~\ref{tab:policy_matrix} gives the deny-by-default policy matrix used in th
 
 \begin{table}[tbp]
     \centering
-    \caption{Eight-zone deny-by-default policy matrix.}
+    \caption{Eight-zone deny-by-default east-west policy matrix.}
     \label{tab:policy_matrix}
     \scriptsize
     \setlength{\tabcolsep}{0.8pt}
@@ -400,7 +400,7 @@ A program is an ordered list of rules. Each rule is a conjunction of conditions 
 
 \begin{table}[tbp]
     \centering
-    \caption{Features of the compiled program.}
+    \caption{Input features of the compiled response program.}
     \label{tab:program_inputs}
     \small
     \setlength{\tabcolsep}{4pt}
@@ -451,7 +451,7 @@ The runtime path keeps a decision cache for repeated alerts. An enforced decisio
 
 \begin{table}[tbp]
     \centering
-    \caption{Bounded-isolation decision schema.}
+    \caption{Bounded-isolation decision schema and field constraints.}
     \label{tab:decision_schema}
     \small
     \begin{tabular}{@{}lll@{}}
@@ -588,7 +588,7 @@ Table~\ref{tab:scenarios} summarizes the testbed scenarios. Five scenarios use l
 
 \begin{table*}[t]
     \centering
-    \caption{Testbed scenarios ($N$: BIZM/runtime-only runs).}
+    \caption{Evaluation scenarios and repetitions ($N$: BIZM/runtime-only).}
     \label{tab:scenarios}
     \small
     \begin{tabular}{@{}llll@{}}
@@ -655,7 +655,7 @@ Table~\ref{tab:compiled} compares compiled programs with Baseline-C over the dep
 
 \begin{table}[t]
     \centering
-    \caption{Agreement with the knowledge base (14,970 graded points).}
+    \caption{Agreement with the deployed knowledge base over 14,970 graded points.}
     \label{tab:compiled}
     \small
     \setlength{\tabcolsep}{4pt}
@@ -680,10 +680,10 @@ Table~\ref{tab:drift} reports the four knowledge-base changes. Recompilation kee
 
 \begin{table}[t]
     \centering
-    \caption{Agreement after knowledge-base change.}
+    \caption{Agreement after knowledge-base changes (BIZM recompiled, Baseline-C unchanged).}
     \label{tab:drift}
     \small
-    \setlength{\tabcolsep}{3.5pt}
+    \setlength{\tabcolsep}{2.5pt}
     \begin{tabular}{@{}lcccc@{}}
         \toprule
         & \multicolumn{2}{c}{\textbf{Baseline-C}} & \multicolumn{2}{c}{\textbf{BIZM}} \\
@@ -705,7 +705,7 @@ Table~\ref{tab:functional} reports the live scenarios; Decide and Visible are me
 
 \begin{table}[t]
     \centering
-    \caption{Live scenarios, median latency in seconds.}
+    \caption{Live scenario outcomes and median latency (s).}
     \label{tab:functional}
     \small
     \setlength{\tabcolsep}{3.2pt}
@@ -730,7 +730,7 @@ Table~\ref{tab:confusion} reports response correctness over the labeled live and
 
 \begin{table}[t]
     \centering
-    \caption{Response correctness with 95\% intervals.}
+    \caption{Response correctness on live and S6 decisions (95\% CI).}
     \label{tab:confusion}
     \small
     \setlength{\tabcolsep}{4pt}
@@ -749,7 +749,7 @@ Table~\ref{tab:confusion} reports response correctness over the labeled live and
 
 \begin{table}[t]
     \centering
-    \caption{Per-scenario decisions as TP/FN/FP/TN.}
+    \caption{Per-scenario decision counts (TP/FN/FP/TN).}
     \label{tab:per_scenario}
     \small
     \setlength{\tabcolsep}{4pt}
@@ -773,7 +773,7 @@ Table~\ref{tab:sweep} reports the matrix sweep over 375 decisions. Static segmen
 
 \begin{table}[t]
     \centering
-    \caption{Matrix sweep, 75 cases $\times$ 5.}
+    \caption{Matrix sweep results over 75 cases $\times$ 5 runs.}
     \label{tab:sweep}
     \small
     \setlength{\tabcolsep}{4pt}
@@ -801,16 +801,16 @@ The adversarial cases are author-written, but on the compiled path two attack cl
 
 \begin{table}[t]
     \centering
-    \caption{Adversarial safety.}
+    \caption{Adversarial safety results for S7 and S8.}
     \label{tab:safety}
     \small
-    \setlength{\tabcolsep}{3.5pt}
+    \setlength{\tabcolsep}{3pt}
     \begin{tabular}{@{}lccc@{}}
         \toprule
         \textbf{Metric} & \textbf{BIZM} & \textbf{Runtime-only} & \textbf{Baseline-B} \\
         \midrule
         Violation rate (S7)    & 0.0\%   & 0.0\%   & 100.0\% \\
-        Core availability (S7) & 100.0\% & 100.0\% & 11.1\% \\
+        Availability (S7)      & 100.0\% & 100.0\% & 11.1\% \\
         Never-block (S8)       & 100.0\% & 100.0\% & 0.0\% \\
         \bottomrule
     \end{tabular}
@@ -823,7 +823,7 @@ Table~\ref{tab:reasoning} reports the signature-hint ablation. Scenario S9 conta
 
 \begin{table}[tbp]
     \centering
-    \caption{Reasoning ablation in S9, correct decisions.}
+    \caption{Reasoning ablation results in S9 (correct decisions).}
     \label{tab:reasoning}
     \small
     \setlength{\tabcolsep}{3.5pt}
@@ -851,7 +851,7 @@ Table~\ref{tab:inputs_map} maps the inputs of Algorithm~\ref{alg:decision} to th
 
 \begin{table}[t]
     \centering
-    \caption{Algorithm inputs and where they are evaluated.}
+    \caption{Inputs of Algorithm~\ref{alg:decision} and the experiments that exercise them.}
     \label{tab:inputs_map}
     \small
     \setlength{\tabcolsep}{3pt}
@@ -876,7 +876,7 @@ Table~\ref{tab:tau} varies the confidence threshold. For the runtime path, the r
 
 \begin{table}[t]
     \centering
-    \caption{Sensitivity to the confidence threshold $\tau_c$.}
+    \caption{Threat containment under different confidence thresholds $\tau_c$.}
     \label{tab:tau}
     \small
     \setlength{\tabcolsep}{5pt}
