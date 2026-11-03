@@ -708,7 +708,7 @@ The evaluation addresses six questions.
     \item \textbf{RQ6 (Residual reasoning and scalability).} How does the runtime path handle alerts the program does not cover, what does each path cost, and how does verification scale with the fabric?
 \end{itemize}
 
-RQ1 to RQ3 are evaluated offline over the alert domain. For RQ2, four modified copies of the knowledge base represent changes an operations team makes between syntheses: six new signatures, two of which detect abuse inside permitted connections (V1); a ninth crown-jewel zone, PAYMENTS, with its matrix rows, gateway, and two zone-pair signatures (V2); three documented responses changed in prose only (V3); and all three changes together (V4). Each variant is resynthesized, while the baselines are left as written. \red{For RQ3, the ensemble size is varied over $k\in\{1,3,5,7,9\}$ with [$n$] independent syntheses per $k$, and the synthesis configuration is repeated with a second open-weight model.}
+RQ1 to RQ3 are evaluated offline over the alert domain. For RQ2, four modified copies of the knowledge base represent changes an operations team makes between syntheses: six new signatures, two of which detect abuse inside permitted connections (V1); a ninth crown-jewel zone, PAYMENTS, with its matrix rows, gateway, and two zone-pair signatures (V2); three documented responses changed in prose only (V3); and all three changes together (V4). Each variant is resynthesized, while the baselines are left as written. For RQ3, the ensemble size is varied over $k\in\{1,3,5,7,9\}$ with 20 ensembles per $k$ drawn without replacement from the pool of 30 syntheses, \red{and the synthesis configuration is repeated with a second open-weight model.}
 
 Table~\ref{tab:scenarios} summarizes the testbed scenarios. Five scenarios use live east-west traffic and exercise the full detection-to-enforcement path. Five scenarios use controlled injected alerts to stress the decision logic, protected-asset handling, prompt-injection resistance, policy-matrix coverage, unknown signatures, and multi-stage correlation. Live scenarios are repeated ten times. Injected scenarios are repeated three times with the synthesized program, whose decisions are deterministic, and ten times in the runtime-only configuration. These repetitions measure run-to-run stability and should not be interpreted as a large independent traffic corpus. A matrix sweep injects 75 alerts generated mechanically from every off-diagonal cell of the policy matrix, the signature catalog, and the protected set, five times each. \red{Scenario S11 launches a coordinated campaign from $n_s\in\{3,5,8,12\}$ non-protected sources within 60 seconds and is repeated [$N$] times per $n_s$.}
 
@@ -804,17 +804,17 @@ Table~\ref{tab:agreement} compares synthesized programs with Baseline-C over the
     \end{tabular}
 \end{table}
 
-Baseline-C errs in both directions. Its hand-written list of permitted-path abuse signatures includes three signatures that the catalog documents as log-only, so even its strongest variant blocks 588 points that the knowledge base says to log (no false negatives, 588 false positives). The deployed variant also protects every host of MGT and MONITORING instead of the hosts in the protected set and misses 544 contain points (544 false negatives, 273 false positives), and it enforces on 518 points with an unknown signature, which BIZM defers to the runtime path. The rule is consistent with the policy matrix but not with the prose of the catalog, which it never reads. The synthesized program is derived from that prose, and this is where the LLM contributes. Synthesizing the ensemble took 117 seconds and 341K tokens. \red{A mechanically compiled program that reads only the structured fields of the catalog, without the LLM, reaches [a]\% agreement with [c]\% coverage, which bounds the contribution of the LLM to the prose-only entries of the knowledge base.}
+Baseline-C errs in both directions. Its hand-written list of permitted-path abuse signatures includes three signatures that the catalog documents as log-only, so even its strongest variant blocks 588 points that the knowledge base says to log (no false negatives, 588 false positives). The deployed variant also protects every host of MGT and MONITORING instead of the hosts in the protected set and misses 544 contain points (544 false negatives, 273 false positives), and it enforces on 518 points with an unknown signature, which BIZM defers to the runtime path. The rule is consistent with the policy matrix but not with the prose of the catalog, which it never reads. The synthesized program is derived from that prose, and this is where the LLM contributes. Synthesizing the ensemble took 117 seconds and 341K tokens. A mechanically compiled program that reads only the structured fields of the catalog, without the LLM, agrees with the knowledge base on 93.55\% of the graded points when it must decide all of them, missing 966 contain points on permitted and outbound pairs, or agrees on all of the 89.6\% it can decide when it abstains elsewhere; on V1 to V4 the same program reaches 93.0\% to 93.9\%, or 100\% at 88.6\% to 90.2\% coverage. This bounds the contribution of the LLM to the roughly 10\% of graded points whose response is stated only in the prose of the catalog.
 
 \paragraph{What the verifier catches}
-The upper part of Table~\ref{tab:loop} reports the dynamics of Algorithm~\ref{alg:synthesis} for the six syntheses of the deployed knowledge base (five ensemble members and the temperature-0 program). Of the six initially synthesized programs, three failed verification at round 0 with 24 counterexamples in total (15, 3, and 6), covering 18,648 violating inputs\red{, dominated by check [I3/I4$^{\mathrm{s}}$/I5/C]}; one repair round sufficed for each of them, and no candidate was discarded. \red{The unverified round-0 candidates would have agreed with the knowledge base on only $A_0$\% of the graded points and would have issued $U_0$ unsafe \textsc{drop} decisions on protected or external sources, which quantifies what verification-guided repair removes before deployment.} The self-review revision verified and was kept for all six programs; it raised the coverage of the realizable points for three ensemble members, from 91.0\% to 92.1\%, from 88.7\% to 95.5\%, and from 85.9\% to 90.9\%\red{, and changed the decision on $p_r$ graded points}.
+The upper part of Table~\ref{tab:loop} reports the dynamics of Algorithm~\ref{alg:synthesis} for the six syntheses of the deployed knowledge base (five ensemble members and the temperature-0 program). Of the six initially synthesized programs, three failed verification at round 0 with 24 counterexamples in total (15, 3, and 6), covering 18,648 violating inputs; one repair round sufficed for each of them, and no candidate was discarded. The self-review revision verified and was kept for all six programs; it raised the coverage of the realizable points for three ensemble members, from 91.0\% to 92.1\%, from 88.7\% to 95.5\%, and from 85.9\% to 90.9\%. The round-0 candidates of these syntheses were not retained, so the following figures come from a pool of 30 further syntheses of V0 at $T=0.7$ in which every candidate was kept. Eight of the 30 failed verification at round 0 with 47 counterexamples, 41 of them on the TTL and scope check I4$^{\mathrm{s}}$, four on I5, and two on I3; every one was repaired within two rounds (0.33 on average), and none was discarded. The eight unverified round-0 candidates agreed with the knowledge base on 98.75\% of the graded points they decided, against 100\% for the 22 that verified at once, and one of them would have issued 448 unsafe \textsc{drop} decisions on protected sources, which quantifies what verification-guided repair removes before deployment. Self-review changed the decision on 257 to 3,736 graded points (median 680) in 15 of the 30 syntheses.
 
 \paragraph{Synthesis ablation}
-The lower part of Table~\ref{tab:loop} isolates the contribution of each stage of the loop by synthesizing \red{[$n\ge 20$]} independent programs at temperature 0.7 under four arms: one-shot synthesis with no verifier feedback, repair only, repair with self-review, and the full ensemble of five. \red{One-shot candidates verify in only [p]\% of the cases and agree with the knowledge base on [a$_1$]\% of the graded points; repair raises the verification rate to [p$_2$]\% without changing agreement on decided points; self-review changes agreement from [a$_2$]\% to [a$_3$]\%; and the ensemble raises coverage from [c$_3$]\% to 100\% (McNemar $p$ between consecutive arms: [values]). The same ablation on V4 shows [summary].} This is the direct evidence for the title claim: the verifier, not the synthesizer, is what makes the deployed program safe, and the ensemble, not any single sample, is what makes it complete.
+The lower part of Table~\ref{tab:loop} isolates the contribution of each stage of the loop over the pool of 30 independent syntheses of V0 at temperature 0.7, read at four stages: one-shot synthesis with no verifier feedback, repair only, repair with self-review, and the full ensemble of five. One-shot candidates verify in only 73.3\% of the cases, agree with the knowledge base on 99.67\% of the graded points they decide (95\% CI over syntheses [99.17, 100]), and include 448 unsafe \textsc{drop} decisions; repair raises the verification rate to 100\% (exact McNemar $p=0.008$ on the eight discordant syntheses) and removes every unsafe decision while leaving agreement on decided points essentially unchanged at 99.77\%; self-review raises agreement to 100.00\% and coverage from 93.6\% to 96.7\%; and ensembles of five raise coverage to 99.6\% (95\% CI [99.0, 100]) at 100\% agreement. The same ablation on a pool of 20 syntheses of V4 gives 70\% verified at round 0 (one draft could not be parsed), no unsafe decision at any stage, agreement of 99.80\%, 99.64\%, and 99.68\% for the three single-program stages, and 100.00\% agreement at 98.9\% coverage for ensembles of five. This is the direct evidence for the title claim: the verifier, not the synthesizer, is what makes the deployed program safe, and the ensemble, not any single sample, is what makes it nearly complete.
 
 \begin{table}[t]
     \centering
-    \caption{Synthesis-loop dynamics for the six deployed syntheses (upper part) and synthesis ablation with \red{$n$} syntheses per arm at $T=0.7$ (lower part).}
+    \caption{Synthesis-loop dynamics for the six deployed syntheses (upper part) and synthesis ablation over 30 syntheses at $T=0.7$ (lower part).}
     \label{tab:loop}
     \scriptsize
     \setlength{\tabcolsep}{1.4pt}
@@ -823,20 +823,20 @@ The lower part of Table~\ref{tab:loop} isolates the contribution of each stage o
         \textbf{Candidate} & \textbf{CE$_0$/Ver.} & \textbf{Rnds} & \textbf{Acc.} & \textbf{Cov.} & \textbf{Unsafe} & \textbf{Tok.} \\
         \midrule
         \multicolumn{7}{@{}l}{\emph{Deployed syntheses (round-0 candidate before repair)}} \\
-        $T{=}0$ single & 15 & 1 & \tbd & \tbd & \tbd & 96K \\
-        Member 1 & 0 & 0 & \tbd & \tbd & 0 & 54K \\
-        Member 2 & 3 & 1 & \tbd & \tbd & \tbd & 93K \\
-        Member 3 & 0 & 0 & \tbd & \tbd & 0 & 54K \\
-        Member 4 & 6 & 1 & \tbd & \tbd & \tbd & 80K \\
-        Member 5 & 0 & 0 & \tbd & \tbd & 0 & 60K \\
+        $T{=}0$ single & 15 & 1 & n/a & n/a & n/a & 96K \\
+        Member 1 & 0 & 0 & n/a & n/a & 0 & 54K \\
+        Member 2 & 3 & 1 & n/a & n/a & n/a & 93K \\
+        Member 3 & 0 & 0 & n/a & n/a & 0 & 54K \\
+        Member 4 & 6 & 1 & n/a & n/a & n/a & 80K \\
+        Member 5 & 0 & 0 & n/a & n/a & 0 & 60K \\
         \midrule
         \multicolumn{7}{@{}l}{\emph{Ablation arms (output the arm would deploy; mean, 95\% CI)}} \\
-        One-shot (no verifier) & \tbd & 0 & \tbd & \tbd & \tbd & \tbd \\
-        Repair only              & \tbd & \tbd & \tbd & \tbd & 0 & \tbd \\
-        Repair + review          & \tbd & \tbd & \tbd & \tbd & 0 & \tbd \\
-        Ensemble ($k{=}5$)       & 100\% & \tbd & 100.00\% & 100.0\% & 0 & 341K \\
+        One-shot (no verifier) & 73.3\% & 0 & 99.67\% & 94.3\% & 448 & 26K \\
+        Repair only              & 100\% & 0.33 & 99.77\% & 93.6\% & 0 & 36K \\
+        Repair + review          & 100\% & 0.33 & 100.00\% & 96.7\% & 0 & 66K \\
+        Ensemble ($k{=}5$)       & 100\% & 0.26 & 100.00\% & 99.6\% & 0 & 322K \\
         \bottomrule
-        \multicolumn{7}{@{}p{0.97\columnwidth}@{}}{\footnotesize Upper part: CE$_0$ is the number of counterexamples at round 0 (breakdown by check in the text), Rnds the repair rounds used, and Acc./Cov./Unsafe the agreement, coverage, and unsafe \textsc{drop} decisions (protected or external source) of the \emph{unverified} round-0 candidate on the graded points. Lower part: Ver.\ is the fraction of arm outputs with $\mathcal{V}_K(\Pi)=\emptyset$ and Rnds the mean repair rounds; Acc./Cov./Unsafe refer to what the arm would deploy.}
+        \multicolumn{7}{@{}p{0.97\columnwidth}@{}}{\footnotesize Upper part: CE$_0$ is the number of counterexamples at round 0 (breakdown by check in the text), Rnds the repair rounds used, and Acc./Cov./Unsafe the agreement, coverage, and unsafe \textsc{drop} decisions (protected or external source) of the \emph{unverified} round-0 candidate on the graded points, which were not retained for these syntheses (n/a). Lower part: Ver.\ is the fraction of arm outputs with $\mathcal{V}_K(\Pi)=\emptyset$ and Rnds the mean repair rounds; Acc./Cov./Unsafe refer to what the arm would deploy, as means over the 30 syntheses (20 ensembles of five drawn from them).}
     \end{tabular}
 \end{table}
 
@@ -849,14 +849,14 @@ Rows V1 to V4 of Table~\ref{tab:agreement} report the four knowledge-base change
 \label{sec:cross_model}
 
 \paragraph{Ensemble size}
-The upper part of Table~\ref{tab:sensitivity} varies $k$. By Lemma~\ref{lem:ensemble} every ensemble is verified; what changes is the coverage-abstention trade-off and the synthesis cost. \red{Coverage rises from [c$_1$]\% at $k=1$ to [c$_5$]\% at $k=5$ and saturates at [c$_9$]\% for $k=9$, while agreement on decided points remains 100\% for every $k$ and the one-time token cost grows linearly in $k$. Abstained points at $k\ge 5$ are concentrated on [describe: correlation-conditioned signatures / permitted-path overrides], which are exactly the points on which the knowledge base is least explicit.}
+The upper part of Table~\ref{tab:sensitivity} varies $k$. By Lemma~\ref{lem:ensemble} every ensemble is verified; what changes is the coverage-abstention trade-off and the synthesis cost. Coverage rises from 96.1\% at $k=1$ to 99.6\% at $k=5$, peaks at 99.9\% for $k=7$, and falls to 99.5\% at $k=9$, where a strict majority is harder to reach; agreement on decided points remains 100\% for every $k$, and the one-time token cost grows linearly in $k$. At $k=5$, 88\% of the abstained points carry one of the three permitted-path signatures that the catalog documents as log-only (SIDs 9000051, 9000052, and 9000061), mostly for sources with earlier alerts, where members disagree whether correlation turns logging into containment. These are exactly the points on which the knowledge base is least explicit, and the same three signatures that Baseline-C blocks.
 
 \paragraph{Model choice}
 The lower part of Table~\ref{tab:sensitivity} repeats the synthesis with a second open-weight model, \red{[Qwen model id]}, under the same prompts, budget, and verifier. \red{Qwen reaches verification in [r$_B$] rounds on average, [n$_B$] of its candidates were discarded after $\eta_{\max}$ rounds, and its ensemble agrees with the knowledge base on [a$_B$]\% of the points it decides, with coverage [c$_B$]\%. Across both models, the verifier never admitted a program with an unsafe decision, so model choice affects coverage and cost but not safety, which is the property the architecture is designed to make model-independent (R6).}
 
 \begin{table}[t]
     \centering
-    \caption{Sensitivity of synthesis to ensemble size (upper part, \texttt{gpt-oss-120b}, \red{$n$} syntheses per $k$) and to model choice (lower part, $k=5$); \red{to be filled}.}
+    \caption{Sensitivity of synthesis to ensemble size (upper part, \texttt{gpt-oss-120b}, 20 ensembles per $k$ from 30 syntheses) and to model choice (lower part, $k=5$); \red{to be filled}.}
     \label{tab:sensitivity}
     \scriptsize
     \setlength{\tabcolsep}{2.5pt}
@@ -865,17 +865,17 @@ The lower part of Table~\ref{tab:sensitivity} repeats the synthesis with a secon
         \textbf{Setting} & \textbf{Pass@0} & \textbf{Rounds} & \textbf{Acc.} & \textbf{Cov.} & \textbf{Tokens} \\
         \midrule
         \multicolumn{6}{@{}l}{\emph{Ensemble size $k$}} \\
-        $k=1$ & \tbd & \tbd & \tbd & \tbd & \tbd \\
-        $k=3$ & \tbd & \tbd & \tbd & \tbd & \tbd \\
-        $k=5$ & \tbd & \tbd & 100.00\% & 100.0\% & 341K \\
-        $k=7$ & \tbd & \tbd & \tbd & \tbd & \tbd \\
-        $k=9$ & \tbd & \tbd & \tbd & \tbd & \tbd \\
+        $k=1$ & 75\% & 0.35 & 100.00\% & 96.1\% & 67K \\
+        $k=3$ & 70\% & 0.33 & 100.00\% & 99.2\% & 196K \\
+        $k=5$ & 78\% & 0.26 & 100.00\% & 99.6\% & 322K \\
+        $k=7$ & 72\% & 0.38 & 100.00\% & 99.9\% & 476K \\
+        $k=9$ & 73\% & 0.34 & 100.00\% & 99.5\% & 591K \\
         \midrule
         \multicolumn{6}{@{}l}{\emph{Synthesizer model}} \\
         \texttt{gpt-oss-120b} & 60\% & 0.4 & 100.00\% & 100.0\% & 341K \\
         \red{Qwen [id]} & \tbd & \tbd & \tbd & \tbd & \tbd \\
         \bottomrule
-        \multicolumn{6}{@{}p{0.97\columnwidth}@{}}{\footnotesize Pass@0: fraction of candidates verified at round 0; Rounds: mean repair rounds among verified candidates; Acc./Cov. of the deployed ensemble on the 14,970 graded points.}
+        \multicolumn{6}{@{}p{0.97\columnwidth}@{}}{\footnotesize Pass@0: fraction of candidates verified at round 0; Rounds: mean repair rounds among verified candidates; Acc./Cov. on the 14,970 graded points; upper part: means over the 20 ensembles; lower part: the deployed ensemble.}
     \end{tabular}
 \end{table}
 
