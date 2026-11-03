@@ -101,7 +101,10 @@ def main(out_dir: str, repeats: int = 3):
     reliable.preflight(want_compiled=True, want_dry_run=DRY)
     s7 = {c["id"]: c for c in _load("safety/s14_adversarial_safety.py").CASES}
     rows = []
+    gap = float(os.environ.get("REPEAT_GAP_S", "0"))   # > cache TTL keeps repeats independent
     for rep in range(1, repeats + 1):
+        if rep > 1 and gap:
+            time.sleep(gap)
         for scenario, cid, alert, expect, hist in cases():
             if only and f"{scenario}:{cid}" not in only:
                 continue
