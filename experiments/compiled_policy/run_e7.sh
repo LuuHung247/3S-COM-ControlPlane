@@ -14,7 +14,7 @@ if [ "$PHASE" = compiled ]; then RATES=${RATES:-"10 50 100 200 500 1000"}; DURAT
 else RATES=${RATES:-"0.5 1 2"}; DURATION=${DURATION:-60}; fi
 OUT=$ROOT/experiments/results/e7_$(date -u +%Y%m%d_%H%M)_$PHASE; mkdir -p "$OUT"
 log() { echo "[$(date -u +%T)] $*" | tee -a "$OUT/campaign.log"; }
-KEYS="COMPILED_POLICY_ENABLED AGENT_DRY_RUN FILTER_DEDUP_WINDOW_SECONDS SAFETY_MAX_RULES_PER_MINUTE SAFETY_MAX_TOTAL_AGENT_RULES SAFETY_MAX_RULES_PER_IP"
+KEYS="WEB_CONCURRENCY COMPILED_POLICY_ENABLED AGENT_DRY_RUN FILTER_DEDUP_WINDOW_SECONDS SAFETY_MAX_RULES_PER_MINUTE SAFETY_MAX_TOTAL_AGENT_RULES SAFETY_MAX_RULES_PER_IP"
 declare -A PREV
 for k in $KEYS; do PREV[$k]=$(grep -E "^$k=" "$ENV" | cut -d= -f2); done
 set_env() { if grep -qE "^$1=" "$ENV"; then sed -i "s/^$1=.*/$1=$2/" "$ENV"; else echo "$1=$2" >> "$ENV"; fi; }
@@ -39,9 +39,17 @@ set_env FILTER_DEDUP_WINDOW_SECONDS 1
 set_env SAFETY_MAX_RULES_PER_MINUTE 100000000
 set_env SAFETY_MAX_TOTAL_AGENT_RULES 100000000
 set_env SAFETY_MAX_RULES_PER_IP 100000000
+WORKERS=${WORKERS:-1}; [ "$WORKERS" -gt 1 ] && set_env WEB_CONCURRENCY "$WORKERS"
 if [ "$PHASE" = compiled ]; then set_env COMPILED_POLICY_ENABLED true; WANT=True; FLAG=""
 else set_env COMPILED_POLICY_ENABLED false; WANT=False; FLAG="--runtime"; fi
-log "phase $PHASE: service up (dry_run=$(recreate $WANT))"
+log "phase $PHASE workers=$WORKERS: service up (dry_run=$(recreate $WANT))"
+if [ "$WORKERS" -gt 1 ]; then   # every worker must have verified and activated the program
+  ok=0; for i in $(seq 1 90); do
+    n=0; for j in $(seq 1 $((WORKERS*4))); do curl -s localhost:8767/admin/compiled | grep -q '"status":"active"' && n=$((n+1)); done
+    [ "$n" -eq $((WORKERS*4)) ] && ok=$((ok+1)) || ok=0; [ "$ok" -ge 3 ] && break; timeout 2 tail -f /dev/null
+  done
+  log "all workers active: $([ "$ok" -ge 3 ] && echo yes || echo NO)"; [ "$ok" -ge 3 ] || exit 1
+fi
 "$PYI" "$ROOT/experiments/compiled_policy/e7_load.py" "$OUT/e7.jsonl" --rates $RATES --duration "$DURATION" $FLAG \
   2>&1 | tee -a "$OUT/campaign.log"
 log "DONE -> $OUT"

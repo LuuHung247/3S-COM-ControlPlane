@@ -62,8 +62,10 @@ def make_alert(sid, sev, src, dst, msg):
                                       "category": "Potentially Bad Traffic"}}
 
 
-async def run_rate(client, rate, duration, pick, out):
+async def run_rate(client, rate, duration, pick, out, guard=False):
+    """guard: stop sending if any alert reaches the model (compiled phase must not)."""
     sent, tasks = 0, []
+    abort = [False]
     t0 = time.monotonic()
 
     async def one(i, alert):
@@ -78,12 +80,14 @@ async def run_rate(client, rate, duration, pick, out):
             rec = {"i": i, "t_send": round(ts - t0, 3), "lat_s": round(time.monotonic() - ts, 4),
                    "outcome": "client_error", "error": str(exc)[:80]}
         rec["t_done"] = round(time.monotonic() - t0, 3)
+        if guard and rec.get("path") == "runtime":
+            abort[0] = True
         out.append(rec)
 
     while True:
         target = t0 + sent / rate
         now = time.monotonic()
-        if target - t0 >= duration:
+        if target - t0 >= duration or abort[0]:
             break
         if target > now:
             await asyncio.sleep(target - now)
@@ -148,7 +152,10 @@ async def main():
         for rate in a.rates:
             await client.post(f"{INTEL}/admin/reset", json={})
             recs = []
-            await run_rate(client, rate, a.duration, pick, recs)
+            await run_rate(client, rate, a.duration, pick, recs, guard=not a.runtime)
+            if any(r.get("path") == "runtime" for r in recs) and not a.runtime:
+                print(json.dumps({"aborted": "runtime path reached in compiled phase", "rate": rate}), flush=True)
+                break
             s = summarize(rate, a.duration, recs)
             s["config"] = "runtime_only" if a.runtime else "compiled"
             print(json.dumps(s), flush=True)
