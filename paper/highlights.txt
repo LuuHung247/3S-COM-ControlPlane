@@ -1,0 +1,5 @@
+East-west response is cast as program synthesis under bounded-isolation invariants.
+An LLM synthesizes a response program; an exhaustive verifier guides its repair.
+The verified program agrees with the knowledge base on all 14,970 graded points.
+Fail-closed validation and DROP-only enforcement bound a wrong or injected model.
+Live containment on a SONiC testbed cuts decision latency from 3.1 s to 0.6 s.
